@@ -1,1 +1,1 @@
-from . import xfam
+from .xfam import Xfam
