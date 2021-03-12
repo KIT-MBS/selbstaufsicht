@@ -50,14 +50,13 @@ class Xfam():
             return
         prefix, filename = os.path.split(path)
         os.makedirs(prefix, exist_ok=True)
-        with open(path, 'wb') as f:
-            with urllib.request.urlopen(urllib.request.FTPHandler) as response:
-                with tqdm(total=response.length) as pbar:
-                    for chunk in iter(lambda: reponse.read(chunk_size), ''):
-                        if not chunk:
-                            break
-                        pbar.update(chunk_size)
-                        f.write(chunk)
+        chunk_size = 1024
+        with urllib.request.urlopen(urllib.request.Request(url)) as response:
+            with open(path, 'wb') as f:
+                for chunk in iter(lambda: response.read(chunk_size), ''):
+                    if not chunk:
+                        break
+                    f.write(chunk)
 
     def __len__(self):
         return len(self.samples)
