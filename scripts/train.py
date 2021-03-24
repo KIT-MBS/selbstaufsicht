@@ -18,7 +18,7 @@ class LitMod(LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         pred = self(x)
-        loss =
+        loss = self.crit(y, pred)
 
     def configure_optimizers(self):
         return Adam
@@ -41,7 +41,6 @@ class LitXfam(LightningDataModule):
         return DataLoader(self.train, batch_size=1)
 
 
-trainmod =
 model = LitMod()
 trainer = Trainer()
 trainer.fit(model, trainmod)
