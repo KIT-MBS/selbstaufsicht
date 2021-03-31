@@ -21,13 +21,13 @@ class LitMod(LightningModule):
         loss = self.crit(y, pred)
 
     def configure_optimizers(self):
-        return Adam
+        return Adam()
 
 
 class LitXfam(LightningDataModule):
     def __init__(self):
         super().__init__()
-        self.train_dims =None
+        self.train_dims = None
         self.vocab_size = 4
 
     def prepare_data(self):
