@@ -49,4 +49,4 @@ class EncoderStackTransforms():
         S = len(msa)
         L = msa.get_alignment_length()
         A = 4
-        x = torch.empy()
+        x = torch.empty()
