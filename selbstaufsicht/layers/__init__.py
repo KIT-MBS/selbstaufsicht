@@ -4,7 +4,7 @@ import torch.nn as nn
 
 # TODO fix device issues
 class SinoidalPositionalEncodingSequence(nn.Module):
-    def __init__(self, d, dropout=0.1, max_len=3000):
+    def __init__(self, d, dropout=0.1, max_len=24000):
         super(SinoidalPositionalEncodingSequence, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -21,5 +21,6 @@ class SinoidalPositionalEncodingSequence(nn.Module):
         """
         input shape:  sequence length, batch size, embed dim
         """
-        x = x + self.encoding[:x.size[0], :]
+
+        x = x + self.encoding[:x.size(0), :]
         return self.dropout(x)
