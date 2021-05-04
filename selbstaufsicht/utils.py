@@ -21,3 +21,21 @@ rna_to_tensor_dict = {
         'D': torch.tensor([1., 1., 1., 0.])/3.,
         'N': torch.tensor([1., 1., 1., 1.])/4.,
         }
+
+# TODO reorganize
+# TODO optimize
+def collate_msas(msas):
+    B = len(msas)
+    S = max([len(msa) for msa in msas])
+    L = max([msa.get_alignment_length() for msa in msas])
+    D = 4
+
+    batch = torch.zeros((S, L, B, D), dtype=torch.float)
+
+    for i, msa in enumerate(msas):
+        for s in range(len(msa)):
+            for l in range(msa.get_alignment_length()):
+                batch[s, l, i, ...] = rna_to_tensor_dict[msa[s, l]][...]
+
+    batch = batch.reshape(S*L, B, D)
+    return (batch, torch.Tensor(batch))
