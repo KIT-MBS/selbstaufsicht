@@ -1,9 +1,10 @@
 import os
-import gzip
+
+from selbstaufsicht import datasets
+
 
 root = os.environ['DATA_PATH']
 
-from selbstaufsicht import datasets
 ds = datasets.Xfam(root, download=True)
 
 lnseqs = list()
