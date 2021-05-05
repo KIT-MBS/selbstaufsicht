@@ -27,6 +27,8 @@ rna_to_tensor_dict = {
 # TODO more efficient positional encoding?
 # TODO reorganize
 # TODO double check
+# TODO optimize: best batch layout, better tensorize
+# TODO maxlen as parameter
 def collate_msas_explicit_position(msas):
     seqlens = [len(msa[0]) for msa in msas]
     maxlen = 1000
