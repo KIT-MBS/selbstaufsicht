@@ -1,18 +1,24 @@
 import pytorch_lightning as pl
 from . import modules
+from axial_attention import AxialAttention
 
 class MSAModel(pl.LightningModule):
     """
     Model for pre-training on multiple sequence alignments of biological sequences
     """
     def __init__(self, molecule='RNA'):
+        # TODO task parameters
         super().__init__()
+        dim = 32
 
-        self.backbone = models.TransformerEncoderStack(4, 32, 4, 128, 12)
-        self.demasking_head = models.DemaskingHead(32, 4)
-        self.deshuffling_head = models.DeshufflingHead(32, 2)
-        # TODO crit per task
-        self.crit = nn.KLDivLoss(reduction='batchmean')
+        # self.backbone = models.TransformerEncoderStack(4, 32, 4, 128, 12)
+        self.backbone = AxialTransformerEncoder(dim)
+        self.demasking_head = models.DemaskingHead(dim, 5)
+        self.deshuffling_head = models.DeshufflingHead(dim, 2)
+
+        self.mask_crit = nn.KLDivLoss(reduction='batchmean')
+        self.shuf_crit = nn.CrossEntropyLoss()
+
 
     def forward(self, encoded_msa_batch):
         """
@@ -24,22 +30,20 @@ class MSAModel(pl.LightningModule):
 
         return latent
 
-    # TODO figure out actual input dim ordering
-    def shared_step(self, batch_data, batch_idx):
-        # TODO prep input
+    def shared_step(self, batch_data):
         latent = self(x)
-        demasking_result = self.demasking_head(x)
-        deshuffling_result = self.deshuffling_head(x)
+        demasking_result = self.demasking_head(x) # [B, S, L, 5]
+        deshuffling_result = self.deshuffling_head(x) # [B]
         return demasking_result, deshuffling_result
 
     def training_step(self, batch_data, batch_idx):
-        result = self.shared_step(batch_data, batch_idx)
-        batch_input, target = batch_data # [input] == [B, N, S, D]
+        # TODO apply task transforms to batch
 
-        loss = self.crit(result, target)
-        pred = self(x)
-        pred = nn.functional.log_softmax(x, dim=-1)
-        loss = self.crit(y, pred)
+        result = self.shared_step(batch_data)
+
+        # TODO apply heads
+        # TODO compute losses
+
         return loss
 
     def validation_step(self, batch_data, batch_idx):
@@ -47,3 +51,30 @@ class MSAModel(pl.LightningModule):
 
     def configure_optimizers(self):
         return Adam(self.parameters())
+
+
+# TODO reversibility
+# TODO optimize
+# TODO dropout
+# TODO norm
+class AxialTransformerEncoder(nn.Module):
+    def __init__(self, dim, depth, heads, dim_heads=None, dim_ff=None, pos_emb=None):
+        super().__init__()
+        if dim_ff is None:
+            dim_ff = 2*dim
+        self.pos_emb = pos_emb
+        self.embedding = nn.Sequential([nn.Linear(8, dim), nn.LeakyReLU()])
+
+        layers = nn.ModuleList([])
+        for _ in range(depth):
+            attn = AxialAttention(dim, num_dimensions=2, heads=heads, dim_heads=None, dim_index=-1, sum_axial_out=True)
+            ff = nn.Sequential([nn.Linear(dim, dim_ff), nn.LeakyReLU(), nn.Linear(dim_ff, dim)])
+            layers.append(nn.Sequential(attn, ff))
+
+
+    def forward(self, encoded_msa_batch):
+        if self.pos_emb is not None:
+            encoded_msa_batch = self.pos_emb(encoded_msa_batch)
+        for layers in self.layers:
+            encoded_msa_batch = encoded_msa_batch + layer(encoded_msa_batch)
+        return encoded_msa_batch
