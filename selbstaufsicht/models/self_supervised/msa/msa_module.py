@@ -2,14 +2,18 @@ import pytorch_lightning as pl
 from . import modules
 from axial_attention import AxialAttention
 
+# TODO do positional encoding after task preprocessing
 class MSAModel(pl.LightningModule):
     """
     Model for pre-training on multiple sequence alignments of biological sequences
     """
     def __init__(self, molecule='RNA'):
         # TODO task parameters
+        # TODO model parameters
         super().__init__()
         dim = 32
+        if molecule != 'RNA':
+             raise NotImplementedError()
 
         # self.backbone = models.TransformerEncoderStack(4, 32, 4, 128, 12)
         self.backbone = AxialTransformerEncoder(dim)
@@ -30,14 +34,16 @@ class MSAModel(pl.LightningModule):
 
         return latent
 
-    def shared_step(self, batch_data):
-        latent = self(x)
-        demasking_result = self.demasking_head(x) # [B, S, L, 5]
-        deshuffling_result = self.deshuffling_head(x) # [B]
-        return demasking_result, deshuffling_result
+    # TODO
+    # def shared_step(self, batch_data):
+    #     latent = self(x)
+    #     demasking_result = self.demasking_head(x) # [B, S, L, 5]
+    #     deshuffling_result = self.deshuffling_head(x) # [B]
+    #     return demasking_result, deshuffling_result
 
     def training_step(self, batch_data, batch_idx):
         # TODO apply task transforms to batch
+        batch_data = mask(batch_data)
 
         result = self.shared_step(batch_data)
 
@@ -46,11 +52,19 @@ class MSAModel(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, batch_data, batch_idx):
-        return loss
+    # def validation_step(self, batch_data, batch_idx):
+    #     return loss
 
     def configure_optimizers(self):
         return Adam(self.parameters())
+
+def mask(batch_data):
+    width = 3
+    start = torch.randint(batch_data.size(2)-width)
+    batch_data[:,:,start:start+width,0:6] = torch.tensor([0.,0.,0.,0.,0.,1.])
+    inpainting_mask = torch.zeros_like(batch_data)
+    inpainting_mask[:,:,start:start+width,0:6] = 1
+    return batch_data, inpainting_mask
 
 
 # TODO reversibility
