@@ -12,6 +12,6 @@ from selbstaufsicht.utils import collate_msas_explicit_position
 root = os.environ['DATA_PATH']
 model = models.self_supervised.MSAModel()
 dataset = datasets.Xfam(root, download=True)
-dataloader = DataLoader(dataset, batch_size=2, shuffle=True, collate_fn=collate_msas_explicit_position, num_workers=8)
-trainer = Trainer()
+dataloader = DataLoader(dataset, batch_size=2, shuffle=True, collate_fn=collate_msas_explicit_position, num_workers=2)
+trainer = Trainer(gpus=1, max_epochs=5)
 trainer.fit(model, dataloader)
