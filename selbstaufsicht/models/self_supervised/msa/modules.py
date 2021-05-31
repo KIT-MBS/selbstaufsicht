@@ -23,5 +23,6 @@ class DeshufflingHead(nn.Module):
 
 
 # TODO
-class MaximizingMutualInformationHead(self, x):
-    raise NotImplementedError()
+class MaximizingMutualInformationHead():
+    def __init__(self, x):
+        raise NotImplementedError()
