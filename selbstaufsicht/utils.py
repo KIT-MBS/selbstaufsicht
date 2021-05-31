@@ -40,7 +40,6 @@ def collate_msas_explicit_position(msas):
     peindex = torch.arange(0, L)
 
     batch = torch.zeros((B, S, L, D), dtype=torch.float)
-    pad_mask = torch.ones((B, S, L, D), dtype=torch.int8)
 
     for i, msa in enumerate(msas):
         for s in range(len(msa)):
@@ -48,6 +47,5 @@ def collate_msas_explicit_position(msas):
                 batch[i, s, l, 0:6] = rna_to_tensor_dict[msa[s, l]][:]
                 batch[i, s, l, 6] = peindex[l] / maxlen
                 batch[i, s, l, 7] = peindex[l] / len(msa[s])
-            pad_mask[L:] = 0
 
-    return batch, pad_mask
+    return (batch, seqlens)
