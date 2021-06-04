@@ -11,11 +11,10 @@ class MSAModel(pl.LightningModule):
     """
     Model for pre-training on multiple sequence alignments of biological sequences
     """
-    def __init__(self, molecule='RNA', mask_width=1, shuffle_partitions=2, ):
+    def __init__(self, molecule='RNA', mask_width=1, shuffle_partitions=2, depth=4, heads=4, dim=32):
         # TODO task parameters
         # TODO model parameters
         super().__init__()
-        dim = 32
 
         if molecule != 'RNA':
             raise NotImplementedError()
@@ -23,7 +22,7 @@ class MSAModel(pl.LightningModule):
         self.mask_width = mask_width
 
         # self.backbone = modules.TransformerEncoderStack(4, 32, 4, 128, 12)
-        self.backbone = AxialTransformerEncoder(dim, depth=12, heads=4)
+        self.backbone = AxialTransformerEncoder(dim, depth=depth, heads=heads)
         self.demasking_head = modules.DemaskingHead(dim, 5)
         deshuffling_head = modules.DeshufflingHead(dim, 2)
         # contrastive_head = modules.ContrastiveHead()
