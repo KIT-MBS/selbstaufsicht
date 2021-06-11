@@ -54,7 +54,7 @@ class MSAModel(pl.LightningModule):
         # batch_input, targets = self.task_transforms(batch_input)
         mask_start = torch.randint(batch_input.size(2)-self.mask_width, size=(1,))
         # masked_input, inpainting_mask = mask(batch_input)
-        original = torch.tensor(batch_input)
+        original = batch_input.clone().detach()
         batch_input[:,:,mask_start:mask_start+self.mask_width,0:6] = torch.tensor([0.,0.,0.,0.,0.,1.])
         demasking_target = original[:,:,mask_start:mask_start+self.mask_width,0:5]
 
