@@ -6,6 +6,7 @@ from axial_attention import AxialAttention
 
 from . import modules
 
+
 # TODO do positional encoding after task preprocessing
 class MSAModel(pl.LightningModule):
     """
@@ -24,13 +25,12 @@ class MSAModel(pl.LightningModule):
         # self.backbone = modules.TransformerEncoderStack(4, 32, 4, 128, 12)
         self.backbone = AxialTransformerEncoder(dim, depth=depth, heads=heads)
         self.demasking_head = modules.DemaskingHead(dim, 5)
-        deshuffling_head = modules.DeshufflingHead(dim, 2)
+        # deshuffling_head = modules.DeshufflingHead(dim, 2)
         # contrastive_head = modules.ContrastiveHead()
         # self.heads = [demasking_head, deshuffling_head, contrastive_head]
 
         # self.criteria = [nn.KLDivLoss(reduction='batchmean'), nn.CrossEntropyLoss()]
         self.criteria = [nn.KLDivLoss(reduction='batchmean')]
-
 
     def forward(self, encoded_msa_batch):
         """
@@ -52,15 +52,15 @@ class MSAModel(pl.LightningModule):
     def training_step(self, batch_data, batch_idx):
         batch_input, lens = batch_data
         # batch_input, targets = self.task_transforms(batch_input)
-        mask_start = torch.randint(batch_input.size(2)-self.mask_width, size=(1,))
+        mask_start = torch.randint(batch_input.size(2) - self.mask_width, size=(1,))
         # masked_input, inpainting_mask = mask(batch_input)
         original = batch_input.clone().detach()
-        batch_input[:,:,mask_start:mask_start+self.mask_width,0:6] = torch.tensor([0.,0.,0.,0.,0.,1.])
-        demasking_target = original[:,:,mask_start:mask_start+self.mask_width,0:5]
+        batch_input[:, :, mask_start:mask_start + self.mask_width, 0:6] = torch.tensor([0., 0., 0., 0., 0., 1.])
+        demasking_target = original[:, :, mask_start:mask_start + self.mask_width, 0:5]
 
         latent = self(batch_input)
 
-        demasking_output = self.demasking_head(latent)[:,:,mask_start:mask_start+self.mask_width,0:5]
+        demasking_output = self.demasking_head(latent)[:, :, mask_start:mask_start + self.mask_width, 0:5]
         # loss = self.criteria[0](outputs, targets)
         loss = self.criteria[0](demasking_output, demasking_target)
         self.log('loss', loss)
