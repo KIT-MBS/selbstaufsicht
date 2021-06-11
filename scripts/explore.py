@@ -26,6 +26,8 @@ from matplotlib import pyplot as plt
 print('number of alignments/samples: ', nalignments)
 print('number of sequences total: ', sum(lnseqs))
 print('number of bases total: ', sum(lnbases_total))
+print('max sequences per alignment: ', max(lnseqs))
+print('max len sequence in alignment: ', max(lnbases))
 
 plt.hist(lnseqs, bins=100)
 plt.xlabel("sequences")
