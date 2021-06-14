@@ -27,12 +27,13 @@ class MSAModel(pl.LightningModule):
             raise NotImplementedError()
 
         self.mask_width = mask_width
+        self.n_sequences = n_sequences
 
         # TODO replace axial transformer with self built optimized module, to get rid of all the unncecessary permutations
         self.backbone = AxialTransformerEncoder(dim, depth=depth, heads=heads)
         self.demasking_head = modules.DemaskingHead(dim, 5)
         self.deshuffling_head = modules.DeshufflingHead(dim, 2)
-        self.contrastive_head = modules.ContrastiveHead()
+        # self.contrastive_head = modules.ContrastiveHead()
 
         self.demasking_loss = nn.KLDivLoss(reduction='batchmean')
         self.deshuffling_loss = nn.CrossEntropyLoss()
@@ -75,7 +76,7 @@ class MSAModel(pl.LightningModule):
 
         demasking_loss = self.demasking_loss(demasking_output, demasking_target)
         deshuffling_loss = self.deshuffling_loss(deshuffling_output, deshuffling_target)
-        contrastive_loss = self.contrastive_loss(latent, self(input2))
+        contrastive_loss = self.contrastive_loss(latent.sum(dim=1), self(input2).sum(dim=1))
 
         loss = demasking_loss + deshuffling_loss + contrastive_loss
         loss = self.criteria[0](demasking_output, demasking_target)
