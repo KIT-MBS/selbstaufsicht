@@ -11,7 +11,15 @@ class MSAModel(pl.LightningModule):
     """
     Model for pre-training on multiple sequence alignments of biological sequences
     """
-    def __init__(self, molecule='RNA', mask_width=1, shuffle_partitions=2, depth=4, heads=4, dim=32):
+    def __init__(
+            self,
+            molecule='RNA',
+            mask_width=1,
+            shuffle_partitions=2,
+            depth=4,
+            heads=4,
+            dim=32,
+            n_sequences=10000):
         # TODO task and model parameters
         super().__init__()
 
