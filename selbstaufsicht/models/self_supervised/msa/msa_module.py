@@ -59,13 +59,14 @@ class MSAModel(pl.LightningModule):
         batch_input = batch_input[:, torch.randperm(batch_input.size(1)), :, :]
 
         mask_start = torch.randint(batch_input.size(2) - self.mask_width, size=(1,))
-        original = batch_input.clone().detach()
 
-        n_sequences = min(self.n_sequences, batch_input.size(1) // 2)
-        sequences_overlap = n_sequences // 10
-        in2_sequences_start = n_sequences - sequences_overlap
-        in2_sequences_end = min(batch_input.size(1), in2_sequences_start + n_sequences // 2)
-        input1 = batch_input[:, :n_sequences]
+        in1_sequences_end = min(self.n_sequences, batch_input.size(1) // 2)
+        sequences_overlap = in1_sequences_end // 10
+        # TODO different/random sizes of partitions
+        in2_sequences_start = in1_sequences_end - sequences_overlap
+        in2_sequences_end = max(batch_input.size(1), in2_sequences_start + in1_sequences_end // 2)
+        input1 = batch_input[:, :in1_sequences_end]
+        original = input1.clone().detach()
         input2 = batch_input[:, in2_sequences_start, in2_sequences_end]
 
         input1[:, :, mask_start:mask_start + self.mask_width, 0:6] = torch.tensor([0., 0., 0., 0., 0., 1.])
@@ -81,6 +82,7 @@ class MSAModel(pl.LightningModule):
 
         demasking_loss = self.demasking_loss(demasking_output, demasking_target)
         # deshuffling_loss = self.deshuffling_loss(deshuffling_output, deshuffling_target)
+        # TODO should the contrastive target/input also be masked/shuffled?
         contrastive_loss = self.contrastive_loss(latent.sum(dim=1), self(input2).sum(dim=1))
 
         # loss = demasking_loss + deshuffling_loss + contrastive_loss
