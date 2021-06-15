@@ -15,10 +15,10 @@ class MSAModel(pl.LightningModule):
             self,
             molecule='RNA',
             mask_width=1,
-            shuffle_partitions=2,
             depth=4,
             heads=4,
             dim=32,
+            permutations=None,
             n_sequences=10000):
         # TODO task and model parameters
         super().__init__()
@@ -28,11 +28,16 @@ class MSAModel(pl.LightningModule):
 
         self.mask_width = mask_width
         self.n_sequences = n_sequences
+        self.shuffle_permutations = permutations
+        if self.shuffle_permutations is None:
+            n_permutations = 2
+        else:
+            n_permutations = len(permutations)
 
         # TODO replace axial transformer with self built optimized module, to get rid of all the unncecessary permutations
         self.backbone = AxialTransformerEncoder(dim, depth=depth, heads=heads)
         self.demasking_head = modules.DemaskingHead(dim, 5)
-        self.deshuffling_head = modules.DeshufflingHead(dim, 2)
+        self.deshuffling_head = modules.DeshufflingHead(dim, n_permutations)
         # self.contrastive_head = modules.ContrastiveHead()
 
         self.demasking_loss = nn.KLDivLoss(reduction='batchmean')
@@ -66,19 +71,20 @@ class MSAModel(pl.LightningModule):
         input1[:, :, mask_start:mask_start + self.mask_width, 0:6] = torch.tensor([0., 0., 0., 0., 0., 1.])
 
         demasking_target = original[:, :, mask_start:mask_start + self.mask_width, 0:5]
-        deshuffling_target = torch.randint(self.n_partitions, batch_input.size(0))
-        input1 = jigsaw(input1, deshuffling_target)
+        # deshuffling_target = torch.randint(self.n_partitions, batch_input.size(0))
+        # input1, deshuffling_target = jigsaw(input1, self.shuffle_partitions)
 
         latent = self(input1)
 
         demasking_output = self.demasking_head(latent)[:, :, mask_start:mask_start + self.mask_width, 0:5]
-        deshuffling_output = self.deshuffling_head(latent)
+        # deshuffling_output = self.deshuffling_head(latent)
 
         demasking_loss = self.demasking_loss(demasking_output, demasking_target)
-        deshuffling_loss = self.deshuffling_loss(deshuffling_output, deshuffling_target)
+        # deshuffling_loss = self.deshuffling_loss(deshuffling_output, deshuffling_target)
         contrastive_loss = self.contrastive_loss(latent.sum(dim=1), self(input2).sum(dim=1))
 
-        loss = demasking_loss + deshuffling_loss + contrastive_loss
+        # loss = demasking_loss + deshuffling_loss + contrastive_loss
+        loss = demasking_loss + contrastive_loss
         loss = self.criteria[0](demasking_output, demasking_target)
         self.log('loss', loss)
         return loss
@@ -87,17 +93,22 @@ class MSAModel(pl.LightningModule):
         return torch.optim.Adam(self.parameters())
 
 
-def jigsaw(deshuffling_input):
-    return
+# TODO better compartmentalization of tasks
+# TODO optimize
+def jigsaw(unshuffled_input, permutations=None):
+    """
+    unshuffled_input: pre processed input to jigsaw [B, S, L, D]
+    deshuffling_target: permutation to apply to jigsaw pieces [B, number of possible permutations]
+    """
+    if permutations is None:
+        permutations = [[1, 0], ]
 
-# def mask(batch_data):
-#     width = self.mask_width
-#     start = torch.randint(batch_data.size(2)-width)
-#     batch_data[:,:,start:start+width,0:6] = torch.tensor([0.,0.,0.,0.,0.,1.])
-#     # inpainting_mask = torch.zeros(batch_data.size()[:-1])
-#     # inpainting_mask[:,:,start:start+width] = 1
-#     inpainting_mask = (start, width)
-#     return batch_data, inpainting_mask
+    n_partitions = len(permutations[0])
+    shuffled_input = torch.zeros_like(unshuffled_input)
+    deshuffling_target = torch.randint(n_partitions, unshuffled_input.size(0))
+    for i in range(deshuffling_target.size(0)):
+        raise
+    return shuffled_input, deshuffling_target
 
 
 # TODO reversibility
