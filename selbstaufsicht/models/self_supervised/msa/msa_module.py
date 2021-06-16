@@ -6,6 +6,9 @@ from axial_attention import AxialAttention
 
 from . import modules
 
+# NOTE for using simCLR loss from bolts
+# from pytorch_lightning.models.self_supervised.simclr.simclr_module import SyncFunction
+
 
 class MSAModel(pl.LightningModule):
     """
@@ -56,6 +59,7 @@ class MSAModel(pl.LightningModule):
     def training_step(self, batch_data, batch_idx):
         # TODO move as much as possible into the collator
         batch_input, lens = batch_data
+        batch_size = batch_input.size(0)
         batch_input = batch_input[:, torch.randperm(batch_input.size(1)), :, :]
 
         mask_start = torch.randint(batch_input.size(2) - self.mask_width, size=(1,))
@@ -67,7 +71,7 @@ class MSAModel(pl.LightningModule):
         in2_sequences_end = max(batch_input.size(1), in2_sequences_start + in1_sequences_end // 2)
         input1 = batch_input[:, :in1_sequences_end]
         original = input1.clone().detach()
-        input2 = batch_input[:, in2_sequences_start, in2_sequences_end]
+        input2 = batch_input[:, in2_sequences_start: in2_sequences_end]
 
         input1[:, :, mask_start:mask_start + self.mask_width, 0:6] = torch.tensor([0., 0., 0., 0., 0., 1.])
 
@@ -83,12 +87,11 @@ class MSAModel(pl.LightningModule):
         demasking_loss = self.demasking_loss(demasking_output, demasking_target)
         # deshuffling_loss = self.deshuffling_loss(deshuffling_output, deshuffling_target)
         # TODO should the contrastive target/input also be masked/shuffled?
-        contrastive_loss = self.contrastive_loss(latent.sum(dim=1), self(input2).sum(dim=1))
+        contrastive_loss = self.contrastive_loss(latent.sum(dim=1).reshape(batch_size, -1), self(input2).sum(dim=1).reshape(batch_size, -1), torch.ones(batch_input.size(0)))
 
         # loss = demasking_loss + deshuffling_loss + contrastive_loss
         loss = demasking_loss + contrastive_loss
-        loss = self.criteria[0](demasking_output, demasking_target)
-        self.log('loss', loss)
+        self.log('training loss', loss, on_step=True, on_epoch=False)
         return loss
 
     def configure_optimizers(self):
@@ -131,10 +134,13 @@ class AxialTransformerEncoder(nn.Module):
             ff = nn.Sequential(nn.Linear(dim, dim_ff), nn.LeakyReLU(), nn.Linear(dim_ff, dim))
             self.layers.append(nn.Sequential(attn, ff))
 
-    def forward(self, encoded_msa_batch):
+    def forward(self, x):
         if self.pos_emb is not None:
-            encoded_msa_batch = self.pos_emb(encoded_msa_batch)
-        encoded_msa_batch = self.embedding(encoded_msa_batch)
+            x = self.pos_emb(x)
+        x = self.embedding(x)
+        i = 0
         for layer in self.layers:
-            encoded_msa_batch = encoded_msa_batch + layer(encoded_msa_batch)
-        return encoded_msa_batch
+            i += 1
+            y = layer(x)
+            x = x + y
+        return x
