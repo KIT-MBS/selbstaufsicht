@@ -4,8 +4,8 @@ from torch.nn.functional import multi_head_attention_forward
 
 
 def test_MultiHeadAttention2d():
-    num_heads = 1
-    dim_head = 2
+    num_heads = 2
+    dim_head = 3
     bs = 1
     embed_dim = num_heads * dim_head
     S = 2
@@ -38,9 +38,14 @@ def test_MultiHeadAttention2d():
     pred = pred.permute(2, 3, 0, 1).reshape_as(ref)
 
     assert torch.allclose(pred, ref)
-    assert torch.allclose(attn, ref_attn)
+    assert torch.allclose(attn.sum(dim=1)/num_heads, ref_attn)
 
 
+def test_AxialAttention2d():
+    raise
+
+
+# NOTE mostly done as exercise/affirmation
 def test_linconfconsistency():
     bs, h, w = 1, 3, 3
     din = 4
@@ -52,11 +57,10 @@ def test_linconfconsistency():
     lres = torch.nn.functional.linear(xlin, weight, bias)
     cres = torch.nn.functional.conv2d(xconv, weight.view(dout, din, 1, 1), bias)
 
-    print(cres)
-    print(lres.permute(0, 3, 1, 2))
     assert torch.allclose(cres, lres.permute(0, 3, 1, 2))
 
 
 if __name__ == '__main__':
     test_MultiHeadAttention2d()
+    # test_AxialAttention2d()
     # test_linconfconsistency()
