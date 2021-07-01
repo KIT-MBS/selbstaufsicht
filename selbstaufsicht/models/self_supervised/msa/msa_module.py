@@ -18,11 +18,11 @@ class MSAModel(pl.LightningModule):
             self,
             molecule='RNA',
             mask_width=1,
-            depth=4,
-            heads=4,
+            num_layers=4,
+            num_heads=4,
             dim=32,
             permutations=None,
-            n_sequences=10000):
+            num_sequences=10000):
         # TODO task and model parameters
         super().__init__()
 
