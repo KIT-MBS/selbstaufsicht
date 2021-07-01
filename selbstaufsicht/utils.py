@@ -61,7 +61,7 @@ def lehmer_encode(i, n):
     pos = torch.empty((n-1,),dtype=torch.int32)
     for j in range(2,n+1):
         ii = i // j
-        pos[n-j] = i % j
+        pos[n-j] = i - ii * j
         i = ii
 
     assert(i == 0)
