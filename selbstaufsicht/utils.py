@@ -1,7 +1,7 @@
 import torch
 
 # ambuguous RNA letters: GAUCRYWSMKHBVDN
-rna_letters = [letter for letter in '-GAUCRYWSMKHBVDN']
+rna_letters = [letter for letter in '-GAUCRYWSMKHBVDN*|']
 rna_to_index = {letter: index for index, letter in enumerate(rna_letters)}
 
 rna_to_tensor_dict = {
@@ -49,3 +49,8 @@ def collate_msas_explicit_position(msas):
                 batch[i, s, l, 7] = peindex[l] / len(msa[s])
 
     return (batch, seqlens)
+
+# TODO expect a target dict
+def pad_collate_fn(batch):
+    raise
+    return batch
