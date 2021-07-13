@@ -10,7 +10,7 @@ class MultiHeadSelfAttention2d(nn.Module):
         self.dropout = dropout
         self.embed_dim = self.dim_head * self.num_heads
 
-        self.in_projection = nn.Conv2d(self.embed_dim, 3*self.embed_dim, kernel_size=1)
+        self.in_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1)
 
     # TODO testing
     def forward(self, x, key_padding_mask=None, need_weights=True):
