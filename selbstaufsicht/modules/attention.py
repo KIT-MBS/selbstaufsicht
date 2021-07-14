@@ -20,10 +20,19 @@ class MultiHeadSelfAttention2d(nn.Module):
     def forward(self, x, key_padding_mask=None, need_weights=True):
         """
         x: Tensor, batch first, channel first: [B, D, H, W]
+        key_padding_mask: optional bool tensor: [B, H, W]
         """
         B, D, S, L = x.size()
         assert D == self.embed_dim
-        # TODO padding mask
+
+        # TODO test masking
+        attn_mask = None
+        if key_padding_mask is not None:
+            assert key_padding_mask.size() == (B, S, L)
+            key_padding_mask = key_padding_mask.view(B, 1, 1, S, L).expand(-1, self.num_heads, -1, -1, -1).reshape(B, self.num_heads, 1, S, L)
+            attn_mask = torch.zeros_like(key_padding_mask, dtype=torch.float)
+            attn_mask.masked_fill_(attn_mask, float('-inf'))
+
         q, k, v = self.in_projection(x).chunk(3, dim=1)  # [B, D, S, L]
         q = q.view(B, self.num_heads, self.dim_head, S * L)  # [B, H, DH, S * L]
         k = k.view(B, self.num_heads, self.dim_head, S * L)
@@ -31,6 +40,8 @@ class MultiHeadSelfAttention2d(nn.Module):
 
         q = q * (self.dim_head ** -0.5)
         attn = torch.einsum('bhci,bhcj->bhij', q, k)  # [B, H, S*L, S*L]
+        if attn_mask is not None:
+            attn += attn_mask
         attn = attn.softmax(dim=-1)
         attn = self.dropout(attn)
         out = torch.einsum('bhij,bhdj->bhdi', attn, v)  # [B, H, DH, S*L]
@@ -101,6 +112,7 @@ class AxialSelfAttention2d(nn.Module):
         return out
 
 
+# NOTE difference to original tied axial attention: Row attention done first, to have something akin to a learned positional embedding along the evolutionary axis
 class TiedAxialSelfAttention2d(nn.Module):
     def __init__(self, num_heads, dim_head, dropout=0., layer_norm_eps=1e-5, device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
