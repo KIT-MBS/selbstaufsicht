@@ -4,20 +4,18 @@ from torch import nn
 
 # TODO all factory kwargs
 # TODO key padding masks
-# TODO dropout
+# NOTE dropout is applied analogously to pytorch attention: on the attention scores after applying softmax. don't know whether that makes sense. probably set to 0. anyways.
 class MultiHeadSelfAttention2d(nn.Module):
     def __init__(self, num_heads, dim_head, dropout=0., layer_norm_eps=1e-5, device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(MultiHeadSelfAttention2d, self).__init__()
         self.num_heads = num_heads
         self.dim_head = dim_head
-        self.dropout = dropout
-        if dropout > 0.:
-            raise NotImplementedError()
         self.embed_dim = self.dim_head * self.num_heads
 
         self.in_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
         self.norm = nn.LaynerNorm(dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
+        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, key_padding_mask=None, need_weights=True):
         """
@@ -34,6 +32,7 @@ class MultiHeadSelfAttention2d(nn.Module):
         q = q * (self.dim_head ** -0.5)
         attn = torch.einsum('bhci,bhcj->bhij', q, k)  # [B, H, S*L, S*L]
         attn = attn.softmax(dim=-1)
+        attn = self.dropout(attn)
         out = torch.einsum('bhij,bhdj->bhdi', attn, v)  # [B, H, DH, S*L]
         # TODO optimize calls to contiguous
         out = out.contiguous()
@@ -44,7 +43,6 @@ class MultiHeadSelfAttention2d(nn.Module):
 
 
 class AxialSelfAttention2d(nn.Module):
-    # TODO dropout
     # TODO optimize einsum strings using opt_einsum package
     def __init__(self, num_heads, dim_head, dropout=0., layer_norm_eps=1e-5, device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
@@ -52,13 +50,16 @@ class AxialSelfAttention2d(nn.Module):
         self.num_heads = num_heads
         self.dim_head = dim_head
         self.dropout = dropout
-        if dropout > 0.:
-            raise NotImplementedError()
         self.embed_dim = self.dim_head * self.num_heads
+
         self.in_row_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1)
         self.in_col_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1)
+
         self.norm1 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
         self.norm2 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+
+        self.dropout1 = nn.Dropout(p=dropout)
+        self.dropout2 = nn.Dropout(p=dropout)
 
     def forward(self, x, key_padding_mask=None, need_weights=True):
         """
@@ -76,6 +77,7 @@ class AxialSelfAttention2d(nn.Module):
         # NOTE row attn
         row_attn = torch.einsum('bhcsi, bhcsj->bhsij', q, k)
         row_attn = row_attn.softmax(dim=-1)
+        row_attn = self.dropout1(row_attn)
         row_out = torch.einsum('bhsij, bhdsj->bhdsi', row_attn, v)
         row_out = row_out.view(B, D, S, L)
         out = x + row_out
@@ -89,6 +91,7 @@ class AxialSelfAttention2d(nn.Module):
         # NOTE col attn
         col_attn = torch.einsum('bhcil, bhcjl->bhijl', q, k)
         col_attn = col_attn.softmax(dim=-2)
+        col_attn = self.dropout2(col_attn)
         col_out = torch.einsum('bhijl, bhdjl->bhdil', col_attn, v)
         col_out = col_out.view(B, D, S, L)
 
@@ -104,12 +107,16 @@ class TiedAxialSelfAttention2d(nn.Module):
         super(TiedAxialSelfAttention2d, self).__init__()
         self.num_heads = num_heads
         self.dim_head = dim_head
-        self.dropout = dropout
-        if dropout > 0.:
-            raise NotImplementedError()
         self.embed_dim = self.dim_head * self.num_heads
+
         self.in_row_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
         self.in_col_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
+
+        self.norm1 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+
+        self.dropout1 = nn.Dropout(p=dropout)
+        self.dropout2 = nn.Dropout(p=dropout)
 
     def forward(self, x, key_padding_mask=None, need_weights=True):
         """
@@ -127,6 +134,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         row_attn = torch.einsum('bhcsi, bhcsj->bhij', q, k)
         row_attn = row_attn.unsqueeze(2)
         row_attn = row_attn.softmax(dim=-1)  # [B, H, 1, L, L]
+        row_attn = self.dropout1(row_attn)
         row_out = torch.einsum('bhsij, bhdsj->bhdsi', row_attn, v)
         row_out = row_out.view(B, D, S, L)
 
@@ -141,6 +149,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         # NOTE col attn
         col_attn = torch.einsum('bhcil, bhcjl->bhijl', q, k)
         col_attn = col_attn.softmax(dim=-2)
+        col_attn = self.dropout(col_attn)
         col_out = torch.einsum('bhijl, bhdjl->bhdil', col_attn, v)
         col_out = col_out.view(B, D, S, L)
 
