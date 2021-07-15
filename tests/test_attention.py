@@ -1,5 +1,5 @@
 import torch
-from selbstaufsicht.modules import MultiHeadSelfAttention2d
+from selbstaufsicht.modules import MultiHeadSelfAttention2d, AxialSelfAttention2d
 from torch.nn.functional import multi_head_attention_forward
 
 
@@ -42,7 +42,13 @@ def test_MultiHeadAttention2d():
 
 
 def test_AxialAttention2d():
-    raise
+    bs, h, w = 1, 5, 7
+    dim = 8
+    x = torch.arange(0, bs * dim * h * w, dtype=torch.float).reshape(bs, dim, w, h)
+
+    model = AxialSelfAttention2d(2, 4)
+
+    model(x)
 
 
 # NOTE mostly done as exercise/affirmation
@@ -61,6 +67,6 @@ def test_linconfconsistency():
 
 
 if __name__ == '__main__':
-    test_MultiHeadAttention2d()
-    # test_AxialAttention2d()
+    # test_MultiHeadAttention2d()
+    test_AxialAttention2d()
     # test_linconfconsistency()
