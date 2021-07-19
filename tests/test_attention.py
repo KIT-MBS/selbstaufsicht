@@ -1,5 +1,5 @@
 import torch
-from selbstaufsicht.modules import MultiHeadSelfAttention2d
+from selbstaufsicht.modules import MultiHeadSelfAttention2d, AxialSelfAttention2d
 from torch.nn.functional import multi_head_attention_forward
 
 
@@ -16,8 +16,8 @@ def test_MultiHeadAttention2d():
     x = torch.rand(bs, embed_dim, S, L)
 
     key_padding_mask = None
-    in_proj_weight = module.in_projection.weight.view(3*embed_dim, embed_dim)
-    in_proj_bias = module.in_projection.bias.view(3*embed_dim)
+    in_proj_weight = module.in_projection.weight.view(3 * embed_dim, embed_dim)
+    in_proj_bias = module.in_projection.bias.view(3 * embed_dim)
     bias_k = None
     bias_v = None
     add_zero_attn = False
@@ -27,40 +27,46 @@ def test_MultiHeadAttention2d():
 
     pred, attn = module(x)
 
-    x_ref = x.reshape(bs, embed_dim, S*L)
+    x_ref = x.reshape(bs, embed_dim, S * L)
     x_ref = x_ref.permute(2, 0, 1)
     ref, ref_attn = multi_head_attention_forward(
-            x_ref, x_ref, x_ref,
-            embed_dim, num_heads, in_proj_weight, in_proj_bias,
-            bias_k, bias_v, add_zero_attn, dropout, out_proj_weight, out_proj_bias,
-            need_weights=True, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
+        x_ref, x_ref, x_ref,
+        embed_dim, num_heads, in_proj_weight, in_proj_bias,
+        bias_k, bias_v, add_zero_attn, dropout, out_proj_weight, out_proj_bias,
+        need_weights=True, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
 
     pred = pred.permute(2, 3, 0, 1).reshape_as(ref)
 
     assert torch.allclose(pred, ref)
-    assert torch.allclose(attn.sum(dim=1)/num_heads, ref_attn)
+    assert torch.allclose(attn.sum(dim=1) / num_heads, ref_attn)
 
 
 def test_AxialAttention2d():
-    raise
+    bs, h, w = 1, 5, 7
+    dim = 8
+    x = torch.arange(0, bs * dim * h * w, dtype=torch.float).reshape(bs, dim, w, h)
+
+    model = AxialSelfAttention2d(2, 4)
+
+    model(x)
 
 
 # NOTE mostly done as exercise/affirmation
 def test_linconfconsistency():
     bs, h, w = 1, 3, 3
-    din = 4
-    dout = 3*din
-    xconv = torch.arange(0, bs*din*h*w, dtype=torch.float).reshape(bs, din, w, h)
+    dim = 4
+    dout = 3 * dim
+    xconv = torch.arange(0, bs * dim * h * w, dtype=torch.float).reshape(bs, dim, w, h)
     xlin = xconv.permute(0, 2, 3, 1)
-    weight = torch.rand(dout, din)
+    weight = torch.rand(dout, dim)
     bias = torch.rand(dout)
     lres = torch.nn.functional.linear(xlin, weight, bias)
-    cres = torch.nn.functional.conv2d(xconv, weight.view(dout, din, 1, 1), bias)
+    cres = torch.nn.functional.conv2d(xconv, weight.view(dout, dim, 1, 1), bias)
 
     assert torch.allclose(cres, lres.permute(0, 3, 1, 2))
 
 
 if __name__ == '__main__':
-    test_MultiHeadAttention2d()
-    # test_AxialAttention2d()
+    # test_MultiHeadAttention2d()
+    test_AxialAttention2d()
     # test_linconfconsistency()
