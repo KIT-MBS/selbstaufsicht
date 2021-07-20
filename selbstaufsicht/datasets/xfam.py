@@ -2,28 +2,33 @@ import os
 import gzip
 import urllib
 import urllib.request
-from tqdm import tqdm
+# from tqdm import tqdm
 
 from Bio import AlignIO
 
 splits = ['train', 'val', 'test']
-polymers = {'rna' : 'Rfam', 'protein' : 'Pfam'}
+polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
 modes = ['seed', 'full']
+
 
 class Xfam():
     """
     Dataset for self-supervised learning based on the xfam family of biological sequence databases.
     """
 
-    def __init__(self, root: str,
-            mode: str ='seed',
-            split: str ='train',
-            version: str ='9.1',
-            polymer: str ='rna',
+    def __init__(
+            self, root: str,
+            mode: str = 'seed',
+            split: str = 'train',
+            version: str = '9.1',
+            polymer: str = 'rna',
             download: bool = False) -> None:
-        if split not in splits: raise ValueError(f"split has to be in {splits}")
-        if mode not in modes: raise ValueError(f"mode has to be in {modes}")
-        if polymer not in polymers: ValueError(f"polymer has to be in {str(polymers)}")
+        if split not in splits:
+            raise ValueError(f"split has to be in {splits}")
+        if mode not in modes:
+            raise ValueError(f"mode has to be in {modes}")
+        if polymer not in polymers:
+            raise ValueError(f"polymer has to be in {str(polymers)}")
         db = polymers[polymer]
         self.mode = mode
         self.split = split
@@ -34,7 +39,7 @@ class Xfam():
         filename = db + '.gz'
         path = os.path.join(self.root, self.base_folder, version, mode, split, filename)
         if download:
-            url = f'ftp://ftp.ebi.ac.uk/pub/databases/{db}/'+ f'{version}/{db}.{mode}.gz'
+            url = f'ftp://ftp.ebi.ac.uk/pub/databases/{db}/' + f'{version}/{db}.{mode}.gz'
             self._download(url, path)
         if not os.path.isfile(path):
             raise RuntimeError('Dataset not found. Set download=True to download it.')
