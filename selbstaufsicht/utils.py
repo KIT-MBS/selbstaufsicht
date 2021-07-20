@@ -1,7 +1,7 @@
 import torch
 
 # ambuguous RNA letters: GAUCRYWSMKHBVDN
-rna_letters = [letter for letter in '-GAUCRYWSMKHBVDN']
+rna_letters = [letter for letter in '-GAUCRYWSMKHBVDN*|']
 rna_to_index = {letter: index for index, letter in enumerate(rna_letters)}
 
 rna_to_tensor_dict = {
@@ -50,6 +50,7 @@ def collate_msas_explicit_position(msas):
 
     return (batch, seqlens)
 
+
 def lehmer_encode(i, n):
     """
     Encodes an integer i in the interval [0,n!-1] as a permutation of (0,1,2,...,n-1).
@@ -85,3 +86,10 @@ def lehmer_encode(i, n):
         ret[n-1] = k
 
     return ret
+
+
+# TODO expect a target dict
+def pad_collate_fn(batch):
+    raise
+    return batch
+

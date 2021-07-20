@@ -18,11 +18,11 @@ class MSAModel(pl.LightningModule):
             self,
             molecule='RNA',
             mask_width=1,
-            depth=4,
-            heads=4,
+            num_layers=4,
+            num_heads=4,
             dim=32,
             permutations=None,
-            n_sequences=10000):
+            num_sequences=10000):
         # TODO task and model parameters
         super().__init__()
 
@@ -30,7 +30,7 @@ class MSAModel(pl.LightningModule):
             raise NotImplementedError()
 
         self.mask_width = mask_width
-        self.n_sequences = n_sequences
+        self.num_sequences = num_sequences
         self.shuffle_permutations = permutations
         if self.shuffle_permutations is None:
             n_permutations = 2
@@ -38,7 +38,7 @@ class MSAModel(pl.LightningModule):
             n_permutations = len(permutations)
 
         # TODO replace axial transformer with self built optimized module, to get rid of all the unncecessary permutations
-        self.backbone = AxialTransformerEncoder(dim, depth=depth, heads=heads)
+        self.backbone = AxialTransformerEncoder(dim, num_layers=num_layers, num_heads=num_heads)
         self.demasking_head = modules.DemaskingHead(dim, 5)
         self.deshuffling_head = modules.DeshufflingHead(dim, n_permutations)
         # self.contrastive_head = modules.ContrastiveHead()
