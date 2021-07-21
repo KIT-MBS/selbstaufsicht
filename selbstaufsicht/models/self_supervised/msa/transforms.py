@@ -62,10 +62,17 @@ def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
     return jigsawed_msa
 
 
-def _mask_msa(msa, begin, end, mask_token='*'):
+def _block_mask_msa(msa, begin, end, mask_token='*'):
     masked = msa[:, begin:end]
     mask = MultipleSeqAlignment([SeqRecord(Seq(mask_token * (end - begin)), id=r.id) for r in msa])
     msa = msa[:, :begin] + mask + msa[:, end:]
+    return msa, masked
+
+
+# TODO test this, not sure this kind of indexing works without casting to numpy array
+def _mask_msa(msa, indices, mask_token='*'):
+    masked = msa[indices]
+    msa[indices] = mask_token
     return msa, masked
 
 

@@ -12,9 +12,8 @@ num_heads = 2
 num_heads = 4
 num_sequences = 10
 dim = 16
-n_sequences = 100
 
-root = os.environ['DATA_PATH']
+root = os.environ['DATA_PATH'] + 'Xfam'
 # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 model = models.self_supervised.MSAModel(
         num_layers=num_layers,
