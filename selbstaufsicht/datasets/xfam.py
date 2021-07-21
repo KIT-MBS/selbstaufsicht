@@ -2,6 +2,7 @@ import os
 import gzip
 import urllib
 import urllib.request
+from typing import Callable
 # from tqdm import tqdm
 
 from Bio import AlignIO
@@ -22,6 +23,7 @@ class Xfam():
             split: str = 'train',
             version: str = '9.1',
             polymer: str = 'rna',
+            transform: Callable = None,
             download: bool = False) -> None:
         if split not in splits:
             raise ValueError(f"split has to be in {splits}")
@@ -35,6 +37,7 @@ class Xfam():
         self.version = version
         self.root = root
         self.base_folder = db
+        self.transform = transform
 
         filename = db + '.gz'
         path = os.path.join(self.root, self.base_folder, version, mode, split, filename)
@@ -47,6 +50,8 @@ class Xfam():
             self.samples = [a for a in AlignIO.parse(f, 'stockholm')]
 
     def __getitem__(self, i):
+        if self.transform is not None:
+            return self.transform(self.sample[i])
         return self.samples[i]
 
     def _download(self, url, path):
