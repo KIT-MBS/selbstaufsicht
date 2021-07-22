@@ -1,9 +1,8 @@
+import numpy as np
 import torch
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
-
-# from ...utils import rna_to_index
 
 
 class MSADataTrainTransform(object):
@@ -29,6 +28,26 @@ class MSAMaskingTransform(object):
         return
 
 
+# TODO
+class RandomMSAColumnMasking(object):
+    def __init__(self, p):
+        self.p = p
+
+    def __call__(self, msa_tensor):
+        raise
+        return
+
+
+# TODO
+class RandomMSATokenMasking(object):
+    def __init__(self, p):
+        self.p = p
+
+    def __call__(self, msa_tensor):
+        raise
+        return
+
+
 class MSAJigsawTransform(object):
     def __init__(self, npartitions=2, minfringe=5, ):
         return
@@ -37,6 +56,27 @@ class MSAJigsawTransform(object):
 class MSAContrastiveTransform(object):
     def __init__(self):
         return
+
+
+class MSA2Tensor(object):
+    def __init__(self, mapping, device=None):
+        self.mapping = mapping
+        self.device = device
+        return
+
+    def __call__(self, msa):
+        return torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in msa], device=self.device)
+
+
+class MSA2array(object):
+    '''
+    takes an MSA object and produces a numpy char array
+    '''
+    def __init__(self):
+        return
+
+    def __call__(self, msa):
+        return np.array([list(rec) for rec in msa], np.character)
 
 
 def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
@@ -70,10 +110,10 @@ def _block_mask_msa(msa, begin, end, mask_token='*'):
 
 
 # TODO test this, not sure this kind of indexing works without casting to numpy array
-def _mask_msa(msa, indices, mask_token='*'):
-    masked = msa[indices]
-    msa[indices] = mask_token
-    return msa, masked
+def _mask_msa(msa_tensor, col_indices, mask_token='*'):
+    masked = msa_tensor[col_indices]
+    msa_tensor[col_indices] = mask_token
+    return msa_tensor, masked
 
 
 def _subsample(msa, contrastive=False):
