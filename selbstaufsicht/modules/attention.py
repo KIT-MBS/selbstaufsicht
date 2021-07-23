@@ -171,9 +171,38 @@ class TiedAxialSelfAttention2d(nn.Module):
         return out
 
 
-class TransformerEncoderLayer():
+# TODO not sure about the name, self attention, transform oneself... mutate... morph meh
+class Transmorpher(nn.Module):
     def __init__(self, attention_flavor, d, num_heads, d_ff, dropout=0., device=None, dtype=None):
         return
 
     def forward(self, x, key_padding_mask, need_attn=False):
         return
+
+
+class TransmorpherLayer(nn.Module):
+    def __init__(self, dim_head, num_heads, dim_ff, dropout=0.1, attention='', activation='relu', layer_norm_eps=1e-5, device=None, dtype=None):
+        # factory_kwargs = {'device': device, 'dtype': dtype}
+        super(TransmorpherLayer, self).__init__()
+        return
+
+    def forward(self, x, key_padding_mask, need_attn=False):
+        return
+
+
+def _get_attention_function(attention):
+    if attention == 'full':
+        return MultiHeadSelfAttention2d
+    elif attention == 'axial':
+        return AxialSelfAttention2d
+    elif attention == 'tied':
+        return TiedAxialSelfAttention2d
+    raise RuntimeError("Expected full, axial, or tied not {}".format(attention))
+
+
+def _get_activation_function(activation):
+    if activation == 'relu':
+        return nn.Relu
+    elif activation == 'gelu':
+        return nn.GELU
+    raise RuntimeError("Expected relu or gelu not {}".format(activation))
