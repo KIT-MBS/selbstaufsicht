@@ -76,7 +76,23 @@ class MSA2array(object):
         return
 
     def __call__(self, msa):
-        return np.array([list(rec) for rec in msa], np.character)
+        return np.array([list(rec) for rec in msa], dtype='<U1')
+
+
+class OneHotMSAArray(object):
+    def __init__(self, mapping):
+        maxind = 256
+
+        self.mapping = np.full((maxind, ), -1)
+        for k in mapping:
+            self.mapping[ord(k)] = mapping[k]
+
+    def __call__(self, msa_array):
+        """
+        msa_array: byte array
+        """
+
+        return self.mapping[msa_array.view(np.uint32)]
 
 
 def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
@@ -102,6 +118,7 @@ def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
     return jigsawed_msa
 
 
+# TODO adapt to tensorized input
 def _block_mask_msa(msa, begin, end, mask_token='*'):
     masked = msa[:, begin:end]
     mask = MultipleSeqAlignment([SeqRecord(Seq(mask_token * (end - begin)), id=r.id) for r in msa])
@@ -110,9 +127,16 @@ def _block_mask_msa(msa, begin, end, mask_token='*'):
 
 
 # TODO test this, not sure this kind of indexing works without casting to numpy array
-def _mask_msa(msa_tensor, col_indices, mask_token='*'):
+def _column_mask_msa(msa_tensor, col_indices, mask_token='*'):
     masked = msa_tensor[col_indices]
     msa_tensor[col_indices] = mask_token
+    return msa_tensor, masked
+
+
+# TODO test
+def _token_mask_msa(msa_tensor, coords, mask_token_index):
+    masked = msa_tensor[coords]
+    msa_tensor[coords] = mask_token_index
     return msa_tensor, masked
 
 
