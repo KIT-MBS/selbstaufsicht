@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-
+from .layernorm import AxialLayerNorm
 
 # TODO all factory kwargs
 # TODO key padding masks
@@ -14,7 +14,7 @@ class MultiHeadSelfAttention2d(nn.Module):
         self.embed_dim = self.dim_head * self.num_heads
 
         self.in_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
-        self.norm = nn.LaynerNorm(dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
+        self.norm = AxialLayerNorm(1, dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, key_padding_mask=None, need_weights=True):
@@ -63,11 +63,11 @@ class AxialSelfAttention2d(nn.Module):
         self.dropout = dropout
         self.embed_dim = self.dim_head * self.num_heads
 
-        self.in_row_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1)
-        self.in_col_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1)
+        self.in_row_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
+        self.in_col_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
 
-        self.norm1 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
-        self.norm2 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+        self.norm1 = AxialLayerNorm(1, dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = AxialLayerNorm(1, dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
 
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
@@ -90,7 +90,10 @@ class AxialSelfAttention2d(nn.Module):
         row_attn = row_attn.softmax(dim=-1)
         row_attn = self.dropout1(row_attn)
         row_out = torch.einsum('bhsij, bhdsj->bhdsi', row_attn, v)
-        row_out = row_out.view(B, D, S, L)
+
+        # TODO: view not possible here, need reshape
+        #row_out = row_out.view(B, D, S, L)
+        row_out = row_out.reshape(B, D, S, L)
         out = x + row_out
         out = self.norm1(out)
 
@@ -104,7 +107,10 @@ class AxialSelfAttention2d(nn.Module):
         col_attn = col_attn.softmax(dim=-2)
         col_attn = self.dropout2(col_attn)
         col_out = torch.einsum('bhijl, bhdjl->bhdil', col_attn, v)
-        col_out = col_out.view(B, D, S, L)
+
+        # TODO: view not possible here, need reshape
+        #col_out = col_out.view(B, D, S, L)
+        col_out = col_out.reshape(B, D, S, L)
 
         out = out + col_out
         out = self.norm2(out)
