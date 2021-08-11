@@ -41,6 +41,7 @@ def test_MultiHeadAttention2d():
     assert torch.allclose(attn.sum(dim=1) / num_heads, ref_attn)
 
 
+# TODO replace with tied axial attention consistency test
 def test_AxialAttention2d():
     bs, h, w = 1, 5, 7
     dim = 8
