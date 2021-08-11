@@ -4,7 +4,8 @@ from torch import nn
 import pytorch_lightning as pl
 from axial_attention import AxialAttention
 
-from . import modules
+# from . import modules
+from selbstaufsicht.modules import Transmorpher
 
 # NOTE for using simCLR loss from bolts
 # from pytorch_lightning.models.self_supervised.simclr.simclr_module import SyncFunction
@@ -16,31 +17,20 @@ class MSAModel(pl.LightningModule):
     """
     def __init__(
             self,
-            molecule='RNA',
-            mask_width=1,
             num_layers=4,
             num_heads=4,
             dim=32,
             permutations=None,
-            num_sequences=10000):
+            heads=None,
+            ):
         # TODO task and model parameters
         super().__init__()
 
-        if molecule != 'RNA':
-            raise NotImplementedError()
-
-        self.mask_width = mask_width
-        self.num_sequences = num_sequences
-        self.shuffle_permutations = permutations
-        if self.shuffle_permutations is None:
-            n_permutations = 2
-        else:
-            n_permutations = len(permutations)
-
-        # TODO replace axial transformer with self built optimized module, to get rid of all the unncecessary permutations
-        self.backbone = AxialTransformerEncoder(dim, num_layers=num_layers, num_heads=num_heads)
-        self.demasking_head = modules.DemaskingHead(dim, 5)
-        self.deshuffling_head = modules.DeshufflingHead(dim, n_permutations)
+        self.backbone = Transmorpher()
+        self.tasks = [t for t in heads.keys()]
+        self.heads = heads
+        # self.demasking_head = modules.DemaskingHead(dim, 5)
+        # self.deshuffling_head = modules.DeshufflingHead(dim, n_permutations)
         # self.contrastive_head = modules.ContrastiveHead()
 
         self.demasking_loss = nn.KLDivLoss(reduction='batchmean')
