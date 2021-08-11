@@ -14,7 +14,8 @@ class MultiHeadSelfAttention2d(nn.Module):
         self.embed_dim = self.dim_head * self.num_heads
 
         self.in_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
-        self.norm = nn.LaynerNorm(dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
+        # self.norm = nn.LayerNorm(dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
+        self.norm
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, key_padding_mask=None, need_weights=True):
@@ -172,22 +173,45 @@ class TiedAxialSelfAttention2d(nn.Module):
 
 
 # TODO not sure about the name, self attention, transform oneself... mutate... morph meh
-class Transmorpher(nn.Module):
+class Transmorpher2d(nn.Module):
     def __init__(self, attention_flavor, d, num_heads, d_ff, dropout=0., device=None, dtype=None):
+
         return
 
     def forward(self, x, key_padding_mask, need_attn=False):
         return
 
 
-class TransmorpherLayer(nn.Module):
-    def __init__(self, dim_head, num_heads, dim_ff, dropout=0.1, attention='', activation='relu', layer_norm_eps=1e-5, device=None, dtype=None):
-        # factory_kwargs = {'device': device, 'dtype': dtype}
-        super(TransmorpherLayer, self).__init__()
-        return
+class TransmorpherLayer2d(nn.Module):
+    def __init__(self, dim_head, num_heads, dim_ff, dropout=0.1, attention='tied', activation='relu', layer_norm_eps=1e-5, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        dim_model = dim_head * num_heads
+        super(TransmorpherLayer2d, self).__init__()
+        self.attn = _get_attention_function(attention)(dim_head, num_heads, dropout=dropout, **factory_kwargs)
 
+        self.lin1 = nn.Linear(dim_model, dim_ff, **factory_kwargs)
+        self.dropout = nn.Dropout(dropout)
+        self.lin2 = nn.Linear(dim_ff, dim_model, **factory_kwargs)
+
+        # self.norm1 = nn.LayerNorm ???
+        # self.norm1 = nn.LayerNorm ???
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+
+        self.activation = _get_activation_function(activation)()
+
+    # TODO need __setstate__ ?
+
+    # TODO should some of this change for axial attention?
     def forward(self, x, key_padding_mask, need_attn=False):
-        return
+        out, attn = self.self_attn(x, x, x, key_padding_mask=key_padding_mask, need_attn=True)
+        # TODO what's the last layer of an attention block should it be a nonlinearity
+        x = x + self.dropout1(out)
+        x = self.norm1(out)
+        out = self.linear2(self.dropout(self.activation(self.linear1(x))))
+        x = x + self.dropout2(out)
+        x = self.norm2(x)
+        return x
 
 
 def _get_attention_function(attention):
