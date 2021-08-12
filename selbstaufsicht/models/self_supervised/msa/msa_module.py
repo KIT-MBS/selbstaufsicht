@@ -1,3 +1,4 @@
+import math
 import torch
 from torch import nn
 
@@ -85,7 +86,18 @@ class MSAModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters())
+        optimizer = torch.optim.Adam(self.parameters())
+        warmup = 16000
+
+        class inverse_square_root_rule():
+            def __init__(self, warmup):
+                self.warmup = warmup
+
+            def __call__(self, i):
+                return min((i+1)/self.warmup, math.sqrt(warmup/i))
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(warmup))
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
 
 # TODO better compartmentalization of tasks

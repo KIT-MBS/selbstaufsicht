@@ -26,8 +26,6 @@ num_heads = 12
 
 
 root = os.environ['DATA_PATH'] + 'Xfam'
-# TODO inverse square root learning rate scheduler
-# lr_scheduler = torch.optim.
 model = models.self_supervised.MSAModel()
 transform = transforms.Compose([MSA2Tensor(rna2index), RandomMSAColumnMasking(p=0.15)])
 ds = datasets.Xfam(root, download=True, transform=transform)
