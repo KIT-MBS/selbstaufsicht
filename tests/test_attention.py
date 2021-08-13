@@ -67,6 +67,11 @@ def test_linconfconsistency():
     assert torch.allclose(cres, lres.permute(0, 3, 1, 2))
 
 
+# TODO
+def test_padding_mask_axial():
+    raise
+
+
 if __name__ == '__main__':
     # test_MultiHeadAttention2d()
     test_AxialAttention2d()
