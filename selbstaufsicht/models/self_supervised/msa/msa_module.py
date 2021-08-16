@@ -27,6 +27,7 @@ class MSAModel(pl.LightningModule):
         # TODO task and model parameters
         super().__init__()
 
+        # block =
         self.backbone = Transmorpher()
         self.tasks = [t for t in heads.keys()]
         self.heads = heads

@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from .layernorm import AxialLayerNorm
 
+
 # TODO key padding masks
 # NOTE dropout is applied analogously to pytorch attention: on the attention scores after applying softmax. don't know whether that makes sense. probably set to 0. anyways.
 class MultiHeadSelfAttention2d(nn.Module):
@@ -107,8 +108,7 @@ class AxialSelfAttention2d(nn.Module):
         row_attn = self.dropout1(row_attn)
         row_out = torch.einsum('bhsij, bhdsj->bhdsi', row_attn, v)
 
-        # TODO: view not possible here, need reshape
-        #row_out = row_out.view(B, D, S, L)
+        # NOTE: view not possible here, need reshape
         row_out = row_out.reshape(B, D, S, L)
         out = x + row_out
         out = self.norm1(out)
@@ -126,8 +126,7 @@ class AxialSelfAttention2d(nn.Module):
         col_attn = self.dropout2(col_attn)
         col_out = torch.einsum('bhijl, bhdjl->bhdil', col_attn, v)
 
-        # TODO: view not possible here, need reshape
-        #col_out = col_out.view(B, D, S, L)
+        # NOTE: view not possible here, need reshape
         col_out = col_out.reshape(B, D, S, L)
 
         out = out + col_out
