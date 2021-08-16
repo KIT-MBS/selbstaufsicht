@@ -10,13 +10,19 @@ from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.transforms import MSA2Tensor, RandomMSAColumnMasking
 
-# NOTE MSA transformer reference: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
-
 # training parameters
 batch_size = 1
 epochs = 1
+batch_size = 512
+lr = 0.0001
+warmup = 16000
+# TODO implement msa subsampling random, hamming maximizing
+msa_sampling = 'random'
 
 # model parameters
+num_layers = 12
+d = 768
+num_heads = 12
 
 
 root = os.environ['DATA_PATH'] + 'Xfam'
