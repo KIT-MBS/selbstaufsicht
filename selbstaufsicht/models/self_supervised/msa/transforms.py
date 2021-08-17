@@ -23,11 +23,6 @@ class MSADataTrainTransform(object):
         # return (sample, target)
 
 
-class MSAMaskingTransform(object):
-    def __init__(self):
-        return
-
-
 # TODO
 class RandomMSAColumnMasking(object):
     def __init__(self, p):
@@ -58,25 +53,25 @@ class MSAContrastiveTransform(object):
         return
 
 
-class MSA2Tensor(object):
-    def __init__(self, mapping, device=None):
-        self.mapping = mapping
-        self.device = device
-        return
-
-    def __call__(self, msa):
-        return torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in msa], device=self.device)
-
-
-class MSA2array(object):
-    '''
-    takes an MSA object and produces a numpy char array
-    '''
-    def __init__(self):
-        return
-
-    def __call__(self, msa):
-        return np.array([list(rec) for rec in msa], dtype='<U1')
+# class MSA2Tensor(object):
+#     def __init__(self, mapping, device=None):
+#         self.mapping = mapping
+#         self.device = device
+#         return
+#
+#     def __call__(self, msa):
+#         return torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in msa], device=self.device)
+#
+#
+# class MSA2array(object):
+#     '''
+#     takes an MSA object and produces a numpy char array
+#     '''
+#     def __init__(self):
+#         return
+#
+#     def __call__(self, msa):
+#         return np.array([list(rec) for rec in msa], dtype='<U1')
 
 
 class OneHotMSAArray(object):
@@ -120,6 +115,9 @@ def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
 
 # TODO adapt to tensorized input
 def _block_mask_msa(msa, begin, end, mask_token='*'):
+    """
+    masks out a contiguous block of columns in the given msa
+    """
     masked = msa[:, begin:end]
     mask = MultipleSeqAlignment([SeqRecord(Seq(mask_token * (end - begin)), id=r.id) for r in msa])
     msa = msa[:, :begin] + mask + msa[:, end:]
@@ -128,6 +126,9 @@ def _block_mask_msa(msa, begin, end, mask_token='*'):
 
 # TODO test this, not sure this kind of indexing works without casting to numpy array
 def _column_mask_msa(msa_tensor, col_indices, mask_token='*'):
+    """
+    masks out a random set of columns in the given msa
+    """
     masked = msa_tensor[col_indices]
     msa_tensor[col_indices] = mask_token
     return msa_tensor, masked
@@ -135,10 +136,19 @@ def _column_mask_msa(msa_tensor, col_indices, mask_token='*'):
 
 # TODO test
 def _token_mask_msa(msa_tensor, coords, mask_token_index):
+    """
+    masks out random tokens uniformly sampled from the given msa
+    """
     masked = msa_tensor[coords]
     msa_tensor[coords] = mask_token_index
     return msa_tensor, masked
 
 
-def _subsample(msa, contrastive=False):
-    return
+def _subsample_uniform(msa, contrastive=False):
+    # TODO
+    raise
+
+
+def _subsample_diversity_maximizing(msa, contrastive=False):
+    # TODO
+    raise
