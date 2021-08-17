@@ -5,8 +5,7 @@ from torch import nn
 import pytorch_lightning as pl
 from axial_attention import AxialAttention
 
-# from . import modules
-from selbstaufsicht.modules import Transmorpher
+from selbstaufsicht.modules import Transmorpher2d, TransmorpherLayer2d, AxialLayerNorm
 
 # NOTE for using simCLR loss from bolts
 # from pytorch_lightning.models.self_supervised.simclr.simclr_module import SyncFunction
@@ -18,37 +17,46 @@ class MSAModel(pl.LightningModule):
     """
     def __init__(
             self,
-            num_layers=4,
-            num_heads=4,
-            dim=32,
-            permutations=None,
+            num_layers=12,
+            num_heads=12,
+            dim_head=64,
+            input_dim=30,
+            attention='tied',
+            activation='relu',
+            layer_norm_eps=1e-5,
             heads=None,
+            losses=None,
+            device=None,
+            dtype=None,
             ):
-        # TODO task and model parameters
         super().__init__()
+        factory_kwargs = {'device': device, 'dtype': dtype}
 
-        # block =
-        self.backbone = Transmorpher()
+        block = TransmorpherLayer2d(dim_head, num_heads, 2*dim_head*num_heads, attention, activation, layer_norm_eps, **factory_kwargs)
+        self.backbone = Transmorpher2d(block, num_layers, AxialLayerNorm(1, dim_head*num_heads, eps=layer_norm_eps, **factory_kwargs))
         self.tasks = [t for t in heads.keys()]
         self.heads = heads
+        self.losses = losses
+        assert self.heads.keys == self.losses.keys
         # self.demasking_head = modules.DemaskingHead(dim, 5)
         # self.deshuffling_head = modules.DeshufflingHead(dim, n_permutations)
         # self.contrastive_head = modules.ContrastiveHead()
 
-        self.demasking_loss = nn.KLDivLoss(reduction='batchmean')
-        self.deshuffling_loss = nn.CrossEntropyLoss()
-        self.contrastive_loss = nn.CosineEmbeddingLoss()
+        # self.demasking_loss = nn.KLDivLoss(reduction='batchmean')
+        # self.deshuffling_loss = nn.CrossEntropyLoss()
+        # self.contrastive_loss = nn.CosineEmbeddingLoss()
 
     def forward(self, encoded_msa_batch):
         """
         Forward pass through the model. Use for inference.
         Args:
-            encoded_msa_batch: batch of msas encoded into a tensor of size [batch_size, number_of_sequences, sequence_length, embed_dim]
+            encoded_msa_batch: batch of msas encoded into a tensor of size [batch_size, input_dim, number_of_sequences, sequence_length]
         """
         latent = self.backbone(encoded_msa_batch)
         return latent
 
     def training_step(self, batch_data, batch_idx):
+        # TODO task preprocessing happens in dataset as transforms
         # TODO move as much as possible into the collator
         batch_input, lens = batch_data
         batch_size = batch_input.size(0)
