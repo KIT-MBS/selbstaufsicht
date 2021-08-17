@@ -1,10 +1,11 @@
-import math
+# import math
 import torch.nn as nn
 
 
-class DemaskingHead(nn.Module):
+class InpaintingHead(nn.Module):
     def __init__(self, d, doutput):
-        super(DemaskingHead, self).__init__()
+        super(InpaintingHead, self).__init__()
+        # TODO assuming the last layer in an encoder block is a nonlinearity
         self.output_head = nn.Linear(d, doutput)
 
     def forward(self, x):
@@ -12,17 +13,17 @@ class DemaskingHead(nn.Module):
 
 
 # TODO
-class DeshufflingHead(nn.Module):
-    def __init__(self, d, nclasses):
-        super(DeshufflingHead, self).__init__()
-        self.output_head = nn.Linear(d, nclasses)
-
-    def forward(self, x):
-        raise NotImplementedError()
-        x = x.sum(dim=1)
+# class JigsawHead(nn.Module):
+#     def __init__(self, d, nclasses):
+#         super(JigsawHead, self).__init__()
+#         self.output_head = nn.Linear(d, nclasses)
+#
+#     def forward(self, x):
+#         raise NotImplementedError()
+#         x = x.sum(dim=1)
 
 
 # TODO
-class MaximizingMutualInformationHead():
-    def __init__(self, x):
-        raise NotImplementedError()
+# class MaximizingMutualInformationHead():
+#     def __init__(self, x):
+#         raise NotImplementedError()
