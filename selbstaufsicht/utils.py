@@ -3,7 +3,8 @@ import torch
 # ambuguous RNA letters: GAUCRYWSMKHBVDN
 mask_token = '*'
 delimiter_token = '|'
-rna_letters = [letter for letter in '-GAUCRYWSMKHBVDN']
+rna_letters = [letter for letter in '-.GAUCRYWSMKHBVDN']
+# TODO protein_letters = [letter for letter in '']
 rna_letters += [mask_token, delimiter_token]
 
 rna2index = {letter: index for index, letter in enumerate(rna_letters)}
