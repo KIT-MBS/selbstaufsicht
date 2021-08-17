@@ -1,6 +1,7 @@
 import torch
 
 
+# TODO naming. this is not specifically axial. it's just not channel last
 class AxialLayerNorm(torch.nn.Module):
     def __init__(self, axis, axis_length, eps=1e-5, elementwise_affine=True, device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
