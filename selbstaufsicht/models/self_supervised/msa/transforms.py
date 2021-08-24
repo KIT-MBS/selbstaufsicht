@@ -4,12 +4,12 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
 
-class MSATokenizeOneHot():
+class MSATokenize():
     def __init__(self, mapping):
         self.mapping = mapping
 
     def __call__(self, msa):
-        torch.nn.functional.one_hot(torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in msa], dtype=torch.float))
+        torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in msa], dtype=torch.float)
 
 
 class RandomMSAMasking():
