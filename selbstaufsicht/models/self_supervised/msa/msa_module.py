@@ -109,24 +109,6 @@ class MSAModel(pl.LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
 
-# TODO better compartmentalization of tasks
-# TODO optimize
-def jigsaw(unshuffled_input, permutations=None):
-    """
-    unshuffled_input: pre processed input to jigsaw [B, S, L, D]
-    deshuffling_target: permutation to apply to jigsaw pieces [B, number of possible permutations]
-    """
-    if permutations is None:
-        permutations = [[1, 0], ]
-
-    n_partitions = len(permutations[0])
-    shuffled_input = torch.zeros_like(unshuffled_input)
-    deshuffling_target = torch.randint(n_partitions, unshuffled_input.size(0))
-    for i in range(deshuffling_target.size(0)):
-        raise
-    return shuffled_input, deshuffling_target
-
-
 # TODO reversibility
 # TODO optimize
 # TODO dropout
