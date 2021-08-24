@@ -56,6 +56,7 @@ class MSAModel(pl.LightningModule):
         return latent
 
     def training_step(self, batch_data, batch_idx):
+        raise RuntimeError('Update dis')
         # TODO task preprocessing happens in dataset as transforms
         # TODO move as much as possible into the collator
         batch_input, lens = batch_data
