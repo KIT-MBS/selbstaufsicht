@@ -283,7 +283,7 @@ def _get_attention_function(attention):
 
 def _get_activation_function(activation):
     if activation == 'relu':
-        return nn.Relu
+        return nn.ReLU
     elif activation == 'gelu':
         return nn.GELU
     raise RuntimeError("Expected relu or gelu not {}".format(activation))
