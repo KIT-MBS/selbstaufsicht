@@ -8,6 +8,21 @@ class MSATokenize():
     def __init__(self, mapping):
         self.mapping = mapping
 
+    # TODO maybe do tensor mapping instead of dict as in:
+    # class OneHotMSAArray(object):
+    #     def __init__(self, mapping):
+    #         maxind = 256
+    #
+    #         self.mapping = np.full((maxind, ), -1)
+    #         for k in mapping:
+    #             self.mapping[ord(k)] = mapping[k]
+    #
+    #     def __call__(self, msa_array):
+    #         """
+    #         msa_array: byte array
+    #         """
+    #
+    #         return self.mapping[msa_array.view(np.uint32)]
     def __call__(self, msa):
         torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in msa], dtype=torch.float)
 
@@ -34,22 +49,6 @@ class ExplicitPositionalEncoding():
         return {'msa': x, 'sequential_features': torch.cat((absolute, relative), dim=self.axis)}
 
 
-# class OneHotMSAArray(object):
-#     def __init__(self, mapping):
-#         maxind = 256
-#
-#         self.mapping = np.full((maxind, ), -1)
-#         for k in mapping:
-#             self.mapping[ord(k)] = mapping[k]
-#
-#     def __call__(self, msa_array):
-#         """
-#         msa_array: byte array
-#         """
-#
-#         return self.mapping[msa_array.view(np.uint32)]
-
-
 def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
     # TODO relative leader and trailer?
     # TODO minimum partition size?
@@ -74,7 +73,7 @@ def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
 
 
 # TODO adapt to tensorized input
-def _block_mask_msa(msa, p, mask_token='*'):
+def _block_mask_msa(msa, p, mask_token):
     """
     masks out a contiguous block of columns in the given msa
     """
@@ -85,27 +84,32 @@ def _block_mask_msa(msa, p, mask_token='*'):
     masked = msa[:, begin:end]
     mask = MultipleSeqAlignment([SeqRecord(Seq(mask_token * (end - begin)), id=r.id) for r in msa])
     msa = msa[:, :begin] + mask + msa[:, end:]
-    return msa, masked
+    return msa, mask, masked
 
 
 # TODO test this, not sure this kind of indexing works without casting to numpy array
-def _column_mask_msa(msa_tensor, col_indices, mask_token='*'):
+def _column_mask_msa(msa, col_indices, mask_token):
     """
     masks out a random set of columns in the given msa
     """
-    masked = msa_tensor[col_indices]
-    msa_tensor[col_indices] = mask_token
-    return msa_tensor, masked
+    raise
+    mask = None
+    masked = msa[col_indices]
+    msa[col_indices] = mask_token
+    return msa, mask, masked
 
 
 # TODO test
-def _token_mask_msa(msa_tensor, coords, mask_token_index):
+def _token_mask_msa(msa, p, mask_token):
     """
     masks out random tokens uniformly sampled from the given msa
     """
-    masked = msa_tensor[coords]
-    msa_tensor[coords] = mask_token_index
-    return msa_tensor, masked
+    mask = torch.full(msa.size(), p)
+    mask = torch.bernoulli(mask)
+    mask.to(torch.bool)
+    masked = msa[mask]
+    msa[mask] = mask_token
+    return msa, mask, masked
 
 
 def _get_masking_fn(mode):
