@@ -1,13 +1,12 @@
 import torch
 
 # ambuguous RNA letters: GAUCRYWSMKHBVDN
-mask_token = '*'
-delimiter_token = '|'
 rna_letters = [letter for letter in '-.GAUCRYWSMKHBVDN']
 # TODO protein_letters = [letter for letter in '']
-rna_letters += [mask_token, delimiter_token]
 
 rna2index = {letter: index for index, letter in enumerate(rna_letters)}
+rna2index['DELIMITER_TOKEN'] = len(rna2index)
+rna2index['MASK_TOKEN'] = len(rna2index)
 
 # rnaletter2tensor_encoded_ambiguity_dict = {
 #         '-': torch.tensor([1., 0., 0., 0., 0., 0.]),
