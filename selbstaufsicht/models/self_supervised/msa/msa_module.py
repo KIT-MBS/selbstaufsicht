@@ -24,74 +24,45 @@ class MSAModel(pl.LightningModule):
             attention='tied',
             activation='relu',
             layer_norm_eps=1e-5,
-            heads=None,
-            losses=None,
+            task_heads=None,
+            task_losses=None,
             device=None,
             dtype=None,
             ):
         super().__init__()
         factory_kwargs = {'device': device, 'dtype': dtype}
 
-        block = TransmorpherLayer2d(dim_head, num_heads, 2*dim_head*num_heads, attention, activation, layer_norm_eps, **factory_kwargs)
+        block = TransmorpherLayer2d(dim_head, num_heads, 2*dim_head*num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
         self.backbone = Transmorpher2d(block, num_layers, AxialLayerNorm(1, dim_head*num_heads, eps=layer_norm_eps, **factory_kwargs))
-        self.tasks = [t for t in heads.keys()]
-        self.heads = heads
-        self.losses = losses
+        self.tasks = [t for t in task_heads.keys()]
+        self.heads = task_heads
+        self.losses = task_losses
         assert self.heads.keys == self.losses.keys
-        # self.demasking_head = modules.DemaskingHead(dim, 5)
-        # self.deshuffling_head = modules.DeshufflingHead(dim, n_permutations)
-        # self.contrastive_head = modules.ContrastiveHead()
 
-        # self.demasking_loss = nn.KLDivLoss(reduction='batchmean')
-        # self.deshuffling_loss = nn.CrossEntropyLoss()
-        # self.contrastive_loss = nn.CosineEmbeddingLoss()
-
-    def forward(self, encoded_msa_batch):
+    def forward(self, x, aux_features=None):
         """
         Forward pass through the model. Use for inference.
         Args:
-            encoded_msa_batch: batch of msas encoded into a tensor of size [batch_size, input_dim, number_of_sequences, sequence_length]
+            batch is a tuple of an input dict and a target dict
+            the input dict contains a tokenized msa, any auxiliary features ('aux_features')
+            and any additional for the task heads e.g. the mask where the loss is to be measured for the inpainting task.
+            the output dict contains the target per task loss keyed per task
         """
-        latent = self.backbone(encoded_msa_batch)
+
+        # NOTE feature dim = 1
+        if aux_features is not None:
+            x = torch.cat((self.embedding(x), aux_features), dim=1)
+        latent = self.backbone(x)
         return latent
 
     def training_step(self, batch_data, batch_idx):
-        raise RuntimeError('Update dis')
-        # TODO task preprocessing happens in dataset as transforms
-        # TODO move as much as possible into the collator
-        batch_input, lens = batch_data
-        batch_size = batch_input.size(0)
-        batch_input = batch_input[:, torch.randperm(batch_input.size(1)), :, :]
+        x, y = batch_data
 
-        mask_start = torch.randint(batch_input.size(2) - self.mask_width, size=(1,))
+        latent = self.forward(x['msa'], x.get('aux_feautures', None))
 
-        in1_sequences_end = min(self.n_sequences, batch_input.size(1) // 2)
-        sequences_overlap = in1_sequences_end // 10
-        # TODO different/random sizes of partitions
-        in2_sequences_start = in1_sequences_end - sequences_overlap
-        in2_sequences_end = max(batch_input.size(1), in2_sequences_start + in1_sequences_end // 2)
-        input1 = batch_input[:, :in1_sequences_end]
-        original = input1.clone().detach()
-        input2 = batch_input[:, in2_sequences_start: in2_sequences_end]
+        # TODO weights
+        loss = sum([self.losses[task](self.heads['task'](latent, x), y['task']) for task in self.tasks])
 
-        input1[:, :, mask_start:mask_start + self.mask_width, 0:6] = torch.tensor([0., 0., 0., 0., 0., 1.])
-
-        demasking_target = original[:, :, mask_start:mask_start + self.mask_width, 0:5]
-        # deshuffling_target = torch.randint(self.n_partitions, batch_input.size(0))
-        # input1, deshuffling_target = jigsaw(input1, self.shuffle_partitions)
-
-        latent = self(input1)
-
-        demasking_output = self.demasking_head(latent)[:, :, mask_start:mask_start + self.mask_width, 0:5]
-        # deshuffling_output = self.deshuffling_head(latent)
-
-        demasking_loss = self.demasking_loss(demasking_output, demasking_target)
-        # deshuffling_loss = self.deshuffling_loss(deshuffling_output, deshuffling_target)
-        # TODO should the contrastive target/input also be masked/shuffled?
-        contrastive_loss = self.contrastive_loss(latent.sum(dim=1).reshape(batch_size, -1), self(input2).sum(dim=1).reshape(batch_size, -1), torch.ones(batch_input.size(0)))
-
-        # loss = demasking_loss + deshuffling_loss + contrastive_loss
-        loss = demasking_loss + contrastive_loss
         self.log('training loss', loss, on_step=True, on_epoch=False)
         return loss
 
