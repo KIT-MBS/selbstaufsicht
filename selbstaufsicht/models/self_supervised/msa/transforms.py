@@ -3,6 +3,8 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
+# TODO task scheduling a la http://bmvc2018.org/contents/papers/0345.pdf
+
 
 class MSATokenize():
     def __init__(self, mapping):
@@ -46,7 +48,7 @@ class ExplicitPositionalEncoding():
         absolute = torch.arange(0, size, dtype=torch.float)
         relative = absolute/size
 
-        return {'msa': x, 'sequential_features': torch.cat((absolute, relative), dim=self.axis)}
+        return {'msa': x, 'aux_features': torch.cat((absolute, relative), dim=self.axis)}
 
 
 def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
@@ -73,6 +75,7 @@ def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
 
 
 # TODO adapt to tensorized input
+# TODO add capabilities for not masking and replace with random other token
 def _block_mask_msa(msa, p, mask_token):
     """
     masks out a contiguous block of columns in the given msa
