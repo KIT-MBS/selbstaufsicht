@@ -20,10 +20,12 @@ class MSAModel(pl.LightningModule):
             num_layers=12,
             num_heads=12,
             dim_head=64,
-            input_dim=30,
+            aux_input_dim=2,
             attention='tied',
             activation='relu',
             layer_norm_eps=1e-5,
+            in_dict_size=7,
+            padding_token=None,
             task_heads=None,
             task_losses=None,
             device=None,
@@ -31,13 +33,18 @@ class MSAModel(pl.LightningModule):
             ):
         super().__init__()
         factory_kwargs = {'device': device, 'dtype': dtype}
+        d = num_heads * dim_head
 
+        assert d - aux_input_dim > 0
+        self.embedding = nn.Embedding(in_dict_size, d-aux_input_dim, padding_idx=padding_token)
         block = TransmorpherLayer2d(dim_head, num_heads, 2*dim_head*num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
         self.backbone = Transmorpher2d(block, num_layers, AxialLayerNorm(1, dim_head*num_heads, eps=layer_norm_eps, **factory_kwargs))
-        self.tasks = [t for t in task_heads.keys()]
+        if task_heads is not None:
+            self.tasks = [t for t in task_heads.keys()]
         self.heads = task_heads
         self.losses = task_losses
-        assert self.heads.keys == self.losses.keys
+        if task_heads is not None:
+            assert self.heads.keys() == self.losses.keys()
 
     def forward(self, x, aux_features=None):
         """
@@ -50,15 +57,19 @@ class MSAModel(pl.LightningModule):
         """
 
         # NOTE feature dim = 1
+        # TODO optimize embedding
+        x = self.embedding(x)
+        x = x.permute(0, -1, 1, 2)
         if aux_features is not None:
-            x = torch.cat((self.embedding(x), aux_features), dim=1)
+            aux_features = aux_features.expand(-1, -1, x.size(2), -1)
+            x = torch.cat((x, aux_features), dim=1)
         latent = self.backbone(x)
         return latent
 
     def training_step(self, batch_data, batch_idx):
         x, y = batch_data
 
-        latent = self.forward(x['msa'], x.get('aux_feautures', None))
+        latent = self.forward(x['msa'], x.get('aux_features', None))
 
         # TODO weights
         loss = sum([self.losses[task](self.heads['task'](latent, x), y['task']) for task in self.tasks])
@@ -75,7 +86,7 @@ class MSAModel(pl.LightningModule):
                 self.warmup = warmup
 
             def __call__(self, i):
-                return min((i+1)/self.warmup, math.sqrt(warmup/i))
+                return min((i+1)/self.warmup, math.sqrt(warmup/(i+1)))
 
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(warmup))
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
