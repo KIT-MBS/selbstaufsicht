@@ -9,7 +9,7 @@ class Compose:
 
     def __call__(self, sample):
         for t in self.transforms:
-            sample = t.sample
+            sample = t(sample)
         return sample
 
     def __repr__(self):
