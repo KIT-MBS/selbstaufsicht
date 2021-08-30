@@ -218,7 +218,7 @@ class Transmorpher2d(nn.Module):
         self.norm = norm
 
     # TODO need attn is a bit clunkily done
-    def forward(self, x, padding_mask, need_attn=False):
+    def forward(self, x, padding_mask=None, need_attn=False):
         out = x
         if need_attn:
             attns = []
@@ -256,8 +256,8 @@ class TransmorpherLayer2d(nn.Module):
         self.activation = _get_activation_function(activation)()
 
     # TODO should some of this change for axial attention?
-    def forward(self, x, padding_mask, need_attn=False):
-        out = self.self_attn(x, x, x, padding_mask=padding_mask, need_attn=need_attn)
+    def forward(self, x, padding_mask=None, need_attn=False):
+        out = self.attn(x, padding_mask=padding_mask, need_attn=need_attn)
         if need_attn:
             out, attn = out
         # TODO what's the last layer of an attention block should it be a nonlinearity
