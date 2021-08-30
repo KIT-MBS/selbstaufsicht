@@ -26,7 +26,7 @@ class MSATokenize():
     #
     #         return self.mapping[msa_array.view(np.uint32)]
     def __call__(self, msa):
-        torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in msa], dtype=torch.float)
+        return torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in msa], dtype=torch.long)
 
 
 class RandomMSAMasking():
@@ -36,7 +36,11 @@ class RandomMSAMasking():
         self.masking_fn = _get_masking_fn(mode)
 
     def __call__(self, x):
-        return self.masking_fn(x, self.p, self.mask_token)
+        masked_msa, mask, target = self.masking_fn(x, self.p, self.mask_token)
+        # TODO generalize for other task orders
+        x = {'msa': masked_msa, 'mask': mask}
+        y = {'inpainting': target}
+        return x, y
 
 
 class ExplicitPositionalEncoding():
@@ -44,11 +48,18 @@ class ExplicitPositionalEncoding():
         self.axis = axis
 
     def __call__(self, x):
-        size = x.size(self.axis)
-        absolute = torch.arange(0, size, dtype=torch.float)
-        relative = absolute/size
+        x, target = x
 
-        return {'msa': x, 'aux_features': torch.cat((absolute, relative), dim=self.axis)}
+        msa = x['msa']
+        size = msa.size(self.axis)
+        absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(0)
+        relative = absolute/size
+        if 'aux_features' not in x:
+            x['aux_features'] = torch.cat((absolute, relative), dim=0)
+        else:
+            x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=0)
+
+        return x, target
 
 
 def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
@@ -108,8 +119,7 @@ def _token_mask_msa(msa, p, mask_token):
     masks out random tokens uniformly sampled from the given msa
     """
     mask = torch.full(msa.size(), p)
-    mask = torch.bernoulli(mask)
-    mask.to(torch.bool)
+    mask = torch.bernoulli(mask).to(torch.bool)
     masked = msa[mask]
     msa[mask] = mask_token
     return msa, mask, masked
