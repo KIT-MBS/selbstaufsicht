@@ -7,6 +7,8 @@ from typing import Callable
 
 from Bio import AlignIO
 
+from ..utils import rna2index
+
 splits = ['train', 'val', 'test']
 polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
 modes = ['seed', 'full']
@@ -38,6 +40,7 @@ class Xfam():
         self.root = root
         self.base_folder = db
         self.transform = transform
+        self.token_mapping = rna2index
 
         filename = db + '.gz'
         path = os.path.join(self.root, self.base_folder, version, mode, split, filename)
@@ -51,7 +54,7 @@ class Xfam():
 
     def __getitem__(self, i):
         if self.transform is not None:
-            return self.transform(self.sample[i])
+            return self.transform(self.samples[i])
         return self.samples[i]
 
     def _download(self, url, path):
