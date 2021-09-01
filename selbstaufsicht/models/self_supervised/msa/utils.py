@@ -5,7 +5,6 @@ from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize,  R
 from .modules import InpaintingHead
 
 # NOTE mask and delimiter tokens can not be reconstructed
-num_special_tokens = 2
 
 
 def get_tasks(task, dim, **kwargs):
@@ -23,6 +22,6 @@ def get_tasks(task, dim, **kwargs):
                 RandomMSAMasking(p=p_mask, mode=masking, mask_token=rna2index['MASK_TOKEN']),
                 ExplicitPositionalEncoding(),
             ])
-    head = InpaintingHead(dim, len(rna2index)-num_special_tokens)
+    head = InpaintingHead(dim, len(rna2index)-1)  # NOTE never predict mask token
 
     return transform, {'inpainting': head}, {'inpainting': CrossEntropyLoss()}
