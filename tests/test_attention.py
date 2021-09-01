@@ -1,5 +1,5 @@
 import torch
-from selbstaufsicht.modules import MultiHeadSelfAttention2d, AxialSelfAttention2d
+from selbstaufsicht.modules import MultiHeadSelfAttention2d, AxialSelfAttention2d, TiedAxialSelfAttention2d, Transmorpher2d
 from torch.nn.functional import multi_head_attention_forward
 
 
@@ -49,7 +49,21 @@ def test_AxialAttention2d():
 
     model = AxialSelfAttention2d(2, 4)
 
-    model(x)
+    _, attn = model(x)
+
+    tiedmodel = TiedAxialSelfAttention2d(2, 4)
+
+    _, tiedattn = tiedmodel(x)
+
+    assert (attn.sum() == tiedattn).all()
+
+
+def test_Transmorpher():
+    for attn in ['']:
+        model = Transmorpher2d()
+
+        x = torch.rand()
+        model(x)
 
 
 # NOTE mostly done as exercise/affirmation

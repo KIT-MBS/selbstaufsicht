@@ -33,3 +33,15 @@ def test_msa_mask_token():
     assert False
 
     x = positional(x)
+
+
+def test_inpainting_head():
+    from selbstaufsicht.models.self_supervised.msa.modules import InpaintingHead
+    model = InpaintingHead
+    latent = torch.rand()
+    mask = torch.tensor()
+
+    out = model(latent, {'mask': mask})
+
+    # TODO
+    assert out
