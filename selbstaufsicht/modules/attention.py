@@ -147,8 +147,8 @@ class TiedAxialSelfAttention2d(nn.Module):
         self.in_row_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
         self.in_col_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
 
-        self.norm1 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
-        self.norm2 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+        self.norm1 = AxialLayerNorm(1, self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = AxialLayerNorm(1, self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
 
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
@@ -181,7 +181,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         row_attn = row_attn.softmax(dim=-1)  # [B, H, 1, L, L]
         row_attn = self.dropout1(row_attn)
         row_out = torch.einsum('bhsij, bhdsj->bhdsi', row_attn, v)
-        row_out = row_out.view(B, D, S, L)
+        row_out = row_out.reshape(B, D, S, L)
 
         out = x + row_out
         out = self.norm1(out)
@@ -197,9 +197,9 @@ class TiedAxialSelfAttention2d(nn.Module):
             row_attn += attn_mask.unsqueeze(-3)
 
         col_attn = col_attn.softmax(dim=-2)
-        col_attn = self.dropout(col_attn)
+        col_attn = self.dropout2(col_attn)
         col_out = torch.einsum('bhijl, bhdjl->bhdil', col_attn, v)
-        col_out = col_out.view(B, D, S, L)
+        col_out = col_out.reshape(B, D, S, L)
 
         out = out + col_out
         out = self.norm2(out)
@@ -244,12 +244,12 @@ class TransmorpherLayer2d(nn.Module):
         super(TransmorpherLayer2d, self).__init__()
         self.attn = _get_attention_function(attention)(dim_head, num_heads, dropout=dropout, **factory_kwargs)
 
-        self.lin1 = nn.Linear(dim_model, dim_ff, **factory_kwargs)
+        self.lin1 = nn.Conv2d(dim_model, dim_ff, kernel_size=1, **factory_kwargs)
         self.dropout = nn.Dropout(dropout)
-        self.lin2 = nn.Linear(dim_ff, dim_model, **factory_kwargs)
+        self.lin2 = nn.Conv2d(dim_ff, dim_model, kernel_size=1, **factory_kwargs)
 
-        # self.norm1 = nn.LayerNorm ???
-        # self.norm1 = nn.LayerNorm ???
+        self.norm1 = AxialLayerNorm(1, dim_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = AxialLayerNorm(1, dim_model, eps=layer_norm_eps, **factory_kwargs)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
 
@@ -263,7 +263,7 @@ class TransmorpherLayer2d(nn.Module):
         # TODO what's the last layer of an attention block should it be a nonlinearity
         x = x + self.dropout1(out)
         x = self.norm1(out)
-        out = self.linear2(self.dropout(self.activation(self.linear1(x))))
+        out = self.lin2(self.dropout(self.activation(self.lin1(x))))
         x = x + self.dropout2(out)
         x = self.norm2(x)
         if need_attn:
