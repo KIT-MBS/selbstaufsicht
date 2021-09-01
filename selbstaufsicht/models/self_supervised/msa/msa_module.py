@@ -3,7 +3,6 @@ import torch
 from torch import nn
 
 import pytorch_lightning as pl
-from axial_attention import AxialAttention
 
 from selbstaufsicht.modules import Transmorpher2d, TransmorpherLayer2d, AxialLayerNorm
 
@@ -68,11 +67,13 @@ class MSAModel(pl.LightningModule):
 
     def training_step(self, batch_data, batch_idx):
         x, y = batch_data
+        # TODO do this in collate
+        y['inpainting'] = y['inpainting'].flatten()
 
         latent = self.forward(x['msa'], x.get('aux_features', None))
 
         # TODO weights
-        loss = sum([self.losses[task](self.heads['task'](latent, x), y['task']) for task in self.tasks])
+        loss = sum([self.losses[task](self.heads[task](latent, x), y[task]) for task in self.tasks])
 
         self.log('training loss', loss, on_step=True, on_epoch=False)
         return loss
@@ -90,33 +91,3 @@ class MSAModel(pl.LightningModule):
 
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(warmup))
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
-
-
-# TODO reversibility
-# TODO optimize
-# TODO dropout
-# TODO norm
-class AxialTransformerEncoder(nn.Module):
-    def __init__(self, dim, depth, heads, dim_heads=None, dim_ff=None, pos_emb=None):
-        super().__init__()
-        if dim_ff is None:
-            dim_ff = 2 * dim
-        self.pos_emb = pos_emb
-        self.embedding = nn.Sequential(nn.Linear(8, dim), nn.LeakyReLU())
-
-        self.layers = nn.ModuleList([])
-        for _ in range(depth):
-            attn = AxialAttention(dim, num_dimensions=2, heads=heads, dim_heads=None, dim_index=-1, sum_axial_out=True)
-            ff = nn.Sequential(nn.Linear(dim, dim_ff), nn.LeakyReLU(), nn.Linear(dim_ff, dim))
-            self.layers.append(nn.Sequential(attn, ff))
-
-    def forward(self, x):
-        if self.pos_emb is not None:
-            x = self.pos_emb(x)
-        x = self.embedding(x)
-        i = 0
-        for layer in self.layers:
-            i += 1
-            y = layer(x)
-            x = x + y
-        return x
