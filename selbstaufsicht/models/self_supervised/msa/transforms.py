@@ -91,6 +91,8 @@ def _block_mask_msa(msa, p, mask_token):
     """
     masks out a contiguous block of columns in the given msa
     """
+    # TODO
+    raise
     total_length = msa.size(-1)
     mask_length = int(total_length * p)
     begin = torch.randint(total_length-mask_length, (1)).item()
@@ -140,10 +142,10 @@ def _subsample_uniform(msa, contrastive=False):
     raise
 
 
-def _get_msa_subsampling_fn(mode):
+def _subsample_diversity_maximizing(msa, contrastive=False):
+    # TODO
     raise
 
 
-def _subsample_diversity_maximizing(msa, contrastive=False):
-    # TODO
+def _get_msa_subsampling_fn(mode):
     raise
