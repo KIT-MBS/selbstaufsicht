@@ -3,13 +3,23 @@ import torch.nn as nn
 
 
 class InpaintingHead(nn.Module):
-    def __init__(self, d, doutput):
+    def __init__(self, d, num_classes, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super(InpaintingHead, self).__init__()
         # TODO assuming the last layer in an encoder block is a nonlinearity
-        self.output_head = nn.Linear(d, doutput)
+        self.num_classes = num_classes
+        self.proj = nn.Conv2d(d, num_classes, kernel_size=1, **factory_kwargs)
 
-    def forward(self, x):
-        return self.output_head(x)
+    # TODO turns out channel last is probably overall the way more sensible choice even here
+    # TODO the output is basically flattened (of  shape (-1, num_classes)) since the number of masked tokens per sample in the batch is not the same
+    def forward(self, latent, x):
+        bs, _, S, L = latent.size()
+        output = self.proj(latent)
+        output = output.permute(0, 2, 3, 1)
+        output = output[x['mask'].unsqueeze(-1).expand(-1, -1, -1, self.num_classes)]
+
+        output = output.reshape(-1, self.num_classes)
+        return output
 
 
 # TODO
