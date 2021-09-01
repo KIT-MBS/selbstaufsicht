@@ -5,7 +5,7 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
 from selbstaufsicht.utils import rna2index
-from selbstaufsicht.model.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
+from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 
 
 def test_msa_mask_token():
@@ -13,10 +13,10 @@ def test_msa_mask_token():
 
     alignment = MultipleSeqAlignment(
             [
-                SeqRecord(Seq("ACTCCTA"), id='seq1'),
-                SeqRecord(Seq("AAT.CTA"), id='seq2'),
-                SeqRecord(Seq("CCTACT."), id='seq3'),
-                SeqRecord(Seq("TCTCCTC"), id='seq4'),
+                SeqRecord(Seq("ACUCCUA"), id='seq1'),
+                SeqRecord(Seq("AAU.CUA"), id='seq2'),
+                SeqRecord(Seq("CCUACU."), id='seq3'),
+                SeqRecord(Seq("UCUCCUC"), id='seq4'),
             ]
             )
 
@@ -30,7 +30,6 @@ def test_msa_mask_token():
     x = masking(x)
     masked, inpainting_target, inpainting_mask = x
 
-    assert
+    assert False
 
     x = positional(x)
-
