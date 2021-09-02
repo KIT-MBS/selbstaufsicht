@@ -5,7 +5,7 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
 from selbstaufsicht.utils import rna2index
-from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
+from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, RandomMSASubsampling
 
 
 def test_msa_mask_token():
@@ -45,3 +45,20 @@ def test_inpainting_head():
 
     # TODO
     assert out
+
+
+def test_subsampling():
+    # TODO reproducibility
+    alignment = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq("ACUCCUA"), id='seq1'),
+            SeqRecord(Seq("AAU.CUA"), id='seq2'),
+            SeqRecord(Seq("CCUACU."), id='seq3'),
+            SeqRecord(Seq("UCUCCUC"), id='seq4'),
+        ]
+    )
+
+    sampler = RandomMSASubsampling(2, False, 'uniform')
+
+    sampled = sampler(alignment)
+    assert sampled
