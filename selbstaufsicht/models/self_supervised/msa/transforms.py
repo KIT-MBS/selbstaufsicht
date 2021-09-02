@@ -43,6 +43,18 @@ class RandomMSAMasking():
         return x, y
 
 
+class RandomMSASubsampling():
+    def __init__(self, num_sequences, contrastive=False, mode='uniform'):
+        if contrastive:
+            raise
+        self.contrastive = contrastive
+        self.sampling_fn = _get_msa_subsampling_fn(mode)
+        self.nseqs = num_sequences
+
+    def __call__(self, x):
+        return self.sampling_fn(x, self.nseqs, self.contrastive)
+
+
 class ExplicitPositionalEncoding():
     def __init__(self, axis=-1):
         self.axis = axis
@@ -137,15 +149,22 @@ def _get_masking_fn(mode):
     raise ValueError('unknown token masking mode', mode)
 
 
-def _subsample_uniform(msa, contrastive=False):
-    # TODO
-    raise
+def _subsample_uniform(msa, nseqs, contrastive=False):
+    max_nseqs = len(msa)
+    if max_nseqs > nseqs:
+        indices = torch.randperm(max_nseqs)[:nseqs]
+        msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
+    return msa
 
 
-def _subsample_diversity_maximizing(msa, contrastive=False):
+def _subsample_diversity_maximizing(msa, nseqs, contrastive=False):
     # TODO
     raise
 
 
 def _get_msa_subsampling_fn(mode):
-    raise
+    if mode == 'uniform':
+        return _subsample_uniform
+    if mode == 'diversity':
+        return _subsample_diversity_maximizing
+    raise ValueError('unkown msa sampling mode', mode)
