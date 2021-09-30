@@ -1,7 +1,7 @@
 from torch.nn import CrossEntropyLoss
 from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
-from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize,  RandomMSAMasking, ExplicitPositionalEncoding
+from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from .modules import InpaintingHead
 
 # NOTE mask and delimiter tokens can not be reconstructed
@@ -17,11 +17,11 @@ def get_tasks(task, dim, **kwargs):
     masking = kwargs.get('masking', 'token')
     p_mask = kwargs.get('p_mask', 0.15)
     transform = transforms.Compose(
-            [
-                MSATokenize(rna2index),
-                RandomMSAMasking(p=p_mask, mode=masking, mask_token=rna2index['MASK_TOKEN']),
-                ExplicitPositionalEncoding(),
-            ])
-    head = InpaintingHead(dim, len(rna2index)-1)  # NOTE never predict mask token
+        [
+            MSATokenize(rna2index),
+            RandomMSAMasking(p=p_mask, mode=masking, mask_token=rna2index['MASK_TOKEN']),
+            ExplicitPositionalEncoding(),
+        ])
+    head = InpaintingHead(dim, len(rna2index) - 1)  # NOTE never predict mask token
 
     return transform, {'inpainting': head}, {'inpainting': CrossEntropyLoss()}
