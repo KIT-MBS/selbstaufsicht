@@ -27,6 +27,7 @@ class MSAModel(pl.LightningModule):
             padding_token=None,
             task_heads=None,
             task_losses=None,
+            metrics=None,
             device=None,
             dtype=None):
         super().__init__()
@@ -41,6 +42,7 @@ class MSAModel(pl.LightningModule):
             self.tasks = [t for t in task_heads.keys()]
         self.heads = task_heads
         self.losses = task_losses
+        self.metrics = metrics
         if task_heads is not None:
             assert self.heads.keys() == self.losses.keys()
 
@@ -71,8 +73,15 @@ class MSAModel(pl.LightningModule):
 
         latent = self.forward(x['msa'], x.get('aux_features', None))
 
+        preds = {task: self.heads[task](latent, x) for task in self.tasks}
+        lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
+        for task in self.tasks:
+            for m in self.metrics[task]:
+                self.log(f'{task} {m}: ', self.metrics[task][m](preds[task], y[task]))
         # TODO weights
-        loss = sum([self.losses[task](self.heads[task](latent, x), y[task]) for task in self.tasks])
+        loss = sum([lossvals[task] for task in self.tasks])
+        for task in self.tasks:
+            self.log(f'{task} loss', lossvals[task])
 
         self.log('training loss', loss, on_step=True, on_epoch=False)
         return loss

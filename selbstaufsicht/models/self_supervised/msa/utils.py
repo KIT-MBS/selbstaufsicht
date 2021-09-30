@@ -4,6 +4,7 @@ from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, RandomMSASubsampling
 from .modules import InpaintingHead
+from torchmetrics import Accuracy
 
 # NOTE mask and delimiter tokens can not be reconstructed
 
@@ -26,5 +27,6 @@ def get_tasks(task, dim, **kwargs):
             ExplicitPositionalEncoding(),
         ])
     head = InpaintingHead(dim, len(rna2index) - 1)  # NOTE never predict mask token
+    metrics = ModuleDict({'inpainting': ModuleDict({'acc': Accuracy()})})
 
-    return transform, ModuleDict({'inpainting': head}), {'inpainting': CrossEntropyLoss()}
+    return transform, ModuleDict({'inpainting': head}), {'inpainting': CrossEntropyLoss()}, metrics

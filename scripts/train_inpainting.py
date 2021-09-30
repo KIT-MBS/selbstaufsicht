@@ -30,7 +30,7 @@ tasks = ['inpainting']
 
 
 # TODO should take token mapping
-transform, task_heads, task_losses = get_tasks(tasks, d, subsampling=msa_sampling, masking='token')
+transform, task_heads, task_losses, metrics = get_tasks(tasks, d, subsampling=msa_sampling, masking='token')
 
 root = os.environ['DATA_PATH'] + 'Xfam'
 print('data')
@@ -43,6 +43,7 @@ model = models.self_supervised.MSAModel(
     aux_input_dim=2,
     task_heads=task_heads,
     task_losses=task_losses,
+    metrics=metrics,
     in_dict_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN']
 )
 
