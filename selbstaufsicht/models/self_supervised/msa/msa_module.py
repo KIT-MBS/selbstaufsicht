@@ -28,16 +28,15 @@ class MSAModel(pl.LightningModule):
             task_heads=None,
             task_losses=None,
             device=None,
-            dtype=None,
-            ):
+            dtype=None):
         super().__init__()
         factory_kwargs = {'device': device, 'dtype': dtype}
         d = num_heads * dim_head
 
         assert d - aux_input_dim > 0
-        self.embedding = nn.Embedding(in_dict_size, d-aux_input_dim, padding_idx=padding_token)
-        block = TransmorpherLayer2d(dim_head, num_heads, 2*dim_head*num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
-        self.backbone = Transmorpher2d(block, num_layers, AxialLayerNorm(1, dim_head*num_heads, eps=layer_norm_eps, **factory_kwargs))
+        self.embedding = nn.Embedding(in_dict_size, d - aux_input_dim, padding_idx=padding_token)
+        block = TransmorpherLayer2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
+        self.backbone = Transmorpher2d(block, num_layers, AxialLayerNorm(1, dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs))
         if task_heads is not None:
             self.tasks = [t for t in task_heads.keys()]
         self.heads = task_heads
@@ -87,7 +86,7 @@ class MSAModel(pl.LightningModule):
                 self.warmup = warmup
 
             def __call__(self, i):
-                return min((i+1)/self.warmup, math.sqrt(warmup/(i+1)))
+                return min((i + 1) / self.warmup, math.sqrt(warmup / (i + 1)))
 
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(warmup))
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
