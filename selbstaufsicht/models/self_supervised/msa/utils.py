@@ -1,4 +1,5 @@
 from torch.nn import CrossEntropyLoss
+from torch.nn import ModuleDict
 from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
@@ -24,4 +25,4 @@ def get_tasks(task, dim, **kwargs):
         ])
     head = InpaintingHead(dim, len(rna2index) - 1)  # NOTE never predict mask token
 
-    return transform, {'inpainting': head}, {'inpainting': CrossEntropyLoss()}
+    return transform, ModuleDict({'inpainting': head}), {'inpainting': CrossEntropyLoss()}
