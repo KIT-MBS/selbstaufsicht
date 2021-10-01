@@ -55,6 +55,7 @@ class RandomMSASubsampling():
         return self.sampling_fn(x, self.nseqs, self.contrastive)
 
 
+# TODO do this before cropping?
 class ExplicitPositionalEncoding():
     def __init__(self, axis=-1):
         self.axis = axis
