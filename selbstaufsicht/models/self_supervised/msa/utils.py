@@ -30,3 +30,31 @@ def get_tasks(task, dim, **kwargs):
     metrics = ModuleDict({'inpainting': ModuleDict({'acc': Accuracy()})})
 
     return transform, ModuleDict({'inpainting': head}), {'inpainting': CrossEntropyLoss()}, metrics
+
+
+class MSACollator():
+    def __init__(self):
+        pass
+
+    def __call__(self, x):
+        """
+        x: list of tuples of dicts: e.g. [({input1}, {target1}), ({input2}, {target2})]
+        input contains: {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor}
+        target contains one or more of {'inpainting': 1dtensor, 'jigsaw': int, 'contrastive': tensor}
+        """
+        # TODO msas, masks, and aux_features have to be padded to fit and stacked
+        # TODO inpainting and contrastive targets are cated to a 1d tensor,  jigsaw has to be stacked
+
+        xs = [sample[0] for sample in x]
+        ys = [sample[1] for sample in x]
+
+        out_xs = {}
+        out_ys = {}
+
+        return out_xs, out_ys
+
+    def _pad_collate(x):
+        pass
+
+    def _flat_collate(x):
+        pass
