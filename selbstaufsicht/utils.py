@@ -67,9 +67,3 @@ def lehmer_encode(i, n):
         ret[n-1] = k
 
     return ret
-
-
-# TODO expect a target dict
-def pad_collate_fn(batch):
-    raise
-    return batch
