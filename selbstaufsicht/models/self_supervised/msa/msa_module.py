@@ -27,21 +27,22 @@ class MSAModel(pl.LightningModule):
             padding_token=None,
             task_heads=None,
             task_losses=None,
+            metrics=None,
             device=None,
-            dtype=None,
-            ):
+            dtype=None):
         super().__init__()
         factory_kwargs = {'device': device, 'dtype': dtype}
         d = num_heads * dim_head
 
         assert d - aux_input_dim > 0
-        self.embedding = nn.Embedding(in_dict_size, d-aux_input_dim, padding_idx=padding_token)
-        block = TransmorpherLayer2d(dim_head, num_heads, 2*dim_head*num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
-        self.backbone = Transmorpher2d(block, num_layers, AxialLayerNorm(1, dim_head*num_heads, eps=layer_norm_eps, **factory_kwargs))
+        self.embedding = nn.Embedding(in_dict_size, d - aux_input_dim, padding_idx=padding_token)
+        block = TransmorpherLayer2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
+        self.backbone = Transmorpher2d(block, num_layers, AxialLayerNorm(1, dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs))
         if task_heads is not None:
             self.tasks = [t for t in task_heads.keys()]
         self.heads = task_heads
         self.losses = task_losses
+        self.metrics = metrics
         if task_heads is not None:
             assert self.heads.keys() == self.losses.keys()
 
@@ -72,8 +73,15 @@ class MSAModel(pl.LightningModule):
 
         latent = self.forward(x['msa'], x.get('aux_features', None))
 
+        preds = {task: self.heads[task](latent, x) for task in self.tasks}
+        lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
+        for task in self.tasks:
+            for m in self.metrics[task]:
+                self.log(f'{task} {m}: ', self.metrics[task][m](preds[task], y[task]))
         # TODO weights
-        loss = sum([self.losses[task](self.heads[task](latent, x), y[task]) for task in self.tasks])
+        loss = sum([lossvals[task] for task in self.tasks])
+        for task in self.tasks:
+            self.log(f'{task} loss', lossvals[task])
 
         self.log('training loss', loss, on_step=True, on_epoch=False)
         return loss
@@ -87,7 +95,7 @@ class MSAModel(pl.LightningModule):
                 self.warmup = warmup
 
             def __call__(self, i):
-                return min((i+1)/self.warmup, math.sqrt(warmup/(i+1)))
+                return min((i + 1) / self.warmup, math.sqrt(warmup / (i + 1)))
 
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(warmup))
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}

@@ -29,7 +29,21 @@ class MSATokenize():
         return torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in msa], dtype=torch.long)
 
 
+class RandomMSACropping():
+    def __init__(self, length):
+        self.length = length
+
+    def __call__(self, x):
+        # TODO interface with subsampling
+        alen = x.get_alignment_length()
+        if alen <= self.length:
+            return x
+        start = torch.randint(alen - self.length, (1,)).item()
+        return x[:, start:start + self.length]
+
+
 class RandomMSAMasking():
+    # TODO other tokens instead of mask token
     def __init__(self, p, mode, mask_token):
         self.p = p
         self.mask_token = mask_token
@@ -66,7 +80,7 @@ class ExplicitPositionalEncoding():
         msa = x['msa']
         size = msa.size(self.axis)
         absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(0)
-        relative = absolute/size
+        relative = absolute / size
         if 'aux_features' not in x:
             x['aux_features'] = torch.cat((absolute, relative), dim=0)
         else:
@@ -108,7 +122,7 @@ def _block_mask_msa(msa, p, mask_token):
     raise
     total_length = msa.size(-1)
     mask_length = int(total_length * p)
-    begin = torch.randint(total_length-mask_length, (1)).item()
+    begin = torch.randint(total_length - mask_length, (1)).item()
     end = begin + mask_length
     masked = msa[:, begin:end]
     mask = MultipleSeqAlignment([SeqRecord(Seq(mask_token * (end - begin)), id=r.id) for r in msa])
