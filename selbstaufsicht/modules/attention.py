@@ -80,7 +80,7 @@ class AxialSelfAttention2d(nn.Module):
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
 
-    def forward(self, x, padding_mask=None, need_weights=True):
+    def forward(self, x, padding_mask=None, need_weights=True, need_attn=True):
         """
         x: Tensor, batch first, channel first: [B, D, H, W]
         """
@@ -132,6 +132,8 @@ class AxialSelfAttention2d(nn.Module):
         out = out + col_out
         out = self.norm2(out)
 
+        if need_attn:
+            return out, (row_attn, col_attn)
         return out
 
 
