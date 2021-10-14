@@ -69,7 +69,8 @@ class MSAModel(pl.LightningModule):
     def training_step(self, batch_data, batch_idx):
         x, y = batch_data
         # TODO do this in collate
-        y['inpainting'] = y['inpainting'].flatten()
+        if 'inpainting' in y:
+            y['inpainting'] = y['inpainting'].flatten()
 
         latent = self.forward(x['msa'], x.get('aux_features', None))
 

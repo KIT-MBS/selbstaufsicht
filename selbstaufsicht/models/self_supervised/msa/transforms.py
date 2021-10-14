@@ -2,6 +2,10 @@ import torch
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
+import math
+import random
+
+from selbstaufsicht.utils import lehmer_encode
 
 # TODO task scheduling a la http://bmvc2018.org/contents/papers/0345.pdf
 
@@ -51,9 +55,44 @@ class RandomMSAMasking():
 
     def __call__(self, x):
         masked_msa, mask, target = self.masking_fn(x, self.p, self.mask_token)
-        # TODO generalize for other task orders
+        # TODO check task order
         x = {'msa': masked_msa, 'mask': mask}
         y = {'inpainting': target}
+        return x, y
+
+
+class RandomMSAShuffling():
+    def __init__(self, permutations=None, minleader=0, mintrailer=0, delimiter_token=None, num_partitions=None, num_classes=None):
+        if permutations is None and (num_partitions is None or num_classes is None):
+            raise ValueError("Permutations have to be given explicitely or paramters to generate them.")
+        self.permutations = permutations
+
+        if permutations is None:
+            perm_indices = list(range(math.factorial(num_partitions)))
+            random.shuffle(perm_indices)
+            self.permutations = [lehmer_encode(i, num_partitions) for i in perm_indices[:num_classes]]
+        self.num_partitions = max(self.permutations[0])
+        self.num_classes = len(self.permutations)
+        self.minleader = minleader
+        self.mintrailer = mintrailer
+        self.delimiter_token = delimiter_token
+
+    def __call__(self, x):
+        '''
+        x is either a tensor or a tuple of input and target dictionaries
+        '''
+        y = dict()
+        if type(x) == tuple:
+            x, y = x
+        label = torch.randint(0, self.num_classes, (1,)).item()
+        if type(x) == dict:
+            shuffled_msa = _jigsaw(x['msa'], self.permutations[label], delimiter_token=self.delimiter_token, minleader=self.minleader, mintrailer=self.mintrailer)
+            x['msa'] = shuffled_msa
+        else:
+            shuffled_msa = _jigsaw(x, self.permutations[label], delimiter_token=self.delimiter_token, minleader=self.minleader, mintrailer=self.mintrailer)
+            x = {'msa': shuffled_msa}
+        y['jigsaw'] = label
+
         return x, y
 
 
@@ -89,25 +128,46 @@ class ExplicitPositionalEncoding():
         return x, target
 
 
-def _jigsaw(msa, permutation, minleader=0, mintrailer=0, delimiter_token='|'):
+def _jigsaw(msa, permutation, delimiter_token, minleader=0, mintrailer=0):
+    '''
+    msa is tensor of size (num_seqs, seq_len)
+    '''
     # TODO relative leader and trailer?
     # TODO minimum partition size?
-    nres = msa.get_alignment_length()
+    # TODO optimize
+    nres = msa.size(-1)
+    nseqs = msa.size(0)
     npartitions = len(permutation)
     partition_length = (nres - minleader - mintrailer) // npartitions
     core_leftover = nres - minleader - mintrailer - (partition_length * npartitions)
-    offset = torch.randint(minleader, minleader + core_leftover, (1)).item()
+    if minleader < minleader + core_leftover:
+        offset = torch.randint(minleader, minleader + core_leftover, (1,)).item()
+    else:
+        offset = 0
 
     leader = msa[:, :offset]
     trailer = msa[:, offset + npartitions * partition_length:]
-    partitions = [msa[offset + i * partition_length: offset + (i + 1) * partition_length] for i in range(npartitions)]
+    partitions = [msa[:, offset + i * partition_length: offset + (i + 1) * partition_length] for i in range(npartitions)]
 
-    jigsawed_msa = leader
-    for p in partitions:
-        jigsawed_msa += MultipleSeqAlignment([SeqRecord(Seq(delimiter_token), id=r.id) for r in msa])
-        jigsawed_msa += partitions
-    jigsawed_msa += MultipleSeqAlignment([SeqRecord(Seq(delimiter_token), id=r.id) for r in msa])
-    jigsawed_msa += trailer
+    # jigsawed_msa = leader
+    # for p in partitions:
+    #     jigsawed_msa += MultipleSeqAlignment([SeqRecord(Seq(delimiter_token), id=r.id) for r in msa])
+    #     jigsawed_msa += partitions
+    # jigsawed_msa += MultipleSeqAlignment([SeqRecord(Seq(delimiter_token), id=r.id) for r in msa])
+    # jigsawed_msa += trailer
+    chunks = list()
+    if leader.numel() > 0:
+        chunks = [leader]
+
+    for p in permutation:
+        if delimiter_token is not None:
+            chunks.append(torch.full((nseqs, 1), delimiter_token, dtype=torch.int))
+        chunks.append(partitions[p])
+    if delimiter_token is not None:
+        chunks.append(torch.full((nseqs, 1), delimiter_token, dtype=torch.int))
+    chunks.append(trailer)
+
+    jigsawed_msa = torch.cat(chunks, dim=-1)
 
     return jigsawed_msa
 

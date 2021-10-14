@@ -18,18 +18,17 @@ batch_size = 1
 lr = 0.0001
 warmup = 16000
 # TODO implement msa subsampling hamming maximizing
-msa_sampling = 'token'
 
 # model parameters
 num_layers = 2
 d = 768
 num_heads = 12
 d_head = d // num_heads
-tasks = ['inpainting']
+tasks = ['jigsaw']
 
 
 # TODO should take token mapping
-transform, task_heads, task_losses, metrics = get_tasks(tasks, d, subsampling=msa_sampling, masking='token')
+transform, task_heads, task_losses, metrics = get_tasks(tasks, d)
 
 root = os.environ['DATA_PATH'] + 'Xfam'
 print('data')

@@ -12,13 +12,13 @@ def test_msa_mask_token():
     torch.manual_seed(42)
 
     alignment = MultipleSeqAlignment(
-            [
-                SeqRecord(Seq("ACUCCUA"), id='seq1'),
-                SeqRecord(Seq("AAU.CUA"), id='seq2'),
-                SeqRecord(Seq("CCUACU."), id='seq3'),
-                SeqRecord(Seq("UCUCCUC"), id='seq4'),
-            ]
-            )
+        [
+            SeqRecord(Seq("ACUCCUA"), id='seq1'),
+            SeqRecord(Seq("AAU.CUA"), id='seq2'),
+            SeqRecord(Seq("CCUACU."), id='seq3'),
+            SeqRecord(Seq("UCUCCUC"), id='seq4'),
+        ]
+    )
 
     tokenize = MSATokenize(rna2index)
     masking = RandomMSAMasking(p=1., mode='token', mask_token=rna2index['MASK_TOKEN'])

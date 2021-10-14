@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class InpaintingHead(nn.Module):
+    # TODO channel last
     def __init__(self, d, num_classes, device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(InpaintingHead, self).__init__()
@@ -22,15 +23,17 @@ class InpaintingHead(nn.Module):
         return output
 
 
-# TODO
-# class JigsawHead(nn.Module):
-#     def __init__(self, d, nclasses):
-#         super(JigsawHead, self).__init__()
-#         self.output_head = nn.Linear(d, nclasses)
-#
-#     def forward(self, x):
-#         raise NotImplementedError()
-#         x = x.sum(dim=1)
+class JigsawHead(nn.Module):
+    def __init__(self, d, nclasses, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(JigsawHead, self).__init__()
+        self.proj = nn.Linear(d, nclasses, **factory_kwargs)
+
+    def forward(self, latent, x):
+        # x is of shape [b, c, s, l]
+        latent = latent.mean(dim=-1)
+        latent = latent.mean(dim=-1)
+        return self.proj(latent)
 
 
 # TODO
