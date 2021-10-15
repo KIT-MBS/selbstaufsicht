@@ -2,31 +2,28 @@ import copy
 
 import torch
 from torch import nn
-from .layernorm import AxialLayerNorm
 
 
 # TODO key padding masks
 # NOTE dropout is applied analogously to pytorch attention: on the attention scores after applying softmax. don't know whether that makes sense. probably set to 0. anyways.
 class MultiHeadSelfAttention2d(nn.Module):
-    def __init__(self, num_heads, dim_head, dropout=0., layer_norm_eps=1e-5, device=None, dtype=None):
+    def __init__(self, num_heads, dim_head, dropout=0., device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(MultiHeadSelfAttention2d, self).__init__()
         self.num_heads = num_heads
         self.dim_head = dim_head
         self.embed_dim = self.dim_head * self.num_heads
 
-        self.in_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
-
-        self.norm = AxialLayerNorm(1, dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
+        self.in_projection = nn.Linear(self.embed_dim, 3 * self.embed_dim, **factory_kwargs)
 
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, padding_mask=None, need_weights=True):
         """
-        x: Tensor, batch first, channel first: [B, D, H, W]
-        padding_mask: optional bool tensor: [B, H, W]
+        x: Tensor, batch first, channel first: [B, S, L, D]
+        padding_mask: optional bool tensor: [B, S, L]
         """
-        B, D, S, L = x.size()
+        B, S, L, D = x.size()
         assert D == self.embed_dim
 
         # TODO test masking
@@ -38,29 +35,28 @@ class MultiHeadSelfAttention2d(nn.Module):
             attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
             attn_mask.masked_fill_(padding_mask, float('-inf'))
 
-        q, k, v = self.in_projection(x).chunk(3, dim=1)  # [B, D, S, L]
-        q = q.view(B, self.num_heads, self.dim_head, S * L)  # [B, H, DH, S * L]
-        k = k.view(B, self.num_heads, self.dim_head, S * L)
-        v = v.view(B, self.num_heads, self.dim_head, S * L)
+        q, k, v = self.in_projection(x).chunk(3, dim=-1)  # [B, S, L, D]
+        q = q.view(B, S * L, self.num_heads, self.dim_head)  # [B, S * L, H, DH]
+        k = k.view(B, S * L, self.num_heads, self.dim_head)
+        v = v.view(B, S * L, self.num_heads, self.dim_head)
 
         q = q * (self.dim_head ** -0.5)
-        attn = torch.einsum('bhci,bhcj->bhij', q, k)  # [B, H, S*L, S*L]
+        attn = torch.einsum('bihc,bjhc->bhij', q, k)  # [B, H, S*L, S*L]
         if attn_mask is not None:
-            attn = attn.view(B, self.num_heads, self.dim_head, S, L, S, L)
+            attn = attn.view(B, self.num_heads, S, L, S, L)
             attn += attn_mask
-            attn = attn.view(B, self.num_heads, self.dim_head, S*L, S*L)
+            attn = attn.view(B, self.num_heads, S * L, S * L)
         attn = attn.softmax(dim=-1)
         attn = self.dropout(attn)
-        out = torch.einsum('bhij,bhdj->bhdi', attn, v)  # [B, H, DH, S*L]
+        out = torch.einsum('bhij,bjhd->bihd', attn, v)  # [B, S*L, H, DH]
         # TODO optimize calls to contiguous
         out = out.contiguous()
-        out = out.view(B, D, S, L)  # [B, D, S, L]
+        out = out.view(B, S, L, D)  # [B, S, L, D]
         if need_weights:
             return out, attn
         return out
 
 
-# TODO maybe one module for one axis? would be a bit more generic, possibly less readable
 class AxialSelfAttention2d(nn.Module):
     # TODO optimize einsum strings using opt_einsum package
     def __init__(self, num_heads, dim_head, dropout=0., layer_norm_eps=1e-5, device=None, dtype=None):
@@ -74,8 +70,8 @@ class AxialSelfAttention2d(nn.Module):
         self.in_row_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
         self.in_col_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
 
-        self.norm1 = AxialLayerNorm(1, dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
-        self.norm2 = AxialLayerNorm(1, dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
+        self.norm1 = nn.LayerNorm(dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(dim_head * num_heads, eps=layer_norm_eps, **factory_kwargs)
 
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
@@ -147,8 +143,8 @@ class TiedAxialSelfAttention2d(nn.Module):
         self.in_row_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
         self.in_col_projection = nn.Conv2d(self.embed_dim, 3 * self.embed_dim, kernel_size=1, **factory_kwargs)
 
-        self.norm1 = AxialLayerNorm(1, self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
-        self.norm2 = AxialLayerNorm(1, self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+        self.norm1 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
 
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
@@ -248,8 +244,8 @@ class TransmorpherLayer2d(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.lin2 = nn.Conv2d(dim_ff, dim_model, kernel_size=1, **factory_kwargs)
 
-        self.norm1 = AxialLayerNorm(1, dim_model, eps=layer_norm_eps, **factory_kwargs)
-        self.norm2 = AxialLayerNorm(1, dim_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm1 = nn.LayerNorm(dim_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(dim_model, eps=layer_norm_eps, **factory_kwargs)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
 
