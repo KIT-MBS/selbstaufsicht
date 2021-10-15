@@ -13,11 +13,11 @@ def test_MultiHeadAttention2d():
     dropout = 0.
 
     module = MultiHeadSelfAttention2d(num_heads, dim_head)
-    x = torch.rand(bs, embed_dim, S, L)
+    x = torch.rand(bs, S, L, embed_dim)
 
     key_padding_mask = None
-    in_proj_weight = module.in_projection.weight.view(3 * embed_dim, embed_dim)
-    in_proj_bias = module.in_projection.bias.view(3 * embed_dim)
+    in_proj_weight = module.in_projection.weight
+    in_proj_bias = module.in_projection.bias
     bias_k = None
     bias_v = None
     add_zero_attn = False
@@ -27,15 +27,15 @@ def test_MultiHeadAttention2d():
 
     pred, attn = module(x)
 
-    x_ref = x.reshape(bs, embed_dim, S * L)
-    x_ref = x_ref.permute(2, 0, 1)
+    x_ref = x.reshape(bs, S * L, embed_dim)
+    x_ref = x_ref.permute(1, 0, 2)
     ref, ref_attn = multi_head_attention_forward(
         x_ref, x_ref, x_ref,
         embed_dim, num_heads, in_proj_weight, in_proj_bias,
         bias_k, bias_v, add_zero_attn, dropout, out_proj_weight, out_proj_bias,
         need_weights=True, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
 
-    pred = pred.permute(2, 3, 0, 1).reshape_as(ref)
+    pred = pred.permute(1, 2, 0, 3).reshape_as(ref)
 
     assert torch.allclose(pred, ref)
     assert torch.allclose(attn.sum(dim=1) / num_heads, ref_attn)
@@ -87,6 +87,6 @@ def test_padding_mask_axial():
 
 
 if __name__ == '__main__':
-    # test_MultiHeadAttention2d()
-    test_AxialAttention2d()
+    test_MultiHeadAttention2d()
+    # test_AxialAttention2d()
     # test_linconfconsistency()
