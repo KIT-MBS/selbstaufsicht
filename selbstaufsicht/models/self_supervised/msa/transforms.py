@@ -64,7 +64,7 @@ class RandomMSAMasking():
 class RandomMSAShuffling():
     def __init__(self, permutations=None, minleader=0, mintrailer=0, delimiter_token=None, num_partitions=None, num_classes=None):
         if permutations is None and (num_partitions is None or num_classes is None):
-            raise ValueError("Permutations have to be given explicitely or paramters to generate them.")
+            raise ValueError("Permutations have to be given explicitely or parameters to generate them.")
         self.permutations = permutations
 
         if permutations is None:
@@ -108,7 +108,6 @@ class RandomMSASubsampling():
         return self.sampling_fn(x, self.nseqs, self.contrastive)
 
 
-# TODO do this before cropping?
 class ExplicitPositionalEncoding():
     def __init__(self, axis=-1):
         self.axis = axis
