@@ -56,10 +56,9 @@ class MSAModel(pl.LightningModule):
             the output dict contains the target per task loss keyed per task
         """
 
-        # NOTE feature dim = 1
+        # NOTE feature dim = -1
         # TODO optimize embedding
         x = self.embedding(x)
-        x = x.permute(0, -1, 1, 2)
         if aux_features is not None:
             aux_features = aux_features.expand(-1, -1, x.size(2), -1)
             x = torch.cat((x, aux_features), dim=1)
