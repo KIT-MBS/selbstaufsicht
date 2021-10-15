@@ -2,7 +2,7 @@ import torch
 from torch.nn.functional import multi_head_attention_forward
 import torch.testing as testing
 
-from selbstaufsicht.modules import AxialLayerNorm, AxialSelfAttention2d, MultiHeadSelfAttention2d, TiedAxialSelfAttention2d, Transmorpher2d, TransmorpherLayer2d
+from selbstaufsicht.modules import AxialSelfAttention2d, MultiHeadSelfAttention2d, TiedAxialSelfAttention2d, Transmorpher2d, TransmorpherLayer2d
 
 
 def test_MultiHeadAttention2d():
@@ -45,39 +45,35 @@ def test_MultiHeadAttention2d():
 
 # NOTE: Comparison of AxialAttention and TiedAxialAttention does not work, since SumReduce(Softmax(x)) != Softmax(SumReduce(x))
 def test_AxialAttention2d():
-    bs, h, w = 1, 2, 2
+    bs, S, L = 1, 2, 2
     num_heads, dim_head = 2, 2
-    dim = num_heads * dim_head
-    x = torch.arange(0, bs * dim * h * w,
-                     dtype=torch.float).reshape(bs, dim, w, h)
+    embed_dim = num_heads * dim_head
+    x = torch.arange(0, bs * embed_dim * S * L,
+                     dtype=torch.float).reshape(bs, S, L, embed_dim)
 
     model = AxialSelfAttention2d(num_heads, dim_head)
     out, (row_attn, col_attn) = model(x)
 
-    out_ref = torch.tensor([[[[-0.9868, -0.9865],
-                              [-0.9504, -0.9503]],
-                             [[-1.0013, -1.0016],
-                              [-1.0323, -1.0324]],
-                             [[1.1482,  1.1479],
-                              [1.1726,  1.1725]],
-                             [[0.8399,  0.8402],
-                              [0.8101,  0.8102]]]])
-    row_attn_ref = torch.tensor([[[[[0.1167, 0.8833],
-                                    [0.0816, 0.9184]],
-                                   [[0.0565, 0.9435],
-                                    [0.0387, 0.9613]]],
-                                  [[[0.9645, 0.0355],
-                                    [0.9852, 0.0148]],
-                                   [[0.9939, 0.0061],
-                                    [0.9975, 0.0025]]]]])
-    col_attn_ref = torch.tensor([[[[[0.4999, 0.4999],
-                                    [0.5001, 0.5001]],
-                                   [[0.4999, 0.4999],
-                                    [0.5001, 0.5001]]],
-                                  [[[0.4782, 0.4782],
-                                    [0.5218, 0.5218]],
-                                   [[0.4782, 0.4782],
-                                    [0.5218, 0.5218]]]]])
+    out_ref = torch.tensor([[[[-0.6975, -1.1449, 1.4239,  0.4186],
+                              [-0.2929, -1.3020, 1.4856,  0.1094]],
+                             [[ 0.2203, -1.3546, 1.4254, -0.2910],
+                              [ 0.2643, -1.3218, 1.4298, -0.3723]]]])
+    row_attn_ref = torch.tensor([[[[[8.0170e-02, 9.1983e-01],
+                                    [1.5440e-04, 9.9985e-01]],
+                                   [[2.7360e-07, 1.0000e+00],
+                                    [4.8475e-10, 1.0000e+00]]],
+                                  [[[8.1356e-01, 1.8644e-01],
+                                    [1.0000e+00, 1.3278e-07]],
+                                   [[1.0000e+00, 7.6927e-14],
+                                    [1.0000e+00, 4.4570e-20]]]]])
+    col_attn_ref = torch.tensor([[[[[0.5363, 0.5341],
+                                    [0.4637, 0.4659]],
+                                   [[0.5690, 0.5420],
+                                    [0.4310, 0.4580]]],
+                                  [[[0.2793, 0.3969],
+                                    [0.7207, 0.6031]],
+                                   [[0.3618, 0.4246],
+                                    [0.6382, 0.5754]]]]])
 
     testing.assert_allclose(out, out_ref, atol=1e-4, rtol=1e-3)
     testing.assert_allclose(row_attn, row_attn_ref, atol=1e-4, rtol=1e-3)
@@ -85,35 +81,31 @@ def test_AxialAttention2d():
 
 
 def test_TiedAxialAttention2d():
-    bs, h, w = 1, 2, 2
+    bs, S, L = 1, 2, 2
     num_heads, dim_head = 2, 2
-    dim = num_heads * dim_head
-    x = torch.arange(0, bs * dim * h * w,
-                     dtype=torch.float).reshape(bs, dim, w, h)
+    embed_dim = num_heads * dim_head
+    x = torch.arange(0, bs * embed_dim * S * L,
+                     dtype=torch.float).reshape(bs, S, L, embed_dim)
 
     model = TiedAxialSelfAttention2d(num_heads, dim_head)
     out, (row_attn, col_attn) = model(x)
 
-    out_ref = torch.tensor([[[[-0.9859, -0.9858],
-                              [-0.9501, -0.9500]],
-                             [[-1.0023, -1.0023],
-                              [-1.0326, -1.0327]],
-                             [[1.1477,  1.1477],
-                              [1.1723,  1.1723]],
-                             [[0.8404,  0.8404],
-                              [0.8103,  0.8103]]]])
-    row_attn_ref = torch.tensor([[[[[7.8421e-03, 9.9216e-01],
-                                    [3.5674e-03, 9.9643e-01]]],
-                                  [[[9.9977e-01, 2.2546e-04],
-                                    [9.9996e-01, 3.7457e-05]]]]])
-    col_attn_ref = torch.tensor([[[[[0.4999, 0.4999],
-                                    [0.5001, 0.5001]],
-                                   [[0.4999, 0.4999],
-                                    [0.5001, 0.5001]]],
-                                  [[[0.4783, 0.4783],
-                                    [0.5217, 0.5217]],
-                                   [[0.4783, 0.4783],
-                                    [0.5217, 0.5217]]]]])
+    out_ref = torch.tensor([[[[-0.2925, -1.3021, 1.4856,  0.1090],
+                              [-0.2925, -1.3021, 1.4856,  0.1090]],
+                             [[ 0.2643, -1.3218, 1.4298, -0.3723],
+                              [ 0.2643, -1.3218, 1.4298, -0.3723]]]])
+    row_attn_ref = torch.tensor([[[[[2.3846e-08, 1.0000e+00],
+                                    [7.4856e-14, 1.0000e+00]]],
+                                  [[[1.0000e+00, 1.7629e-14],
+                                    [1.0000e+00, 5.9179e-27]]]]])
+    col_attn_ref = torch.tensor([[[[[0.5341, 0.5341],
+                                    [0.4659, 0.4659]],
+                                   [[0.5419, 0.5419],
+                                    [0.4581, 0.4581]]],
+                                  [[[0.3970, 0.3970],
+                                    [0.6030, 0.6030]],
+                                   [[0.4247, 0.4247],
+                                    [0.5753, 0.5753]]]]])
 
     testing.assert_allclose(out, out_ref, atol=1e-4, rtol=1e-3)
     testing.assert_allclose(row_attn, row_attn_ref, atol=1e-4, rtol=1e-3)
@@ -121,47 +113,25 @@ def test_TiedAxialAttention2d():
 
 
 def test_Transmorpher():
-    bs, h, w = 1, 2, 2
+    bs, S, L = 1, 2, 2
     num_heads, dim_head = 2, 2
-    dim = num_heads * dim_head
+    embed_dim = num_heads * dim_head
     layer_norm_eps = 1e-5
-    x = torch.arange(0, bs * dim * h * w,
-                     dtype=torch.float).reshape(bs, dim, w, h)
+    x = torch.arange(0, bs * embed_dim * S * L,
+                     dtype=torch.float).reshape(bs, S, L, embed_dim)
 
     transmorpher_layer = TransmorpherLayer2d(
         dim_head, num_heads, 2 * dim_head * num_heads, attention='tied', activation='relu', layer_norm_eps=layer_norm_eps)
-    transmorpher_norm = AxialLayerNorm(
-        1, dim_head * num_heads, eps=layer_norm_eps)
+    transmorpher_norm = torch.nn.LayerNorm((embed_dim,))
     transmorpher = Transmorpher2d(transmorpher_layer, 2, transmorpher_norm)
     out = transmorpher(x)
 
-    out_ref = torch.tensor([[[[-0.7612, -0.7343],
-                              [-0.7261, -0.6907]],
-                             [[-1.0568, -0.7807],
-                              [-0.8974, -0.9911]],
-                             [[ 1.4796,  1.6805],
-                              [ 1.6332,  1.5914]],
-                             [[ 0.3385, -0.1655],
-                              [-0.0097,  0.0904]]]])
-    
+    out_ref = torch.tensor([[[[-0.0348, -1.2462, 1.5420, -0.2610],
+                              [ 0.2732, -1.1704, 1.4862, -0.5889]],
+                             [[ 0.7663, -1.1246, 1.1999, -0.8415],
+                              [ 0.0377, -1.1410, 1.5734, -0.4701]]]])
+
     testing.assert_allclose(out, out_ref, atol=1e-4, rtol=1e-3)
-
-
-# NOTE mostly done as exercise/affirmation
-def test_linconfconsistency():
-    bs, h, w = 1, 3, 3
-    dim = 4
-    dout = 3 * dim
-    xconv = torch.arange(0, bs * dim * h * w,
-                         dtype=torch.float).reshape(bs, dim, w, h)
-    xlin = xconv.permute(0, 2, 3, 1)
-    weight = torch.rand(dout, dim)
-    bias = torch.rand(dout)
-    lres = torch.nn.functional.linear(xlin, weight, bias)
-    cres = torch.nn.functional.conv2d(
-        xconv, weight.view(dout, dim, 1, 1), bias)
-
-    testing.assert_allclose(cres, lres.permute(0, 3, 1, 2))
 
 
 # TODO: Complete test
