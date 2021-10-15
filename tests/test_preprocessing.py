@@ -28,17 +28,22 @@ def test_msa_mask_token(tokenized_msa):
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 1.0000, 2.0000, 3.0000, 4.0000, 5.0000, 6.0000]],
                                            [[0.0000, 0.1429, 0.2857, 0.4286, 0.5714, 0.7143, 0.8571]]]),
-             'msa': torch.tensor([[18, 18, 18,  5, 5,  4, 18],
-                                  [18, 18,  4,  1, 5,  4,  3],
-                                  [18, 18, 18, 18, 5, 18, 18],
-                                  [18, 18, 18, 18, 5, 18,  5]]),
-             'mask': torch.tensor([[True, True,  True, False, False, False,  True],
-                                   [True, True, False, False, False, False, False],
-                                   [True, True,  True,  True, False,  True,  True],
-                                   [True, True,  True,  True, False,  True, False]])}
+             'msa': torch.tensor([[ 3,  5, 18,  5, 18,  4, 18],
+                                  [ 3,  3, 18,  1,  5,  4,  3],
+                                  [ 5, 18,  4,  3, 18,  4, 18],
+                                  [18, 18,  4, 18, 18, 18, 18]]),
+             'mask': torch.tensor([[False, False,  True, False,  True, False,  True],
+                                   [False, False,  True, False, False, False, False],
+                                   [False,  True, False, False,  True, False,  True],
+                                   [ True,  True, False,  True,  True,  True,  True]])}
 
     y_ref = {'inpainting': torch.tensor(
-        [3, 5, 4, 3, 3, 3, 5, 5, 4, 3, 4, 1, 4, 5, 4, 5, 4])}
+        [4, 5, 3, 4, 5, 5, 1, 4, 5, 5, 5, 4, 5])}
+
+    print("x_aux", x['aux_features'])
+    print("x_msa", x['msa'])
+    print("x_mask", x['mask'])
+    print("y", y['inpainting'])
 
     testing.assert_allclose(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
@@ -57,17 +62,22 @@ def test_msa_mask_column(tokenized_msa):
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 1.0000, 2.0000, 3.0000, 4.0000, 5.0000, 6.0000]],
                                            [[0.0000, 0.1429, 0.2857, 0.4286, 0.5714, 0.7143, 0.8571]]]),
-             'msa': torch.tensor([[18, 18, 18, 18, 18, 18, 3],
-                                  [18, 18, 18, 18, 18, 18, 3],
-                                  [18, 18, 18, 18, 18, 18, 1],
-                                  [18, 18, 18, 18, 18, 18, 5]]),
-             'mask': torch.tensor([[True, True, True, True, True, True, False],
-                                   [True, True, True, True, True, True, False],
-                                   [True, True, True, True, True, True, False],
-                                   [True, True, True, True, True, True, False]])}
+             'msa': torch.tensor([[18, 5, 18, 5, 18, 4, 18],
+                                  [18, 3, 18, 1, 18, 4, 18],
+                                  [18, 5, 18, 3, 18, 4, 18],
+                                  [18, 5, 18, 5, 18, 4, 18]]),
+             'mask': torch.tensor([[True, False, True, False, True, False, True],
+                                   [True, False, True, False, True, False, True],
+                                   [True, False, True, False, True, False, True],
+                                   [True, False, True, False, True, False, True]])}
 
     y_ref = {'inpainting': torch.tensor(
-        [3, 5, 4, 5, 5, 4, 3, 3, 4, 1, 5, 4, 5, 5, 4, 3, 5, 4, 4, 5, 4, 5, 5, 4])}
+        [3, 4, 5, 3, 3, 4, 5, 3, 5, 4, 5, 1, 4, 4, 5, 5])}
+
+    print("x_aux", x['aux_features'])
+    print("x_msa", x['msa'])
+    print("x_mask", x['mask'])
+    print("y", y['inpainting'])
 
     testing.assert_allclose(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
@@ -86,17 +96,22 @@ def test_msa_mask_block(tokenized_msa):
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 1.0000, 2.0000, 3.0000, 4.0000, 5.0000, 6.0000]],
                                            [[0.0000, 0.1429, 0.2857, 0.4286, 0.5714, 0.7143, 0.8571]]]),
-             'msa': torch.tensor([[3, 18, 18, 18, 5, 4, 3],
-                                  [3, 18, 18, 18, 5, 4, 3],
-                                  [5, 18, 18, 18, 5, 4, 1],
-                                  [4, 18, 18, 18, 5, 4, 5]]),
-             'mask': torch.tensor([[False, True, True, True, False, False, False],
-                                   [False, True, True, True, False, False, False],
-                                   [False, True, True, True, False, False, False],
-                                   [False, True, True, True, False, False, False]])}
+             'msa': torch.tensor([[3, 5, 18, 18, 18, 4, 3],
+                                  [3, 3, 18, 18, 18, 4, 3],
+                                  [5, 5, 18, 18, 18, 4, 1],
+                                  [4, 5, 18, 18, 18, 4, 5]]),
+             'mask': torch.tensor([[False, False, True, True, True, False, False],
+                                   [False, False, True, True, True, False, False],
+                                   [False, False, True, True, True, False, False],
+                                   [False, False, True, True, True, False, False]])}
 
     y_ref = {'inpainting': torch.tensor(
-        [5, 4, 5, 3, 4, 1, 5, 4, 3, 5, 4, 5])}
+        [4, 5, 5, 4, 1, 5, 4, 3, 5, 4, 5, 5])}
+
+    print("x_aux", x['aux_features'])
+    print("x_msa", x['msa'])
+    print("x_mask", x['mask'])
+    print("y", y['inpainting'])
 
     testing.assert_allclose(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
@@ -122,15 +137,13 @@ def test_subsampling(basic_msa):
 
     sampled_ref = MultipleSeqAlignment(
         [
+            SeqRecord(Seq("CCUACU."), id='seq3'),
             SeqRecord(Seq("UCUCCUC"), id='seq4'),
             SeqRecord(Seq("ACUCCUA"), id='seq1'),
-            SeqRecord(Seq("CCUACU."), id='seq3'),
         ]
     )
 
+    print(sampled)
+
     for idx in range(len(sampled)):
         assert sampled[idx].seq == sampled_ref[idx].seq
-
-
-if __name__ == '__main__':
-    test_msa_mask_token()
