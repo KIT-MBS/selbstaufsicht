@@ -9,9 +9,11 @@ from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize
 
 
-def pytest_configure(config):
+@pytest.fixture(autouse=True)
+def fix_seed():
     torch.manual_seed(42)
-    
+    yield
+
 
 @pytest.fixture
 def basic_msa():
