@@ -91,7 +91,7 @@ class AxialSelfAttention2d(nn.Module):
         if padding_mask is not None:
             assert padding_mask.dtype == torch.bool
             assert padding_mask.size() == (B, S, L)
-            padding_mask = padding_mask.view(B, S, L, 1).expand(-1, -1, -1, self.num_heads).reshape(B, S, L, self.num_heads)
+            padding_mask = padding_mask.view(B, 1, S, 1, L).expand(-1, self.num_heads, -1, -1, -1).reshape(B, self.num_heads, S, 1, L)
             attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
             attn_mask.masked_fill_(padding_mask, float('-inf'))  # [B, S, L, H]
 
@@ -104,7 +104,10 @@ class AxialSelfAttention2d(nn.Module):
         row_attn = torch.einsum('bhcsi, bhcsj->bhsij', q, k)  # [B, H, S, L, L]
         row_attn = torch.einsum('bsihc, bsjhc->bhsij', q, k)  # [B, H, S, L, L]
         if attn_mask is not None:
-            row_attn += attn_mask.unsqueeze(-2)
+            row_attn_mask = attn_mask.expand(-1, -1, -1, L, -1)
+            print("row_attn", row_attn.shape)
+            print("row_attn_mask", row_attn_mask.shape)
+            row_attn += row_attn_mask
         row_attn = row_attn.softmax(dim=-1)
         row_attn = self.dropout1(row_attn)
         row_out = torch.einsum('bhsij, bsjhd->bsihd', row_attn, v)
@@ -122,7 +125,10 @@ class AxialSelfAttention2d(nn.Module):
         # NOTE col attn
         col_attn = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, S, S, L]
         if attn_mask is not None:
-            row_attn += attn_mask.unsqueeze(-3)
+            col_attn_mask = attn_mask.expand(-1, -1, -1, S, -1)
+            print("col_attn", col_attn.shape)
+            print("col_attn_mask", col_attn_mask.shape)
+            col_attn += col_attn_mask
         col_attn = col_attn.softmax(dim=-2)
         col_attn = self.dropout2(col_attn)
         col_out = torch.einsum('bhijl, bjlhd->bilhd', col_attn, v)
