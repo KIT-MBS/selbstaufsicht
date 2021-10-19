@@ -168,6 +168,34 @@ def test_TiedAxialAttention2d():
     testing.assert_allclose(col_attn, col_attn_ref, atol=1e-4, rtol=1e-3)
     
 
+def test_padding_mask_TiedAxialAttention2d():
+    num_heads = 2
+    dim_head = 3
+    bs = 2
+    embed_dim = num_heads * dim_head
+    S = 2
+    L = 3
+    
+    pad_B = 0
+    pad_L = -1
+    
+    x = torch.rand(bs, S, L, embed_dim)
+    padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
+    padding_mask[pad_B, :, pad_L] = True
+    
+    module = TiedAxialSelfAttention2d(num_heads, dim_head)
+    _, (row_attn, col_attn) = module(x, padding_mask)
+    
+    row_attn_pad = row_attn[pad_B, :, 0, pad_L, :].isnan()
+    col_attn_pad = col_attn[pad_B, :, :, :, pad_L].isnan()
+    
+    row_attn_pad_ref = torch.ones((num_heads, L), dtype=torch.bool)
+    col_attn_pad_ref = torch.ones((num_heads, S, S), dtype=torch.bool)
+    
+    testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
+    testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
+
+
 # NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
 def test_Transmorpher():
     bs, S, L = 1, 2, 2

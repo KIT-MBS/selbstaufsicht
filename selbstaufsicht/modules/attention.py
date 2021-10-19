@@ -185,7 +185,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         # NOTE row attn
         row_attn = torch.einsum('bsihc, bsjhc->bhij', q, k)  # [B, H, L, L]
         if attn_mask is not None:
-            row_attn += attn_mask.sum(-2).unsqueeze(-1)
+            row_attn += attn_mask.sum(-2).unsqueeze(-1).expand(-1, -1, -1, L)
         row_attn = row_attn.unsqueeze(2)  # [B, H, 1, L ,L]
         row_attn = row_attn.softmax(dim=-1)  # [B, H, 1, L, L]
         row_attn = self.dropout1(row_attn)
@@ -203,7 +203,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         # NOTE col attn
         col_attn = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, S, S, L]
         if attn_mask is not None:
-            row_attn += attn_mask.unsqueeze(-3)
+            col_attn += attn_mask.unsqueeze(-3).expand(-1, -1, S, -1, -1)
 
         col_attn = col_attn.softmax(dim=-2)
         col_attn = self.dropout2(col_attn)
