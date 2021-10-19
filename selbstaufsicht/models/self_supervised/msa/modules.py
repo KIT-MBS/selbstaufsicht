@@ -9,7 +9,7 @@ class InpaintingHead(nn.Module):
         super(InpaintingHead, self).__init__()
         # TODO assuming the last layer in an encoder block is a nonlinearity
         self.num_classes = num_classes
-        self.proj = nn.Conv2d(d, num_classes, kernel_size=1, **factory_kwargs)
+        self.proj = nn.Linear(d, num_classes, **factory_kwargs)
 
     # TODO the output is basically flattened (of  shape (-1, num_classes)) since the number of masked tokens per sample in the batch is not the same
     def forward(self, latent, x):
