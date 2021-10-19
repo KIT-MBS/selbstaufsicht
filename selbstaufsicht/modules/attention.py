@@ -105,8 +105,6 @@ class AxialSelfAttention2d(nn.Module):
         row_attn = torch.einsum('bsihc, bsjhc->bhsij', q, k)  # [B, H, S, L, L]
         if attn_mask is not None:
             row_attn_mask = attn_mask.expand(-1, -1, -1, L, -1)
-            print("row_attn", row_attn.shape)
-            print("row_attn_mask", row_attn_mask.shape)
             row_attn += row_attn_mask
         row_attn = row_attn.softmax(dim=-1)
         row_attn = self.dropout1(row_attn)
@@ -126,8 +124,6 @@ class AxialSelfAttention2d(nn.Module):
         col_attn = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, S, S, L]
         if attn_mask is not None:
             col_attn_mask = attn_mask.expand(-1, -1, -1, S, -1)
-            print("col_attn", col_attn.shape)
-            print("col_attn_mask", col_attn_mask.shape)
             col_attn += col_attn_mask
         col_attn = col_attn.softmax(dim=-2)
         col_attn = self.dropout2(col_attn)
