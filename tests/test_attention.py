@@ -41,7 +41,33 @@ def test_MultiHeadAttention2d():
 
     testing.assert_allclose(pred, ref)
     testing.assert_allclose(attn.sum(dim=1) / num_heads, ref_attn)
+    
 
+def test_padding_mask_MultiHeadAttention2d():
+    num_heads = 2
+    dim_head = 3
+    bs = 2
+    embed_dim = num_heads * dim_head
+    S = 2
+    L = 3
+    
+    pad_B = 0
+    # must be stated as negative (inverse) index
+    pad_L = -1
+    
+    x = torch.rand(bs, S, L, embed_dim)
+    padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
+    padding_mask[pad_B, :, pad_L] = True
+    
+    module = MultiHeadSelfAttention2d(num_heads, dim_head)
+    _, attn = module(x, padding_mask)
+    
+    attn_pad_ref = torch.zeros((num_heads, S * L))
+    
+    for s in range(1, S+1):
+        attn_pad = attn[pad_B, :, :, s * L + pad_L]
+        testing.assert_equal(attn_pad, attn_pad_ref, check_stride=False)
+    
 
 # NOTE: Comparison of AxialAttention and TiedAxialAttention does not work, since SumReduce(Softmax(x)) != Softmax(SumReduce(x))
 # NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
@@ -112,7 +138,7 @@ def test_TiedAxialAttention2d():
     testing.assert_allclose(out, out_ref, atol=1e-4, rtol=1e-3)
     testing.assert_allclose(row_attn, row_attn_ref, atol=1e-4, rtol=1e-3)
     testing.assert_allclose(col_attn, col_attn_ref, atol=1e-4, rtol=1e-3)
-
+    
 
 # NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
 def test_Transmorpher():
@@ -135,8 +161,3 @@ def test_Transmorpher():
                               [ 0.0377, -1.1410, 1.5734, -0.4701]]]])
 
     testing.assert_allclose(out, out_ref, atol=1e-4, rtol=1e-3)
-
-
-# TODO: Complete test
-def test_padding_mask_axial():
-    pass
