@@ -44,6 +44,7 @@ def test_MultiHeadAttention2d():
 
 
 # NOTE: Comparison of AxialAttention and TiedAxialAttention does not work, since SumReduce(Softmax(x)) != Softmax(SumReduce(x))
+# NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
 def test_AxialAttention2d():
     bs, S, L = 1, 2, 2
     num_heads, dim_head = 2, 2
@@ -80,6 +81,7 @@ def test_AxialAttention2d():
     testing.assert_allclose(col_attn, col_attn_ref, atol=1e-4, rtol=1e-3)
 
 
+# NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
 def test_TiedAxialAttention2d():
     bs, S, L = 1, 2, 2
     num_heads, dim_head = 2, 2
@@ -112,6 +114,7 @@ def test_TiedAxialAttention2d():
     testing.assert_allclose(col_attn, col_attn_ref, atol=1e-4, rtol=1e-3)
 
 
+# NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
 def test_Transmorpher():
     bs, S, L = 1, 2, 2
     num_heads, dim_head = 2, 2
