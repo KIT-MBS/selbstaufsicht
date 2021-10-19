@@ -1,0 +1,7 @@
+#Reference Database Uniref (82GB)
+#03-2018 
+https://ftp.uniprot.org/pub/databases/uniprot/previous_releases/release-2018_03/uniref/uniref2018_03.tar.gz
+
+#Cluster Database Uniclust for HHSuite (22GB)
+#10-2017
+http://gwdu111.gwdg.de/~compbiol/uniclust/2017_10/uniclust30_2017_10_hhsuite.tar.gz
