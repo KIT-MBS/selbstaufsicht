@@ -5,7 +5,7 @@ name: CI Job
 
 on:
   push:
-    branches: [ test-base, main ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
