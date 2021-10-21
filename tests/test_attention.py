@@ -186,11 +186,11 @@ def test_padding_mask_TiedAxialAttention2d():
     module = TiedAxialSelfAttention2d(num_heads, dim_head)
     _, (row_attn, col_attn) = module(x, padding_mask)
     
-    row_attn_pad = row_attn[pad_B, :, 0, pad_L, :].isnan()
-    col_attn_pad = col_attn[pad_B, :, :, :, pad_L].isnan()
+    row_attn_pad = row_attn[pad_B, :, 0, :, pad_L]
+    col_attn_pad = col_attn[pad_B, :, :, :, pad_L]
     
-    row_attn_pad_ref = torch.ones((num_heads, L), dtype=torch.bool)
-    col_attn_pad_ref = torch.ones((num_heads, S, S), dtype=torch.bool)
+    row_attn_pad_ref = torch.zeros((num_heads, L))
+    col_attn_pad_ref = torch.zeros((num_heads, S, S))
     
     testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
     testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
