@@ -40,17 +40,17 @@ def lehmer_encode(i, n):
         >>> lehmer_encode(10,7)
         tensor([0, 1, 2, 4, 6, 3, 5], dtype=torch.int32)
     """
-    pos = torch.empty((n-1,), dtype=torch.int32)
-    for j in range(2, n+1):
+    pos = torch.empty((n - 1,), dtype=torch.int32)
+    for j in range(2, n + 1):
         ii = i // j
-        pos[n-j] = i - ii * j
+        pos[n - j] = i - ii * j
         i = ii
 
     assert(i == 0)
 
     init = torch.arange(n, dtype=torch.int32)
     ret = torch.empty((n,), dtype=torch.int32)
-    for j in range(n-1):
+    for j in range(n - 1):
         jj = 0
         for k in range(n):
             if init[k] == -1:
@@ -64,6 +64,6 @@ def lehmer_encode(i, n):
     for k in range(n):
         if init[k] == -1:
             continue
-        ret[n-1] = k
+        ret[n - 1] = k
 
     return ret
