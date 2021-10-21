@@ -126,10 +126,10 @@ def test_padding_mask_AxialAttention2d():
     _, (row_attn, col_attn) = module(x, padding_mask)
     
     row_attn_pad = row_attn[pad_B, :, :, :, pad_L]
-    col_attn_pad = col_attn[pad_B, :, :, :, pad_L].isnan()
+    col_attn_pad = col_attn[pad_B, :, :, :, pad_L]
     
     row_attn_pad_ref = torch.zeros((num_heads, S, L))
-    col_attn_pad_ref = torch.ones((num_heads, S, S), dtype=torch.bool)
+    col_attn_pad_ref = torch.zeros((num_heads, S, S))
     
     testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
     testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
