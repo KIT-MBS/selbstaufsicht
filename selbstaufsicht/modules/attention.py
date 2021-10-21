@@ -98,7 +98,6 @@ class AxialSelfAttention2d(nn.Module):
         v = v.view(B, S, L, self.num_heads, self.dim_head)
 
         # NOTE row attn
-        row_attn = torch.einsum('bhcsi, bhcsj->bhsij', q, k)  # [B, H, S, L, L]
         row_attn = torch.einsum('bsihc, bsjhc->bhsij', q, k)  # [B, H, S, L, L]
         if padding_mask is not None:
             attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
