@@ -149,3 +149,7 @@ def test_subsampling(basic_msa):
 
     for idx in range(len(sampled)):
         assert sampled[idx].seq == sampled_ref[idx].seq
+
+
+def test_collator():
+    raise "do after test base merge"

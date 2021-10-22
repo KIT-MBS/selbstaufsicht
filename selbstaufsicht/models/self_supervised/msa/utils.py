@@ -77,33 +77,31 @@ class MSACollator():
         input contains: {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor}
         target contains one or more of {'inpainting': 1dtensor, 'jigsaw': int, 'contrastive': tensor}
         """
-        # NOTE this part is the same as default
         elem = batch[0]
         if isinstance(elem, collections.abc.Mapping):
             return {key: self.collate_dict[key]([sample[key] for sample in batch]) for key in elem}
-        elif isinstance(elem, collections.abc.Sequence):
-            # check to make sure that the elements in batch have consistent size
-            it = iter(batch)
-            elem_size = len(next(it))
-            if not all(len(elem) == elem_size for elem in it):
-                raise RuntimeError('each element in list of batch should be of equal size')
-            transposed = zip(*batch)
-            return [self(samples) for samples in transposed]
-        raise ValueError()
+        else:
+            return torch.utils.data._utils.default_collate(batch)
 
 
 def _pad_collate2d(batch):
     '''
-    x: sequence of 2d tensors
+    batch: sequence of 2d tensors, that may have different dimensions
     '''
-    raise
     B = len(batch)
     S = max([sample.size(0) for sample in batch])
     L = max([sample.size(1) for sample in batch])
 
     out = torch.zeros(B, S, L)
+    for i, sample in enumerate(batch):
+        sample_S, sample_L = sample.size()
+        out[i, :sample_S, sample_L] = sample[:, :]
     return out
 
 
 def _flatten_collate(batch):
-    raise
+    '''
+    batch: sequence of 1d tensors, that may be of different lengt
+    '''
+    # TODO optimize for multiple workers
+    return torch.cat(batch, 0)
