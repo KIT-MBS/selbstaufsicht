@@ -15,7 +15,7 @@ def test_msa_tokenize(tokenized_msa):
                                       [3, 3, 4, 1, 5, 4, 3],
                                       [5, 5, 4, 3, 5, 4, 1],
                                       [4, 5, 4, 5, 5, 4, 5]])
-    testing.assert_equal(tokenized_msa, tokenized_msa_ref)
+    testing.assert_close(tokenized_msa, tokenized_msa_ref, rtol=0, atol=0)
 
 
 def test_msa_mask_token(tokenized_msa):
@@ -40,11 +40,11 @@ def test_msa_mask_token(tokenized_msa):
     y_ref = {'inpainting': torch.tensor(
         [4, 5, 3, 4, 5, 5, 1, 4, 5, 5, 5, 4, 5])}
 
-    testing.assert_allclose(
+    testing.assert_close(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
-    testing.assert_equal(x['msa'], x_ref['msa'])
-    testing.assert_equal(x['mask'], x_ref['mask'])
-    testing.assert_equal(y['inpainting'], y_ref['inpainting'])
+    testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
+    testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
+    testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
 
 
 def test_msa_mask_column(tokenized_msa):
@@ -69,11 +69,11 @@ def test_msa_mask_column(tokenized_msa):
     y_ref = {'inpainting': torch.tensor(
         [3, 4, 5, 3, 3, 4, 5, 3, 5, 4, 5, 1, 4, 4, 5, 5])}
 
-    testing.assert_allclose(
+    testing.assert_close(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
-    testing.assert_equal(x['msa'], x_ref['msa'])
-    testing.assert_equal(x['mask'], x_ref['mask'])
-    testing.assert_equal(y['inpainting'], y_ref['inpainting'])
+    testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
+    testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
+    testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
 
 
 def test_msa_mask_block(tokenized_msa):
@@ -98,11 +98,11 @@ def test_msa_mask_block(tokenized_msa):
     y_ref = {'inpainting': torch.tensor(
         [4, 5, 5, 4, 1, 5, 4, 3, 5, 4, 5, 5])}
 
-    testing.assert_allclose(
+    testing.assert_close(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
-    testing.assert_equal(x['msa'], x_ref['msa'])
-    testing.assert_equal(x['mask'], x_ref['mask'])
-    testing.assert_equal(y['inpainting'], y_ref['inpainting'])
+    testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
+    testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
+    testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
 
 
 def test_inpainting_head():
@@ -132,7 +132,7 @@ def test_inpainting_head():
                             [0.5564, 0.4920, -0.2069, -0.0589],
                             [0.7314, 0.1561, -0.0317, -0.2996]])
     
-    testing.assert_allclose(out, out_ref, atol=1e-4, rtol=1e-3)
+    testing.assert_close(out, out_ref, atol=1e-4, rtol=1e-3)
 
 
 def test_subsampling(basic_msa):
