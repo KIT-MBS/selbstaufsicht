@@ -53,21 +53,36 @@ def test_padding_mask_MultiHeadAttention2d():
     
     pad_B = 0
     # must be stated as negative (inverse) index
+    pad_S = -1
     pad_L = -1
     
     x = torch.rand(bs, S, L, embed_dim)
+    module = MultiHeadSelfAttention2d(num_heads, dim_head)
+    
+    # test full padding in S dimension
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
     padding_mask[pad_B, :, pad_L] = True
-    
-    module = MultiHeadSelfAttention2d(num_heads, dim_head)
     _, attn = module(x, padding_mask)
-    
     attn_pad_ref = torch.zeros((num_heads, S * L))
-    
     for s in range(1, S+1):
         attn_pad = attn[pad_B, :, :, s * L + pad_L]
         testing.assert_equal(attn_pad, attn_pad_ref, check_stride=False)
+        
+    # test full padding in L dimension
+    padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
+    padding_mask[pad_B, pad_S, :] = True
+    _, attn = module(x, padding_mask)
+    attn_pad_ref = torch.zeros((num_heads, S * L, L))
+    attn_pad = attn[pad_B, :, :, (S + pad_S) * L : (S + pad_S + 1) * L]
+    testing.assert_equal(attn_pad, attn_pad_ref, check_stride=False)
     
+    # test full padding in S and L dimensions
+    padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
+    padding_mask[pad_B, pad_S, pad_L] = True
+    _, attn = module(x, padding_mask)
+    attn_pad_ref = torch.zeros((num_heads, S * L))
+    attn_pad = attn[pad_B, :, :, (S + pad_S + 1) * L + pad_L]
+    testing.assert_equal(attn_pad, attn_pad_ref, check_stride=False)
 
 # NOTE: Comparison of AxialAttention and TiedAxialAttention does not work, since SumReduce(Softmax(x)) != Softmax(SumReduce(x))
 # NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
@@ -120,35 +135,40 @@ def test_padding_mask_AxialAttention2d():
     pad_L = -1
     
     x = torch.rand(bs, S, L, embed_dim)
+    module = AxialSelfAttention2d(num_heads, dim_head)
+    
+    # test full padding in S dimension
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
     padding_mask[pad_B, :, pad_L] = True
-    
-    module = AxialSelfAttention2d(num_heads, dim_head)
     _, (row_attn, col_attn) = module(x, padding_mask)
-    
     row_attn_pad = row_attn[pad_B, :, :, :, pad_L]
     col_attn_pad = col_attn[pad_B, :, :, :, pad_L]
-    
     row_attn_pad_ref = torch.zeros((num_heads, S, L))
     col_attn_pad_ref = torch.zeros((num_heads, S, S))
-    
     testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
     testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
     
+    # test full padding in L dimension
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
     padding_mask[pad_B, pad_S, :] = True
-    
     _, (row_attn, col_attn) = module(x, padding_mask)
-    
     row_attn_pad = row_attn[pad_B, :, pad_S, :, :]
     col_attn_pad = col_attn[pad_B, :, :, pad_S, :]
-    
     row_attn_pad_ref = torch.zeros((num_heads, L, L))
     col_attn_pad_ref = torch.zeros((num_heads, S, L))
-    
     testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
     testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
 
+    # test full padding in S and L dimensions
+    padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
+    padding_mask[pad_B, pad_S, pad_L] = True
+    _, (row_attn, col_attn) = module(x, padding_mask)
+    row_attn_pad = row_attn[pad_B, :, pad_S, :, pad_L]
+    col_attn_pad = col_attn[pad_B, :, :, pad_S, pad_L]
+    row_attn_pad_ref = torch.zeros((num_heads, L))
+    col_attn_pad_ref = torch.zeros((num_heads, S))
+    testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
+    testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
 
 # NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
 def test_TiedAxialAttention2d():
@@ -192,21 +212,42 @@ def test_padding_mask_TiedAxialAttention2d():
     L = 3
     
     pad_B = 0
+    pad_S = -1
     pad_L = -1
     
     x = torch.rand(bs, S, L, embed_dim)
+    module = TiedAxialSelfAttention2d(num_heads, dim_head)
+    
+    # test full padding in S dimension
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
     padding_mask[pad_B, :, pad_L] = True
-    
-    module = TiedAxialSelfAttention2d(num_heads, dim_head)
     _, (row_attn, col_attn) = module(x, padding_mask)
-    
     row_attn_pad = row_attn[pad_B, :, 0, :, pad_L]
     col_attn_pad = col_attn[pad_B, :, :, :, pad_L]
-    
     row_attn_pad_ref = torch.zeros((num_heads, L))
     col_attn_pad_ref = torch.zeros((num_heads, S, S))
+    testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
+    testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
     
+    # test full padding in L dimension
+    padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
+    padding_mask[pad_B, pad_S, :] = True
+    _, (row_attn, col_attn) = module(x, padding_mask)
+    row_attn_pad = row_attn[pad_B, :, 0, :, :]
+    col_attn_pad = col_attn[pad_B, :, :, pad_S, :]
+    row_attn_pad_ref = torch.zeros((num_heads, L, L))
+    col_attn_pad_ref = torch.zeros((num_heads, S, L))
+    testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
+    testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
+    
+    # test full padding in S and L dimension
+    padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
+    padding_mask[pad_B, pad_S, pad_L] = True
+    _, (row_attn, col_attn) = module(x, padding_mask)
+    row_attn_pad = row_attn[pad_B, :, 0, :, pad_L]
+    col_attn_pad = col_attn[pad_B, :, :, pad_S, pad_L]
+    row_attn_pad_ref = torch.zeros((num_heads, L))
+    col_attn_pad_ref = torch.zeros((num_heads, S))
     testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
     testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
 
