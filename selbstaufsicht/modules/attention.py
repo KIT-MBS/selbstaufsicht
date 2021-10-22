@@ -44,7 +44,7 @@ class MultiHeadSelfAttention2d(nn.Module):
         k = k.view(B, S * L, self.num_heads, self.dim_head)
         v = v.view(B, S * L, self.num_heads, self.dim_head)
 
-        q = q * (self.embed_dim ** -0.5)
+        q = q * self.dim_head ** -0.5
         attn = torch.einsum('bihc,bjhc->bhij', q, k)  # [B, H, S*L, S*L]
         if attn_mask is not None:
             attn = attn.view(B, self.num_heads, S, L, S, L)
@@ -100,7 +100,7 @@ class AxialSelfAttention2d(nn.Module):
         k = k.view(B, S, L, self.num_heads, self.dim_head)
         v = v.view(B, S, L, self.num_heads, self.dim_head)
 
-        q = q * ((self.embed_dim * S) ** -0.5)
+        q = q * self.dim_head ** -0.5
         # NOTE row attn
         row_attn = torch.einsum('bsihc, bsjhc->bhsij', q, k)  # [B, H, S, L, L]
         if attn_mask is not None:
@@ -119,7 +119,7 @@ class AxialSelfAttention2d(nn.Module):
         k = k.view(B, S, L, self.num_heads, self.dim_head)
         v = v.view(B, S, L, self.num_heads, self.dim_head)
 
-        q = q * ((self.embed_dim * S) ** -0.5)
+        q = q * self.dim_head ** -0.5
         # NOTE col attn
         col_attn = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, S, S, L]
         if attn_mask is not None:
@@ -175,7 +175,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         k = k.view(B, S, L, self.num_heads, self.dim_head)
         v = v.view(B, S, L, self.num_heads, self.dim_head)
 
-        q = q * ((self.embed_dim * S) ** -0.5)
+        q = q * (self.dim_head * S) ** -0.5
         # NOTE row attn
         row_attn = torch.einsum('bsihc, bsjhc->bhij', q, k)  # [B, H, L, L]
         if attn_mask is not None:
@@ -194,7 +194,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         k = k.view(B, S, L, self.num_heads, self.dim_head)
         v = v.view(B, S, L, self.num_heads, self.dim_head)
 
-        q = q * ((self.embed_dim * S) ** -0.5)
+        q = q * self.dim_head ** -0.5
         # NOTE col attn
         col_attn = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, S, S, L]
         if attn_mask is not None:
