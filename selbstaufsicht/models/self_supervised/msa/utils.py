@@ -1,3 +1,5 @@
+import torch
+import collections
 from torch.nn import CrossEntropyLoss
 from torch.nn import ModuleDict
 from selbstaufsicht import transforms
@@ -60,28 +62,48 @@ def get_tasks(tasks, dim, **kwargs):
 
 class MSACollator():
     def __init__(self):
-        pass
+        self.collate_dict = {
+            'msa': _pad_collate2d,
+            'mask': _pad_collate2d,
+            'aux_features': _pad_collate2d,
+            'inpainting': _flatten_collate,
+            'jigsaw': torch.utils.data._utils.default_collate,
+            'contrastive': torch.utils.data._utils.default_collate,
+        }
 
-    def __call__(self, x):
+    def __call__(self, batch):
         """
         x: list of tuples of dicts: e.g. [({input1}, {target1}), ({input2}, {target2})]
         input contains: {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor}
         target contains one or more of {'inpainting': 1dtensor, 'jigsaw': int, 'contrastive': tensor}
         """
-        # TODO msas, masks, and aux_features have to be padded to fit and stacked
-        # TODO inpainting and contrastive targets are cated to a 1d tensor,  jigsaw has to be stacked
+        # NOTE this part is the same as default
+        elem = batch[0]
+        if isinstance(elem, collections.abc.Mapping):
+            return {key: self.collate_dict[key]([sample[key] for sample in batch]) for key in elem}
+        elif isinstance(elem, collections.abc.Sequence):
+            # check to make sure that the elements in batch have consistent size
+            it = iter(batch)
+            elem_size = len(next(it))
+            if not all(len(elem) == elem_size for elem in it):
+                raise RuntimeError('each element in list of batch should be of equal size')
+            transposed = zip(*batch)
+            return [self(samples) for samples in transposed]
+        raise ValueError()
 
-        pass
-        # xs = [sample[0] for sample in x]
-        # ys = [sample[1] for sample in x]
 
-        # out_xs = {}
-        # out_ys = {}
+def _pad_collate2d(batch):
+    '''
+    x: sequence of 2d tensors
+    '''
+    raise
+    B = len(batch)
+    S = max([sample.size(0) for sample in batch])
+    L = max([sample.size(1) for sample in batch])
 
-        # return out_xs, out_ys
+    out = torch.zeros(B, S, L)
+    return out
 
-    def _pad_collate(x):
-        pass
 
-    def _flat_collate(x):
-        pass
+def _flatten_collate(batch):
+    raise
