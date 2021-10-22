@@ -62,3 +62,7 @@ def test_subsampling():
 
     sampled = sampler(alignment)
     assert sampled
+
+
+def test_collator():
+    raise "do after test base merge"
