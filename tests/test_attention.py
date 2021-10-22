@@ -116,6 +116,7 @@ def test_padding_mask_AxialAttention2d():
     L = 3
     
     pad_B = 0
+    pad_S = -1
     pad_L = -1
     
     x = torch.rand(bs, S, L, embed_dim)
@@ -130,6 +131,20 @@ def test_padding_mask_AxialAttention2d():
     
     row_attn_pad_ref = torch.zeros((num_heads, S, L))
     col_attn_pad_ref = torch.zeros((num_heads, S, S))
+    
+    testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
+    testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
+    
+    padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
+    padding_mask[pad_B, pad_S, :] = True
+    
+    _, (row_attn, col_attn) = module(x, padding_mask)
+    
+    row_attn_pad = row_attn[pad_B, :, pad_S, :, :]
+    col_attn_pad = col_attn[pad_B, :, :, pad_S, :]
+    
+    row_attn_pad_ref = torch.zeros((num_heads, L, L))
+    col_attn_pad_ref = torch.zeros((num_heads, S, L))
     
     testing.assert_equal(row_attn_pad, row_attn_pad_ref, check_stride=False)
     testing.assert_equal(col_attn_pad, col_attn_pad_ref, check_stride=False)
