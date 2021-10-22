@@ -37,7 +37,7 @@ class MSAModel(pl.LightningModule):
         assert d - aux_input_dim > 0
         self.embedding = nn.Embedding(in_dict_size, d - aux_input_dim, padding_idx=padding_token)
         block = TransmorpherLayer2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
-        self.backbone = Transmorpher2d(block, num_layers, torch.nn.LayerNorm((dim_head * num_heads,), eps=layer_norm_eps, **factory_kwargs))
+        self.backbone = Transmorpher2d(block, num_layers, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
         if task_heads is not None:
             self.tasks = [t for t in task_heads.keys()]
         self.heads = task_heads

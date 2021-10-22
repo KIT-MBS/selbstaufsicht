@@ -8,13 +8,13 @@ from torchinfo import summary
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
-from selbstaufsicht.models.self_supervised.msa.utils import get_tasks  # , MSACollator
+from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, MSACollator
 
 # training parameters
 epochs = 10
 # NOTE single GPU for now
 # batch_size = 512 // 32
-batch_size = 1
+batch_size = 2
 lr = 0.0001
 warmup = 16000
 # TODO implement msa subsampling hamming maximizing
@@ -47,8 +47,8 @@ model = models.self_supervised.MSAModel(
 )
 
 summary(model)
-dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
-# dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=MSACollator())
+# dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
+dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=MSACollator())
 print('run')
 trainer = Trainer(max_epochs=epochs, gpus=1)
 # trainer = Trainer(max_epochs=epochs)
