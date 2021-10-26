@@ -117,12 +117,12 @@ class ExplicitPositionalEncoding():
 
         msa = x['msa']
         size = msa.size(self.axis)
-        absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(0)
+        absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
         relative = absolute / size
         if 'aux_features' not in x:
-            x['aux_features'] = torch.cat((absolute, relative), dim=0)
+            x['aux_features'] = torch.cat((absolute, relative), dim=-1)
         else:
-            x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=0)
+            x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=-1)
 
         return x, target
 

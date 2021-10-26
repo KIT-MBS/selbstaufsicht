@@ -8,6 +8,7 @@ from Bio.Align import MultipleSeqAlignment
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.modules import InpaintingHead
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, RandomMSASubsampling
+from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
 
 def test_msa_tokenize(tokenized_msa):
@@ -26,8 +27,13 @@ def test_msa_mask_token(tokenized_msa):
     x, y = masking(tokenized_msa)
     x, y = positional((x, y))
 
-    x_ref = {'aux_features': torch.tensor([[[0.0000, 1.0000, 2.0000, 3.0000, 4.0000, 5.0000, 6.0000]],
-                                           [[0.0000, 0.1429, 0.2857, 0.4286, 0.5714, 0.7143, 0.8571]]]),
+    x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
+                                            [1.0000, 0.1429],
+                                            [2.0000, 0.2857],
+                                            [3.0000, 0.4286],
+                                            [4.0000, 0.5714],
+                                            [5.0000, 0.7143],
+                                            [6.0000, 0.8571]]]),
              'msa': torch.tensor([[ 3,  5, 18,  5, 18,  4, 18],
                                   [ 3,  3, 18,  1,  5,  4,  3],
                                   [ 5, 18,  4,  3, 18,  4, 18],
@@ -55,8 +61,13 @@ def test_msa_mask_column(tokenized_msa):
     x, y = masking(tokenized_msa)
     x, y = positional((x, y))
 
-    x_ref = {'aux_features': torch.tensor([[[0.0000, 1.0000, 2.0000, 3.0000, 4.0000, 5.0000, 6.0000]],
-                                           [[0.0000, 0.1429, 0.2857, 0.4286, 0.5714, 0.7143, 0.8571]]]),
+    x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
+                                            [1.0000, 0.1429],
+                                            [2.0000, 0.2857],
+                                            [3.0000, 0.4286],
+                                            [4.0000, 0.5714],
+                                            [5.0000, 0.7143],
+                                            [6.0000, 0.8571]]]),
              'msa': torch.tensor([[18, 5, 18, 5, 18, 4, 18],
                                   [18, 3, 18, 1, 18, 4, 18],
                                   [18, 5, 18, 3, 18, 4, 18],
@@ -84,8 +95,13 @@ def test_msa_mask_block(tokenized_msa):
     x, y = masking(tokenized_msa)
     x, y = positional((x, y))
 
-    x_ref = {'aux_features': torch.tensor([[[0.0000, 1.0000, 2.0000, 3.0000, 4.0000, 5.0000, 6.0000]],
-                                           [[0.0000, 0.1429, 0.2857, 0.4286, 0.5714, 0.7143, 0.8571]]]),
+    x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
+                                            [1.0000, 0.1429],
+                                            [2.0000, 0.2857],
+                                            [3.0000, 0.4286],
+                                            [4.0000, 0.5714],
+                                            [5.0000, 0.7143],
+                                            [6.0000, 0.8571]]]),
              'msa': torch.tensor([[3, 5, 18, 18, 18, 4, 3],
                                   [3, 3, 18, 18, 18, 4, 3],
                                   [5, 5, 18, 18, 18, 4, 1],
@@ -131,7 +147,7 @@ def test_inpainting_head():
                             [0.7092, 0.4774,  0.0135, -0.2209],
                             [0.5564, 0.4920, -0.2069, -0.0589],
                             [0.7314, 0.1561, -0.0317, -0.2996]])
-    
+
     testing.assert_close(out, out_ref, atol=1e-4, rtol=1e-3)
 
 
@@ -151,6 +167,59 @@ def test_subsampling(basic_msa):
         assert sampled[idx].seq == sampled_ref[idx].seq
 
 
-# TODO: Complete test
-def test_collator():
-    pass
+def test_pad_collate_nd():
+    # Test 2d
+    shapes = [(4, 3), (3, 4)]
+    batch = []
+    for idx in range(len(shapes)):
+        batch.append(torch.ones((shapes[idx])))
+    out = _pad_collate_nd(batch)
+    out_ref = torch.ones((len(shapes), 4, 4))
+    out_ref[0, :, -1] = 0.
+    out_ref[1, -1, :] = 0.
+    testing.assert_close(out, out_ref, atol=0, rtol=0)
+
+    # Test 3d
+    shapes = [(6, 4, 2), (1, 3, 5)]
+    batch = []
+    for idx in range(len(shapes)):
+        batch.append(torch.ones((shapes[idx])))
+    out = _pad_collate_nd(batch)
+    out_ref = torch.ones((len(shapes), 6, 4, 5))
+    out_ref[0, :, :, -3:] = 0.
+    out_ref[1, -5:, :, :] = 0.
+    out_ref[1, :, -1:, :] = 0.
+    testing.assert_close(out, out_ref, atol=0, rtol=0)
+
+
+def test_msa_collator():
+    collator = MSACollator()
+    B = 2
+    S = [5, 4]
+    L = [6, 7]
+    inpainting = [3, 2]
+
+    # TODO: Test jigsaw and other tasks as well
+    data = [({'msa': torch.zeros((S[idx], L[idx]), dtype=torch.int),
+              'mask': torch.zeros((S[idx], L[idx]), dtype=torch.bool),
+              'aux_features': torch.zeros((1, L[idx], 2))},
+             {'inpainting': torch.zeros((inpainting[idx]), dtype=torch.int64)})
+            for idx in range(B)]
+
+    x, target = collator(data)
+
+    x_ref = {'msa': torch.zeros((B, max(S), max(L)), dtype=torch.int),
+             'mask': torch.zeros((B, max(S), max(L)), dtype=torch.bool),
+             'aux_features': torch.zeros((B, 1, max(L), 2))}
+    target_ref = {'inpainting': torch.zeros((sum(inpainting), ), dtype=torch.int64)}
+    
+    for key in x:
+        if x[key].is_floating_point():
+            testing.assert_close(x[key], x_ref[key])
+        else:
+            testing.assert_close(x[key], x_ref[key], atol=0, rtol=0)
+    for key in target:
+        if target[key].is_floating_point():
+            testing.assert_close(target[key], target_ref[key])
+        else:
+            testing.assert_close(target[key], target_ref[key], atol=0, rtol=0)
