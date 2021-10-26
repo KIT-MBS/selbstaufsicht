@@ -63,12 +63,12 @@ def get_tasks(tasks, dim, **kwargs):
 class MSACollator():
     def __init__(self):
         self.collate_dict = {
-            'msa': _pad_collate2d,
-            'mask': _pad_collate2d,
-            'aux_features': _pad_collate2d,
+            'msa': _pad_collate_nd,
+            'mask': _pad_collate_nd,
+            'aux_features': _pad_collate_nd,
             'inpainting': _flatten_collate,
-            'jigsaw': torch.utils.data._utils.default_collate,
-            'contrastive': torch.utils.data._utils.default_collate,
+            'jigsaw': torch.utils.data._utils.collate.default_collate,
+            'contrastive': torch.utils.data._utils.collate.default_collate,
         }
 
     def __call__(self, batch):
@@ -77,31 +77,35 @@ class MSACollator():
         input contains: {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor}
         target contains one or more of {'inpainting': 1dtensor, 'jigsaw': int, 'contrastive': tensor}
         """
-        elem = batch[0]
-        if isinstance(elem, collections.abc.Mapping):
-            return {key: self.collate_dict[key]([sample[key] for sample in batch]) for key in elem}
+        
+        first_sample = batch[0]
+        if all([isinstance(item, collections.abc.Mapping) for item in first_sample]):
+            return tuple({key: self.collate_dict[key]([sample[idx][key] for sample in batch]) for key in item} for idx, item in enumerate(first_sample))
         else:
-            return torch.utils.data._utils.default_collate(batch)
+            return torch.utils.data._utils.collate.default_collate(batch)
 
 
-def _pad_collate2d(batch):
+def _pad_collate_nd(batch):
     '''
-    batch: sequence of 2d tensors, that may have different dimensions
+    batch: sequence of nd tensors, that may have different dimensions
     '''
+    
     B = len(batch)
-    S = max([sample.size(0) for sample in batch])
-    L = max([sample.size(1) for sample in batch])
+    n_dims = batch[0].dim()
+    dims = [max([sample.size(dim) for sample in batch]) for dim in range(n_dims)]
 
-    out = torch.zeros(B, S, L)
-    for i, sample in enumerate(batch):
-        sample_S, sample_L = sample.size()
-        out[i, :sample_S, sample_L] = sample[:, :]
+    out = torch.zeros((B, *dims), dtype=batch[0].dtype)
+    for idx, sample in enumerate(batch):
+        inplace_slices = (idx, ) + tuple(slice(sample_dim) for sample_dim in sample.size())
+        insert_slices = (slice(None),) * n_dims
+        out[inplace_slices] = sample[insert_slices]
+        
     return out
 
 
 def _flatten_collate(batch):
     '''
-    batch: sequence of 1d tensors, that may be of different lengt
+    batch: sequence of 1d tensors, that may be of different length
     '''
     # TODO optimize for multiple workers
     return torch.cat(batch, 0)

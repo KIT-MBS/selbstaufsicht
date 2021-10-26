@@ -60,8 +60,8 @@ class MSAModel(pl.LightningModule):
         # TODO optimize embedding
         x = self.embedding(x)
         if aux_features is not None:
-            aux_features = aux_features.expand(-1, -1, x.size(2), -1)
-            x = torch.cat((x, aux_features), dim=1)
+            aux_features = aux_features.expand(-1, x.size(1), -1, -1)
+            x = torch.cat((x, aux_features), dim=-1)
         latent = self.backbone(x)
         return latent
 

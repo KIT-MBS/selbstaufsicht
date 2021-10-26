@@ -117,12 +117,12 @@ class ExplicitPositionalEncoding():
 
         msa = x['msa']
         size = msa.size(self.axis)
-        absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(0)
+        absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
         relative = absolute / size
         if 'aux_features' not in x:
-            x['aux_features'] = torch.cat((absolute, relative), dim=0)
+            x['aux_features'] = torch.cat((absolute, relative), dim=-1)
         else:
-            x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=0)
+            x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=-1)
 
         return x, target
 
@@ -171,43 +171,59 @@ def _jigsaw(msa, permutation, delimiter_token, minleader=0, mintrailer=0):
     return jigsawed_msa
 
 
-# TODO adapt to tensorized input
 # TODO add capabilities for not masking and replace with random other token
 def _block_mask_msa(msa, p, mask_token):
     """
     masks out a contiguous block of columns in the given msa
     """
-    # TODO
-    raise
+
     total_length = msa.size(-1)
     mask_length = int(total_length * p)
-    begin = torch.randint(total_length - mask_length, (1)).item()
+    begin = torch.randint(total_length - mask_length, (1, )).item()
     end = begin + mask_length
-    masked = msa[:, begin:end]
-    mask = MultipleSeqAlignment([SeqRecord(Seq(mask_token * (end - begin)), id=r.id) for r in msa])
-    msa = msa[:, :begin] + mask + msa[:, end:]
+    
+    mask = torch.zeros_like(msa, dtype=torch.bool)
+    mask[:, begin:end] = True
+    
+    masked = msa[mask]
+    msa[mask] = mask_token
     return msa, mask, masked
 
 
-# TODO test this, not sure this kind of indexing works without casting to numpy array
-def _column_mask_msa(msa, col_indices, mask_token):
+def _column_mask_msa_indexed(msa, col_indices, mask_token):
+    """
+    masks out a given set of columns in the given msa
+    """
+    
+    mask = torch.zeros_like(msa, dtype=torch.bool)
+    mask[:, col_indices] = True
+    
+    masked = msa[mask]
+    msa[mask] = mask_token
+    return msa, mask, masked
+
+
+def _column_mask_msa(msa, p, mask_token):
     """
     masks out a random set of columns in the given msa
     """
-    raise
-    mask = None
-    masked = msa[col_indices]
-    msa[col_indices] = mask_token
-    return msa, mask, masked
+    
+    col_num = msa.size(-1)
+    col_indices = torch.arange(col_num, dtype=torch.long)
+    col_mask = torch.full((col_num,), p)
+    col_mask = torch.bernoulli(col_mask).to(torch.bool)
+    masked_col_indices = (col_mask*col_indices)
+    return _column_mask_msa_indexed(msa, masked_col_indices, mask_token)
 
 
-# TODO test
 def _token_mask_msa(msa, p, mask_token):
     """
     masks out random tokens uniformly sampled from the given msa
     """
+    
     mask = torch.full(msa.size(), p)
     mask = torch.bernoulli(mask).to(torch.bool)
+    
     masked = msa[mask]
     msa[mask] = mask_token
     return msa, mask, masked

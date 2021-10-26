@@ -80,7 +80,7 @@ class AxialSelfAttention2d(nn.Module):
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
 
-    def forward(self, x, padding_mask=None, need_weights=True):
+    def forward(self, x, padding_mask=None, need_weights=True, need_attn=True):
         """
         x: Tensor, batch first, channel first: [B, D, H, W]
         """
@@ -91,9 +91,9 @@ class AxialSelfAttention2d(nn.Module):
         if padding_mask is not None:
             assert padding_mask.dtype == torch.bool
             assert padding_mask.size() == (B, S, L)
-            padding_mask = padding_mask.view(B, S, L, 1).expand(-1, -1, -1, self.num_heads).reshape(B, S, L, self.num_heads)
+            padding_mask = padding_mask.view(B, 1, S, L).expand(-1, self.num_heads, -1, -1)
             attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
-            attn_mask.masked_fill_(padding_mask, float('-inf'))  # [B, S, L, H]
+            attn_mask.masked_fill_(padding_mask, float('-inf'))  # [B, H, S, L]
 
         q, k, v = self.in_row_projection(x).chunk(3, dim=-1)  # [B, S, L, D]
         q = q.view(B, S, L, self.num_heads, self.dim_head)  # [B, S, L, H, DH]
@@ -104,8 +104,9 @@ class AxialSelfAttention2d(nn.Module):
         # NOTE row attn
         row_attn = torch.einsum('bsihc, bsjhc->bhsij', q, k)  # [B, H, S, L, L]
         if attn_mask is not None:
-            row_attn += attn_mask.unsqueeze(-2)
-        row_attn = row_attn.softmax(dim=-1)
+            row_attn_mask = attn_mask.view(B, self.num_heads, S, 1, L).expand(-1, -1, -1, L, -1)
+            row_attn += row_attn_mask
+        row_attn = row_attn.softmax(dim=-1).nan_to_num()
         row_attn = self.dropout1(row_attn)
         row_out = torch.einsum('bhsij, bsjhd->bsihd', row_attn, v)
 
@@ -123,8 +124,9 @@ class AxialSelfAttention2d(nn.Module):
         # NOTE col attn
         col_attn = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, S, S, L]
         if attn_mask is not None:
-            row_attn += attn_mask.unsqueeze(-3)
-        col_attn = col_attn.softmax(dim=-2)
+            col_attn_mask = attn_mask.view(B, self.num_heads, 1, S, L).expand(-1, -1, S, -1, -1)
+            col_attn += col_attn_mask
+        col_attn = col_attn.softmax(dim=-2).nan_to_num()
         col_attn = self.dropout2(col_attn)
         col_out = torch.einsum('bhijl, bjlhd->bilhd', col_attn, v)
 
@@ -134,6 +136,8 @@ class AxialSelfAttention2d(nn.Module):
         out = out + col_out
         out = self.norm2(out)
 
+        if need_attn:
+            return out, (row_attn, col_attn)
         return out
 
 
@@ -166,7 +170,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         if padding_mask is not None:
             assert padding_mask.dtype == torch.bool
             assert padding_mask.size() == (B, S, L)
-            padding_mask = padding_mask.view(B, 1, S, L).expand(-1, self.num_heads, -1, -1).reshape(B, self.num_heads, S, L)
+            padding_mask = padding_mask.view(B, 1, S, L).expand(-1, self.num_heads, -1, -1)
             attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
             attn_mask.masked_fill_(padding_mask, float('-inf'))  # [B, H, S, L]
 
@@ -179,9 +183,10 @@ class TiedAxialSelfAttention2d(nn.Module):
         # NOTE row attn
         row_attn = torch.einsum('bsihc, bsjhc->bhij', q, k)  # [B, H, L, L]
         if attn_mask is not None:
-            row_attn += attn_mask.sum(-2).unsqueeze(-1)
-        row_attn = row_attn.unsqueeze(2)  # [B, H, 1, L ,L]
-        row_attn = row_attn.softmax(dim=-1)  # [B, H, 1, L, L]
+            row_attn_mask = attn_mask.sum(-2).view(B, self.num_heads, 1, L).expand(-1, -1, L, -1)  # [B, H, L, L]
+            row_attn += row_attn_mask
+        row_attn = row_attn.view(B, self.num_heads, 1, L, L)
+        row_attn = row_attn.softmax(dim=-1).nan_to_num()  # [B, H, 1, L, L]
         row_attn = self.dropout1(row_attn)
         row_out = torch.einsum('bhsij, bsjhd->bsihd', row_attn, v)
         row_out = row_out.reshape(B, S, L, D)
@@ -198,9 +203,9 @@ class TiedAxialSelfAttention2d(nn.Module):
         # NOTE col attn
         col_attn = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, S, S, L]
         if attn_mask is not None:
-            row_attn += attn_mask.unsqueeze(-3)
-
-        col_attn = col_attn.softmax(dim=-2)
+            col_attn_mask = attn_mask.view(B, self.num_heads, 1, S, L).expand(-1, -1, S, -1, -1)
+            col_attn += col_attn_mask
+        col_attn = col_attn.softmax(dim=-2).nan_to_num()
         col_attn = self.dropout2(col_attn)
         col_out = torch.einsum('bhijl, bjlhd->bilhd', col_attn, v)  # [B, S, L, H, DH]
         col_out = col_out.reshape(B, S, L, D)
