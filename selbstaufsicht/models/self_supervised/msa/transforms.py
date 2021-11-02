@@ -1,6 +1,4 @@
 import torch
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 import math
 import random
@@ -148,12 +146,6 @@ def _jigsaw(msa, permutation, delimiter_token, minleader=0, mintrailer=0):
     trailer = msa[:, offset + npartitions * partition_length:]
     partitions = [msa[:, offset + i * partition_length: offset + (i + 1) * partition_length] for i in range(npartitions)]
 
-    # jigsawed_msa = leader
-    # for p in partitions:
-    #     jigsawed_msa += MultipleSeqAlignment([SeqRecord(Seq(delimiter_token), id=r.id) for r in msa])
-    #     jigsawed_msa += partitions
-    # jigsawed_msa += MultipleSeqAlignment([SeqRecord(Seq(delimiter_token), id=r.id) for r in msa])
-    # jigsawed_msa += trailer
     chunks = list()
     if leader.numel() > 0:
         chunks = [leader]
@@ -181,10 +173,10 @@ def _block_mask_msa(msa, p, mask_token):
     mask_length = int(total_length * p)
     begin = torch.randint(total_length - mask_length, (1, )).item()
     end = begin + mask_length
-    
+
     mask = torch.zeros_like(msa, dtype=torch.bool)
     mask[:, begin:end] = True
-    
+
     masked = msa[mask]
     msa[mask] = mask_token
     return msa, mask, masked
@@ -194,10 +186,10 @@ def _column_mask_msa_indexed(msa, col_indices, mask_token):
     """
     masks out a given set of columns in the given msa
     """
-    
+
     mask = torch.zeros_like(msa, dtype=torch.bool)
     mask[:, col_indices] = True
-    
+
     masked = msa[mask]
     msa[mask] = mask_token
     return msa, mask, masked
@@ -207,12 +199,12 @@ def _column_mask_msa(msa, p, mask_token):
     """
     masks out a random set of columns in the given msa
     """
-    
+
     col_num = msa.size(-1)
     col_indices = torch.arange(col_num, dtype=torch.long)
     col_mask = torch.full((col_num,), p)
     col_mask = torch.bernoulli(col_mask).to(torch.bool)
-    masked_col_indices = (col_mask*col_indices)
+    masked_col_indices = (col_mask * col_indices)
     return _column_mask_msa_indexed(msa, masked_col_indices, mask_token)
 
 
@@ -220,10 +212,10 @@ def _token_mask_msa(msa, p, mask_token):
     """
     masks out random tokens uniformly sampled from the given msa
     """
-    
+
     mask = torch.full(msa.size(), p)
     mask = torch.bernoulli(mask).to(torch.bool)
-    
+
     masked = msa[mask]
     msa[mask] = mask_token
     return msa, mask, masked
