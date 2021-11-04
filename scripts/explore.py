@@ -4,9 +4,9 @@ from matplotlib import pyplot as plt
 from selbstaufsicht import datasets
 
 
-root = os.environ['DATA_PATH']
+root = os.environ['DATA_PATH'] + 'Xfam'
 
-ds = datasets.Xfam(root, download=True)
+ds = datasets.Xfam(root, download=True, mode='seed', version='14.6')
 
 lnseqs = list()
 lnbases = list()
