@@ -16,7 +16,7 @@ def test_msa_tokenize(tokenized_msa):
                                       [3, 3, 4, 1, 5, 4, 3],
                                       [5, 5, 4, 3, 5, 4, 1],
                                       [4, 5, 4, 5, 5, 4, 5]])
-    testing.assert_close(tokenized_msa, tokenized_msa_ref, rtol=0, atol=0)
+    testing.assert_close(tokenized_msa['msa'], tokenized_msa_ref, rtol=0, atol=0)
 
 
 def test_msa_mask_token(tokenized_msa):
@@ -153,7 +153,7 @@ def test_inpainting_head():
 
 def test_subsampling(basic_msa):
     sampler = RandomMSASubsampling(3, False, 'uniform')
-    sampled = sampler(basic_msa)
+    sampled = sampler(basic_msa)['msa']
 
     sampled_ref = MultipleSeqAlignment(
         [
@@ -212,7 +212,7 @@ def test_msa_collator():
              'mask': torch.zeros((B, max(S), max(L)), dtype=torch.bool),
              'aux_features': torch.zeros((B, 1, max(L), 2))}
     target_ref = {'inpainting': torch.zeros((sum(inpainting), ), dtype=torch.int64)}
-    
+
     for key in x:
         if x[key].is_floating_point():
             testing.assert_close(x[key], x_ref[key])
@@ -223,3 +223,7 @@ def test_msa_collator():
             testing.assert_close(target[key], target_ref[key])
         else:
             testing.assert_close(target[key], target_ref[key], atol=0, rtol=0)
+
+
+if __name__ == '__main__':
+    pass
