@@ -30,13 +30,27 @@ class JigsawHead(nn.Module):
         self.proj = nn.Linear(d, nclasses, **factory_kwargs)
 
     def forward(self, latent, x):
-        # x is of shape [b, c, s, l]
-        latent = latent.mean(dim=-1)
-        latent = latent.mean(dim=-1)
+        # latent is of shape [B, E, L, D]
+        latent = latent.mean(dim=-2)
+        latent = latent.mean(dim=-2)
         return self.proj(latent)
 
 
-# TODO
-# class MaximizingMutualInformationHead():
-#     def __init__(self, x):
-#         raise NotImplementedError()
+# TODO different hidden and out dim?
+class ContrastiveHead(nn.Module):
+    def __init__(self, d, layer_norm_eps=1e-5, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(ContrastiveHead, self).__init__()
+        self.proj = nn.Sequential(
+            nn.Linear(d, d, **factory_kwargs),
+            nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs),
+            nn.ReLU(),
+            nn.Linear(d, d, bias=False, **factory_kwargs),
+        )
+
+    def forward(self, latent, x):
+        # latent is of shape [B, E, L, D]
+        latent = latent.mean(dim=-2)  # [B, E, D]
+        latent = latent.mean(dim=-2)  # [B, D]
+
+        return self.proj(latent)

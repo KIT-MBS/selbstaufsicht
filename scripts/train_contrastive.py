@@ -11,23 +11,20 @@ from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, MSACollator
 
 # training parameters
-epochs = 20
+epochs = 10
 # NOTE single GPU for now
 # batch_size = 512 // 32
 batch_size = 2
 lr = 0.0001
 warmup = 16000
-# TODO implement msa subsampling hamming maximizing
 
 # model parameters
 num_layers = 2
 d = 768
 num_heads = 12
 d_head = d // num_heads
-tasks = ['jigsaw']
+tasks = ['contrastive']
 
-
-# TODO should take token mapping
 transform, task_heads, task_losses, metrics = get_tasks(tasks, d)
 
 root = os.environ['DATA_PATH'] + 'Xfam'
@@ -47,6 +44,6 @@ model = models.self_supervised.MSAModel(
 
 summary(model)
 dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=MSACollator())
-print('run')
+
 trainer = Trainer(max_epochs=epochs, gpus=1)
 trainer.fit(model, dl)

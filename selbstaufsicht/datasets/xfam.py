@@ -42,6 +42,9 @@ class Xfam():
         self.transform = transform
         self.token_mapping = rna2index
 
+        if mode == 'full' and float(version) >= 12:
+            raise ValueError('Starting with Rfam version 12.0 full alignments are no longer generated fully automatically.')
+
         filename = db + '.gz'
         path = os.path.join(self.root, self.base_folder, version, mode, split, filename)
         if download:
@@ -59,8 +62,9 @@ class Xfam():
 
     def _download(self, url, path):
         if os.path.isfile(path):
-            print("Found existing dataset file.")
+            print(f"Found existing dataset file; {path}.")
             return
+        print(f"downloading from {url}")
         prefix, filename = os.path.split(path)
         os.makedirs(prefix, exist_ok=True)
         chunk_size = 1024
