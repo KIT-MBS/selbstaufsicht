@@ -40,11 +40,11 @@ class MSAModel(pl.LightningModule):
         self.backbone = Transmorpher2d(block, num_layers, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
         if task_heads is not None:
             self.tasks = [t for t in task_heads.keys()]
-        self.heads = task_heads
+        self.task_heads = task_heads
         self.losses = task_losses
         self.metrics = metrics
         if task_heads is not None:
-            assert self.heads.keys() == self.losses.keys()
+            assert self.task_heads.keys() == self.losses.keys()
 
     def forward(self, x, aux_features=None):
         """
@@ -67,13 +67,14 @@ class MSAModel(pl.LightningModule):
 
     def training_step(self, batch_data, batch_idx):
         x, y = batch_data
-        # TODO do this in collate
-        if 'inpainting' in y:
-            y['inpainting'] = y['inpainting'].flatten()
 
-        latent = self.forward(x['msa'], x.get('aux_features', None))
+        latent = self(x['msa'], x.get('aux_features', None))
+        if 'contrastive' in self.tasks:
+            if x['msa'].size(0) == 1:
+                print('WARN: contrastive task is not really going to work with batch_size==1')
+            y['contrastive'] = self.task_heads['contrastive'](self(x['contrastive'], x.get('aux_features', None)), x)
 
-        preds = {task: self.heads[task](latent, x) for task in self.tasks}
+        preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
             for m in self.metrics[task]:

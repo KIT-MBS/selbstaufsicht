@@ -30,4 +30,4 @@ def basic_msa():
 @pytest.fixture
 def tokenized_msa(basic_msa):
     tokenize = MSATokenize(rna2index)
-    return tokenize(basic_msa)
+    return tokenize({'msa': basic_msa})
