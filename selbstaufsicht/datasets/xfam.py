@@ -7,8 +7,6 @@ from typing import Callable
 
 from Bio import AlignIO
 
-from ..utils import rna2index
-
 splits = ['train', 'val', 'test']
 polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
 modes = ['seed', 'full']
@@ -40,7 +38,6 @@ class Xfam():
         self.root = root
         self.base_folder = db
         self.transform = transform
-        self.token_mapping = rna2index
 
         if mode == 'full' and float(version) >= 12:
             raise ValueError('Starting with Rfam version 12.0 full alignments are no longer generated fully automatically.')
