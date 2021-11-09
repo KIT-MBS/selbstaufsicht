@@ -43,7 +43,7 @@ rfam_ids = get_family_ids(path + filename)
 with gzip.open(path + filename, 'rt', encoding='latin1') as f:
     for i, a in enumerate(AlignIO.parse(f, 'stockholm')):
         if len(a) < 100:
-            fasta_filepath = root + 'Rfam/14.6/fasta_files/' + rfam_ids[i] + '.fa.gz'
+            fasta_filepath = root + '/Rfam/14.6/fasta_files/' + rfam_ids[i] + '.fa.gz'
             fasta_url = fasta_base_url + rfam_ids[i] + '.fa.gz'
 
             if not os.path.isfile(fasta_filepath):
