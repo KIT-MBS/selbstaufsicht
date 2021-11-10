@@ -7,6 +7,15 @@ from selbstaufsicht import datasets
 root = os.environ['DATA_PATH'] + 'Xfam'
 
 ds = datasets.Xfam(root, download=True, mode='seed', version='14.6')
+ds2 = datasets.Xfam(root, download=True, mode='enhanced', version='14.6')
+
+for i, (msa1, msa2) in enumerate(zip(ds, ds2)):
+    if len(msa1) > 100:
+        assert len(msa1) == len(msa2)
+    else:
+        print(ds2.fam_ids[i], len(msa1), len(msa2))
+
+raise
 
 lnseqs = list()
 lnbases = list()
