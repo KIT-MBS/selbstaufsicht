@@ -51,11 +51,11 @@ class Xfam():
             _download(url, path)
         if not os.path.isfile(path):
             raise RuntimeError('Dataset not found. Set download=True to download it.')
+        self.fam_ids = get_family_ids(path)
         with gzip.open(path, 'rt', encoding='latin1') as f:
             self.samples = [a for a in AlignIO.parse(f, 'stockholm')]
 
         if self.mode == 'enhanced':
-            self.fam_ids = get_family_ids(path)
             print('load extended msas')
             for i, fam_id in enumerate(tqdm(self.fam_ids)):
                 full_msa_path = os.path.join(self.root, self.base_folder, version, 'full', split, f'{fam_id}.sto')
