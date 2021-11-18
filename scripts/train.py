@@ -25,9 +25,9 @@ parser.add_argument('--num-gpus', default=1, type=int, help="Number of GPUs per 
 parser.add_argument('--num-nodes', default=1, type=int, help="Number of nodes")
 parser.add_argument('--num-workers', default=1, type=int, help="Number of data loader worker processes")
 # Upstream tasks
-parser.add_argument('--task-inpainting', type=bool, action='store_true', help="Activates the inpainting task")
-parser.add_argument('--task-jigsaw', type=bool, action='store_true', help="Activates the jigsaw task")
-parser.add_argument('--task-contrastive', type=bool, action='store_true', help="Activates the contrastive task")
+parser.add_argument('--task-inpainting', action='store_true', help="Activates the inpainting task")
+parser.add_argument('--task-jigsaw', action='store_true', help="Activates the jigsaw task")
+parser.add_argument('--task-contrastive', action='store_true', help="Activates the contrastive task")
 # Upstream task configuration
 parser.add_argument('--subsampling-depth', default=4, type=int, help="Number of subsampled sequences")
 parser.add_argument('--cropping-size', default=50, type=int, help="Maximum uncropped sequence length")
