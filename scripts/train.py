@@ -3,6 +3,7 @@ import os
 from torch.utils.data import DataLoader
 
 from pytorch_lightning import Trainer
+from pytorch_lightning.plugins import DDPPlugin
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
