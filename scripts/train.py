@@ -51,11 +51,9 @@ if args.task_contrastive:
     tasks.append("contrastive")
     
 if args.num_gpus * args.num_nodes > 1:
-    dp_strategy = "ddp"
-    dp_plugins = DDPPlugin(find_unused_parameters=False)
+    dp_strategy = DDPPlugin(find_unused_parameters=False)
 else:
     dp_strategy = None
-    dp_plugins = None
 
 # TODO should take token mapping
 transform, task_heads, task_losses, metrics = get_tasks(tasks, args.feature_dim, subsample_depth=args.subsampling_depth, crop=args.cropping_size, masking=args.inpainting_masking_type, p_mask=args.inpainting_masking_p, jigsaw_partitions=args.jigsaw_partitions, jigsaw_classes=args.jigsaw_permutations, simclr_temperature=args.contrastive_temperature)
@@ -76,5 +74,5 @@ model = models.self_supervised.MSAModel(
     lr=args.learning_rate,
     lr_warmup=args.learning_rate_warmup
 )
-trainer = Trainer(max_epochs=args.num_epochs, gpus=args.num_gpus, num_nodes=args.num_nodes, precision=args.precision, accelerator="gpu", strategy=dp_strategy, plugins=dp_plugins)
+trainer = Trainer(max_epochs=args.num_epochs, gpus=args.num_gpus, num_nodes=args.num_nodes, precision=args.precision, accelerator="gpu", strategy=dp_strategy)
 trainer.fit(model, dl)
