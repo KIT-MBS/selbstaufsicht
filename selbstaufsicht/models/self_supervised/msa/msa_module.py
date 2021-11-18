@@ -99,7 +99,7 @@ class MSAModel(pl.LightningModule):
                 self.warmup = warmup
 
             def __call__(self, i):
-                return min((i + 1) / self.warmup, math.sqrt(warmup / (i + 1)))
+                return min((i + 1) / self.warmup, math.sqrt(self.warmup / (i + 1)))
 
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(self.lr_warmup))
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
