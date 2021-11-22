@@ -6,6 +6,7 @@ from tqdm import tqdm
 from Bio import AlignIO
 
 from ._utils import get_family_ids, _download
+from ..utils import rna2index
 
 splits = ['train', 'val', 'test']
 polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
@@ -38,6 +39,7 @@ class Xfam():
         self.root = root
         self.base_folder = db
         self.transform = transform
+        self.token_mapping = rna2index
 
         if mode == 'full' and float(version) >= 12:
             raise ValueError('Starting with Rfam version 12.0 full alignments are no longer generated fully automatically.')

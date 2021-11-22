@@ -24,6 +24,8 @@ class MSAModel(pl.LightningModule):
             activation='relu',
             layer_norm_eps=1e-5,
             in_dict_size=7,
+            lr=1e-4,
+            lr_warmup=16000,
             padding_token=None,
             task_heads=None,
             task_losses=None,
@@ -45,6 +47,8 @@ class MSAModel(pl.LightningModule):
         self.metrics = metrics
         if task_heads is not None:
             assert self.task_heads.keys() == self.losses.keys()
+        self.lr = lr
+        self.lr_warmup = lr_warmup 
 
     def forward(self, x, aux_features=None):
         """
@@ -88,15 +92,14 @@ class MSAModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters())
-        warmup = 16000
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
 
         class inverse_square_root_rule():
             def __init__(self, warmup):
                 self.warmup = warmup
 
             def __call__(self, i):
-                return min((i + 1) / self.warmup, math.sqrt(warmup / (i + 1)))
+                return min((i + 1) / self.warmup, math.sqrt(self.warmup / (i + 1)))
 
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(warmup))
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(self.lr_warmup))
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
