@@ -147,8 +147,9 @@ class RandomMSASubsampling():
 
 
 class ExplicitPositionalEncoding():
-    def __init__(self, axis=-1):
+    def __init__(self, axis=-1, abs_factor=1000):
         self.axis = axis
+        self.abs_factor = abs_factor
 
     def __call__(self, x):
         if type(x) == tuple:
@@ -162,6 +163,7 @@ class ExplicitPositionalEncoding():
         size = msa.size(self.axis)
         absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
         relative = absolute / size
+        absolute = absolute / self.abs_factor
         if 'aux_features' not in x:
             x['aux_features'] = torch.cat((absolute, relative), dim=-1)
         else:
@@ -265,6 +267,7 @@ def _column_mask_msa(msa, p, mask_token):
     return _column_mask_msa_indexed(msa, masked_col_indices, mask_token)
 
 
+# TODO should seq start token be excluded from masking?
 def _token_mask_msa(msa, p, mask_token):
     """
     masks out random tokens uniformly sampled from the given msa
