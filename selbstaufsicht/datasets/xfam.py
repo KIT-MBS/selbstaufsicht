@@ -6,6 +6,7 @@ from tqdm import tqdm
 from Bio import AlignIO
 
 from ._utils import get_family_ids, _download
+from ..utils import rna2index
 
 splits = ['train', 'val', 'test']
 polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
@@ -38,6 +39,7 @@ class Xfam():
         self.root = root
         self.base_folder = db
         self.transform = transform
+        self.token_mapping = rna2index
 
         if mode == 'full' and float(version) >= 12:
             raise ValueError('Starting with Rfam version 12.0 full alignments are no longer generated fully automatically.')
@@ -51,11 +53,11 @@ class Xfam():
             _download(url, path)
         if not os.path.isfile(path):
             raise RuntimeError('Dataset not found. Set download=True to download it.')
+        self.fam_ids = get_family_ids(path)
         with gzip.open(path, 'rt', encoding='latin1') as f:
             self.samples = [a for a in AlignIO.parse(f, 'stockholm')]
 
         if self.mode == 'enhanced':
-            self.fam_ids = get_family_ids(path)
             print('load extended msas')
             for i, fam_id in enumerate(tqdm(self.fam_ids)):
                 full_msa_path = os.path.join(self.root, self.base_folder, version, 'full', split, f'{fam_id}.sto')
