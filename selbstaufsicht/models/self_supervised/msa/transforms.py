@@ -29,8 +29,14 @@ class MSATokenize():
     #         return self.mapping[msa_array.view(np.uint32)]
     def __call__(self, x):
         x['msa'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['msa']], dtype=torch.long)
+        if 'START_TOKEN' in self.mapping:
+            prefix = torch.full((x['msa'].size(0), 1), self.mapping['START_TOKEN'], dtype=torch.int)
+            x['msa'] = torch.cat([prefix, x['msa']], dim=-1)
         if 'contrastive' in x:
             x['contrastive'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['contrastive']], dtype=torch.long)
+            prefix = torch.full((x['contrastive'].size(0), 1), self.mapping['START_TOKEN'], dtype=torch.int)
+            x['contrastive'] = torch.cat([prefix, x['contrastive']], dim=-1)
+
         return x
 
 
@@ -83,7 +89,7 @@ class RandomMSAMasking():
 
 
 class RandomMSAShuffling():
-    def __init__(self, permutations=None, minleader=0, mintrailer=0, delimiter_token=None, num_partitions=None, num_classes=None, contrastive=False):
+    def __init__(self, permutations=None, minleader=1, mintrailer=0, delimiter_token=None, num_partitions=None, num_classes=None, contrastive=False):
         if permutations is None and (num_partitions is None or num_classes is None):
             raise ValueError("Permutations have to be given explicitely or parameters to generate them.")
         self.permutations = permutations
@@ -106,11 +112,12 @@ class RandomMSAShuffling():
         y = dict()
         if type(x) == tuple:
             x, y = x
-        label = torch.randint(0, self.num_classes, (1,)).item()
         if type(x) == dict:
+            label = torch.randint(0, self.num_classes, (x['msa'].size(0),))
             shuffled_msa = _jigsaw(x['msa'], self.permutations[label], delimiter_token=self.delimiter_token, minleader=self.minleader, mintrailer=self.mintrailer)
             x['msa'] = shuffled_msa
         else:
+            label = torch.randint(0, self.num_classes, (x.size(0),))
             shuffled_msa = _jigsaw(x, self.permutations[label], delimiter_token=self.delimiter_token, minleader=self.minleader, mintrailer=self.mintrailer)
             x = {'msa': shuffled_msa}
         y['jigsaw'] = label
@@ -163,7 +170,13 @@ class ExplicitPositionalEncoding():
         return x, target
 
 
-def _jigsaw(msa, permutation, delimiter_token, minleader=0, mintrailer=0):
+# TODO test
+# TODO maybe remove possible shortcut of e.g.
+# >AAA|BB
+# >BB|AAA
+# should the leader and trailer be adapted such, that all partitions are of the same size?
+
+def _jigsaw(msa, permutations, delimiter_token=None, minleader=1, mintrailer=0):
     '''
     msa is tensor of size (num_seqs, seq_len)
     '''
@@ -171,8 +184,8 @@ def _jigsaw(msa, permutation, delimiter_token, minleader=0, mintrailer=0):
     # TODO minimum partition size?
     # TODO optimize
     nres = msa.size(-1)
-    nseqs = msa.size(0)
-    npartitions = len(permutation)
+    assert len(permutations) == msa.size(0)
+    npartitions = len(permutations[0])
     partition_length = (nres - minleader - mintrailer) // npartitions
     core_leftover = nres - minleader - mintrailer - (partition_length * npartitions)
     if minleader < minleader + core_leftover:
@@ -188,12 +201,18 @@ def _jigsaw(msa, permutation, delimiter_token, minleader=0, mintrailer=0):
     if leader.numel() > 0:
         chunks = [leader]
 
-    for p in permutation:
+    lines = []
+    for (i, permutation) in enumerate(permutations):
+        line_chunks = []
+        for p in permutation:
+            if delimiter_token is not None:
+                line_chunks.append(torch.full((1,), delimiter_token, dtype=torch.int))
+            line_chunks.append(partitions[i][p])
         if delimiter_token is not None:
-            chunks.append(torch.full((nseqs, 1), delimiter_token, dtype=torch.int))
-        chunks.append(partitions[p])
-    if delimiter_token is not None:
-        chunks.append(torch.full((nseqs, 1), delimiter_token, dtype=torch.int))
+            line_chunks.append(torch.full((1,), delimiter_token, dtype=torch.int))
+        lines.append(torch.cat(line_chunks, dim=0).unsqueeze(0))
+
+    chunks.append(torch.cat(lines, dim=0))
     chunks.append(trailer)
 
     jigsawed_msa = torch.cat(chunks, dim=-1)
