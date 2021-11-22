@@ -1,3 +1,4 @@
+from copy import deepcopy
 import torch
 import torch.testing as testing
 
@@ -7,15 +8,15 @@ from Bio.Align import MultipleSeqAlignment
 
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.modules import InpaintingHead
-from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, RandomMSASubsampling
+from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, RandomMSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
 
 def test_msa_tokenize(tokenized_msa):
-    tokenized_msa_ref = torch.tensor([[3, 5, 4, 5, 5, 4, 3],
-                                      [3, 3, 4, 1, 5, 4, 3],
-                                      [5, 5, 4, 3, 5, 4, 1],
-                                      [4, 5, 4, 5, 5, 4, 5]])
+    tokenized_msa_ref = torch.tensor([[17, 3, 5, 4, 5, 5, 4, 3],
+                                      [17, 3, 3, 4, 1, 5, 4, 3],
+                                      [17, 5, 5, 4, 3, 5, 4, 1],
+                                      [17, 4, 5, 4, 5, 5, 4, 5]])
     testing.assert_close(tokenized_msa['msa'], tokenized_msa_ref, rtol=0, atol=0)
 
 
@@ -26,25 +27,30 @@ def test_msa_mask_token(tokenized_msa):
 
     x, y = masking(tokenized_msa)
     x, y = positional((x, y))
+    
+    print('msa', x['msa'])
+    print('mask', x['mask'])
+    print("y", y['inpainting'])
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
-                                            [1.0000, 0.1429],
-                                            [2.0000, 0.2857],
-                                            [3.0000, 0.4286],
-                                            [4.0000, 0.5714],
-                                            [5.0000, 0.7143],
-                                            [6.0000, 0.8571]]]),
-             'msa': torch.tensor([[ 3,  5, 18,  5, 18,  4, 18],
-                                  [ 3,  3, 18,  1,  5,  4,  3],
-                                  [ 5, 18,  4,  3, 18,  4, 18],
-                                  [18, 18,  4, 18, 18, 18, 18]]),
-             'mask': torch.tensor([[False, False,  True, False,  True, False,  True],
-                                   [False, False,  True, False, False, False, False],
-                                   [False,  True, False, False,  True, False,  True],
-                                   [ True,  True, False,  True,  True,  True,  True]])}
+                                            [1.0000, 0.1250],
+                                            [2.0000, 0.2500],
+                                            [3.0000, 0.3750],
+                                            [4.0000, 0.5000],
+                                            [5.0000, 0.6250],
+                                            [6.0000, 0.7500],
+                                            [7.0000, 0.8750]]]),
+             'msa': torch.tensor([[17,  3, 18,  4, 18,  5, 18,  3],
+                                  [17, 18,  3,  4,  1,  5,  4, 18],
+                                  [17,  5, 18,  4, 18, 18, 18,  1],
+                                  [17, 18, 18, 18,  5, 18,  4, 18]]),
+             'mask': torch.tensor([[False, False,  True, False,  True, False,  True, False],
+                                   [False,  True, False, False, False, False, False,  True],
+                                   [False, False,  True, False,  True,  True,  True, False],
+                                   [False,  True,  True,  True, False,  True, False,  True]])}
 
     y_ref = {'inpainting': torch.tensor(
-        [4, 5, 3, 4, 5, 5, 1, 4, 5, 5, 5, 4, 5])}
+        [5, 5, 4, 3, 3, 5, 3, 5, 4, 4, 5, 4, 5, 5])}
 
     testing.assert_close(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
@@ -62,20 +68,21 @@ def test_msa_mask_column(tokenized_msa):
     x, y = positional((x, y))
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
-                                            [1.0000, 0.1429],
-                                            [2.0000, 0.2857],
-                                            [3.0000, 0.4286],
-                                            [4.0000, 0.5714],
-                                            [5.0000, 0.7143],
-                                            [6.0000, 0.8571]]]),
-             'msa': torch.tensor([[18, 5, 18, 5, 18, 4, 18],
-                                  [18, 3, 18, 1, 18, 4, 18],
-                                  [18, 5, 18, 3, 18, 4, 18],
-                                  [18, 5, 18, 5, 18, 4, 18]]),
-             'mask': torch.tensor([[True, False, True, False, True, False, True],
-                                   [True, False, True, False, True, False, True],
-                                   [True, False, True, False, True, False, True],
-                                   [True, False, True, False, True, False, True]])}
+                                            [1.0000, 0.1250],
+                                            [2.0000, 0.2500],
+                                            [3.0000, 0.3750],
+                                            [4.0000, 0.5000],
+                                            [5.0000, 0.6250],
+                                            [6.0000, 0.7500],
+                                            [7.0000, 0.8750]]]),
+             'msa': torch.tensor([[17, 18, 5, 18, 5, 18, 4, 18],
+                                  [17, 18, 3, 18, 1, 18, 4, 18],
+                                  [17, 18, 5, 18, 3, 18, 4, 18],
+                                  [17, 18, 5, 18, 5, 18, 4, 18]]),
+             'mask': torch.tensor([[False, True, False, True, False, True, False, True],
+                                   [False, True, False, True, False, True, False, True],
+                                   [False, True, False, True, False, True, False, True],
+                                   [False, True, False, True, False, True, False, True]])}
 
     y_ref = {'inpainting': torch.tensor(
         [3, 4, 5, 3, 3, 4, 5, 3, 5, 4, 5, 1, 4, 4, 5, 5])}
@@ -96,20 +103,21 @@ def test_msa_mask_block(tokenized_msa):
     x, y = positional((x, y))
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
-                                            [1.0000, 0.1429],
-                                            [2.0000, 0.2857],
-                                            [3.0000, 0.4286],
-                                            [4.0000, 0.5714],
-                                            [5.0000, 0.7143],
-                                            [6.0000, 0.8571]]]),
-             'msa': torch.tensor([[3, 5, 18, 18, 18, 4, 3],
-                                  [3, 3, 18, 18, 18, 4, 3],
-                                  [5, 5, 18, 18, 18, 4, 1],
-                                  [4, 5, 18, 18, 18, 4, 5]]),
-             'mask': torch.tensor([[False, False, True, True, True, False, False],
-                                   [False, False, True, True, True, False, False],
-                                   [False, False, True, True, True, False, False],
-                                   [False, False, True, True, True, False, False]])}
+                                            [1.0000, 0.1250],
+                                            [2.0000, 0.2500],
+                                            [3.0000, 0.3750],
+                                            [4.0000, 0.5000],
+                                            [5.0000, 0.6250],
+                                            [6.0000, 0.7500],
+                                            [7.0000, 0.8750]]]),
+             'msa': torch.tensor([[17, 3, 5, 18, 18, 18, 4, 3],
+                                  [17, 3, 3, 18, 18, 18, 4, 3],
+                                  [17, 5, 5, 18, 18, 18, 4, 1],
+                                  [17, 4, 5, 18, 18, 18, 4, 5]]),
+             'mask': torch.tensor([[False, False, False, True, True, True, False, False],
+                                   [False, False, False, True, True, True, False, False],
+                                   [False, False, False, True, True, True, False, False],
+                                   [False, False, False, True, True, True, False, False]])}
 
     y_ref = {'inpainting': torch.tensor(
         [4, 5, 5, 4, 1, 5, 4, 3, 5, 4, 5, 5])}
@@ -119,6 +127,38 @@ def test_msa_mask_block(tokenized_msa):
     testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
     testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
     testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
+    
+    
+def test_jigsaw(tokenized_msa):
+    permutations = torch.tensor([[0, 1],
+                                 [1, 0]], dtype=torch.int64)
+    label = torch.tensor([0, 1, 0, 1])
+    shuffling = RandomMSAShuffling(permutations=permutations)
+    x, y = shuffling(deepcopy(tokenized_msa), label=label)
+    
+    x_ref = torch.tensor([[17, 3, 5, 4, 5, 5, 4, 3],
+                          [17, 1, 5, 4, 3, 3, 4, 3],
+                          [17, 5, 5, 4, 3, 5, 4, 1],
+                          [17, 5, 5, 4, 4, 5, 4, 5]])
+    
+    testing.assert_close(x['msa'], x_ref, rtol=0, atol=0)
+    testing.assert_close(y['jigsaw'], label, rtol=0, atol=0)
+    
+    permutations = torch.tensor([[0, 1, 2],
+                                 [1, 0, 2],
+                                 [0, 2, 1],
+                                 [2, 0, 1]], dtype=torch.int64)
+    label = torch.tensor([3, 2, 1, 0])
+    shuffling = RandomMSAShuffling(permutations=permutations)
+    x, y = shuffling(deepcopy(tokenized_msa), label=label)
+    
+    x_ref = torch.tensor([[17, 5, 4, 3, 5, 4, 5, 3],
+                          [17, 3, 3, 5, 4, 4, 1, 3],
+                          [17, 4, 3, 5, 5, 5, 4, 1],
+                          [17, 4, 5, 4, 5, 5, 4, 5]])
+    
+    testing.assert_close(x['msa'], x_ref, rtol=0, atol=0)
+    testing.assert_close(y['jigsaw'], label, rtol=0, atol=0)
 
 
 def test_inpainting_head():
