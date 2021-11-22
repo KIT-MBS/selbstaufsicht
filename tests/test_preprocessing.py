@@ -28,13 +28,13 @@ def test_msa_mask_token(tokenized_msa):
     x, y = positional((x, y))
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
-                                            [1.0000, 0.1250],
-                                            [2.0000, 0.2500],
-                                            [3.0000, 0.3750],
-                                            [4.0000, 0.5000],
-                                            [5.0000, 0.6250],
-                                            [6.0000, 0.7500],
-                                            [7.0000, 0.8750]]]),
+                                            [0.0010, 0.1250],
+                                            [0.0020, 0.2500],
+                                            [0.0030, 0.3750],
+                                            [0.0040, 0.5000],
+                                            [0.0050, 0.6250],
+                                            [0.0060, 0.7500],
+                                            [0.0070, 0.8750]]]),
              'msa': torch.tensor([[17,  3, 18,  4, 18,  5, 18,  3],
                                   [17, 18,  3,  4,  1,  5,  4, 18],
                                   [17,  5, 18,  4, 18, 18, 18,  1],
@@ -64,24 +64,25 @@ def test_msa_mask_column(tokenized_msa):
     x, y = positional((x, y))
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
-                                            [1.0000, 0.1429],
-                                            [2.0000, 0.2857],
-                                            [3.0000, 0.4286],
-                                            [4.0000, 0.5714],
-                                            [5.0000, 0.7143],
-                                            [6.0000, 0.8571]]]),
-             'msa': tensor([[17,  3,  5, 18,  5, 18,  4, 18],
-                            [17,  3,  3, 18,  1,  5,  4,  3],
-                            [17,  5, 18,  4,  3, 18,  4, 18],
-                            [17, 18, 18,  4, 18, 18, 18, 18]]),
+                                            [0.0010, 0.1250],
+                                            [0.0020, 0.2500],
+                                            [0.0030, 0.3750],
+                                            [0.0040, 0.5000],
+                                            [0.0050, 0.6250],
+                                            [0.0060, 0.7500],
+                                            [0.0070, 0.8750]]]),
+             'msa': torch.tensor([[18,  3, 18,  4, 18,  5, 18,  3],
+                                  [18,  3, 18,  4, 18,  5, 18,  3],
+                                  [18,  5, 18,  4, 18,  5, 18,  1],
+                                  [18,  4, 18,  4, 18,  5, 18,  5]]),
 
-             'mask': torch.tensor([[True, False, True, False, True, False, True],
-                                   [True, False, True, False, True, False, True],
-                                   [True, False, True, False, True, False, True],
-                                   [True, False, True, False, True, False, True]])}
+             'mask': torch.tensor([[True, False, True, False, True, False, True, False],
+                                   [True, False, True, False, True, False, True, False],
+                                   [True, False, True, False, True, False, True, False],
+                                   [True, False, True, False, True, False, True, False]])}
 
     y_ref = {'inpainting': torch.tensor(
-        [3, 4, 5, 3, 3, 4, 5, 3, 5, 4, 5, 1, 4, 4, 5, 5])}
+        [17,  5,  5,  4, 17,  3,  1,  4, 17,  5,  3,  4, 17,  5,  5,  4])}
 
     testing.assert_close(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
@@ -99,23 +100,24 @@ def test_msa_mask_block(tokenized_msa):
     x, y = positional((x, y))
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
-                                            [1.0000, 0.1429],
-                                            [2.0000, 0.2857],
-                                            [3.0000, 0.4286],
-                                            [4.0000, 0.5714],
-                                            [5.0000, 0.7143],
-                                            [6.0000, 0.8571]]]),
-             'msa': torch.tensor([[3, 5, 18, 18, 18, 4, 3],
-                                  [3, 3, 18, 18, 18, 4, 3],
-                                  [5, 5, 18, 18, 18, 4, 1],
-                                  [4, 5, 18, 18, 18, 4, 5]]),
-             'mask': torch.tensor([[False, False, True, True, True, False, False],
-                                   [False, False, True, True, True, False, False],
-                                   [False, False, True, True, True, False, False],
-                                   [False, False, True, True, True, False, False]])}
+                                            [0.0010, 0.1250],
+                                            [0.0020, 0.2500],
+                                            [0.0030, 0.3750],
+                                            [0.0040, 0.5000],
+                                            [0.0050, 0.6250],
+                                            [0.0060, 0.7500],
+                                            [0.0070, 0.8750]]]),
+             'msa': torch.tensor([[17, 3, 18, 18, 18, 18, 4, 3],
+                                  [17, 3, 18, 18, 18, 18, 4, 3],
+                                  [17, 5, 18, 18, 18, 18, 4, 1],
+                                  [17, 4, 18, 18, 18, 18, 4, 5]]),
+             'mask': torch.tensor([[False, False, True, True, True, True, False, False],
+                                   [False, False, True, True, True, True, False, False],
+                                   [False, False, True, True, True, True, False, False],
+                                   [False, False, True, True, True, True, False, False]])}
 
     y_ref = {'inpainting': torch.tensor(
-        [4, 5, 5, 4, 1, 5, 4, 3, 5, 4, 5, 5])}
+        [5, 4, 5, 5, 3, 4, 1, 5, 5, 4, 3, 5, 5, 4, 5, 5])}
 
     testing.assert_close(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
