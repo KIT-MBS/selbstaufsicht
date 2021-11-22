@@ -31,8 +31,7 @@ class JigsawHead(nn.Module):
 
     def forward(self, latent, x):
         # latent is of shape [B, E, L, D]
-        latent = latent.mean(dim=-2)
-        latent = latent.mean(dim=-2)
+        latent = latent[:, :, 0, :]
         return self.proj(latent)
 
 
