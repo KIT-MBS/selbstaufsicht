@@ -14,9 +14,6 @@ from torchmetrics import Accuracy
 # NOTE mask and padding tokens can not be reconstructed
 
 
-IGNORE_LABEL_TOKEN = -1
-
-
 def get_tasks(tasks,
               dim,
               subsample_depth=5,
@@ -72,14 +69,14 @@ def get_tasks(tasks,
     if 'jigsaw' in tasks:
         head = JigsawHead(dim, jigsaw_classes)
         task_heads['jigsaw'] = head
-        task_losses['jigsaw'] = CrossEntropyLoss()
-        metrics['jigsaw'] = ModuleDict({'acc': Accuracy()})
+        task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_classes)
+        metrics['jigsaw'] = ModuleDict({'acc': Accuracy(ignore_index=jigsaw_classes, num_classes=jigsaw_classes + 1)})
     if 'inpainting' in tasks:
         head = InpaintingHead(dim, len(rna2index) - 2)  # NOTE never predict mask token or padding token
         task_heads['inpainting'] = head
 
-        task_losses['inpainting'] = CrossEntropyLoss(ignore_index=jigsaw_classes)
-        metrics['inpainting'] = ModuleDict({'acc': Accuracy(ignore_index=jigsaw_classes, num_classes=jigsaw_classes + 1)})
+        task_losses['inpainting'] = CrossEntropyLoss()
+        metrics['inpainting'] = ModuleDict({'acc': Accuracy()})
     if 'contrastive' in tasks:
         head = ContrastiveHead(dim)
         task_heads['contrastive'] = head
