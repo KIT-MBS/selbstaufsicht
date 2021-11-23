@@ -78,8 +78,8 @@ def get_tasks(tasks,
         head = InpaintingHead(dim, len(rna2index) - 2)  # NOTE never predict mask token or padding token
         task_heads['inpainting'] = head
 
-        task_losses['inpainting'] = CrossEntropyLoss(ignore_index=-1)
-        metrics['inpainting'] = ModuleDict({'acc': Accuracy()})
+        task_losses['inpainting'] = CrossEntropyLoss(ignore_index=jigsaw_classes)
+        metrics['inpainting'] = ModuleDict({'acc': Accuracy(ignore_index=jigsaw_classes, num_classes=jigsaw_classes + 1)})
     if 'contrastive' in tasks:
         head = ContrastiveHead(dim)
         task_heads['contrastive'] = head
@@ -91,14 +91,14 @@ def get_tasks(tasks,
 
 
 class MSACollator():
-    def __init__(self):
+    def __init__(self, jigsaw_classes):
         self.collate_fn = {
             'msa': partial(_pad_collate_nd, need_padding_mask=True),
             'mask': _pad_collate_nd,
             'aux_features': _pad_collate_nd,
             'aux_features_contrastive': _pad_collate_nd,
             'inpainting': _flatten_collate,
-            'jigsaw': partial(_pad_collate_nd, pad_val=IGNORE_LABEL_TOKEN),
+            'jigsaw': partial(_pad_collate_nd, pad_val=jigsaw_classes),
             'contrastive': partial(_pad_collate_nd, need_padding_mask=True),
         }
 

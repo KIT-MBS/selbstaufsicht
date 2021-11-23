@@ -69,7 +69,7 @@ transform, task_heads, task_losses, metrics = get_tasks(tasks,
 root = os.environ['DATA_PATH'] + 'Xfam'
 # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 ds = datasets.Xfam(root, download=True, transform=transform)
-dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(), num_workers=args.num_workers, pin_memory=True)
+dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(args.jigsaw_permutations), num_workers=args.num_workers, pin_memory=True)
 # TODO should pass padding token index here
 model = models.self_supervised.MSAModel(
     args.num_blocks,
