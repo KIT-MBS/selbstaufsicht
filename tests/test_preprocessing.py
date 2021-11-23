@@ -28,10 +28,6 @@ def test_msa_mask_token(tokenized_msa):
     x, y = masking(tokenized_msa)
     x, y = positional((x, y))
 
-    print('msa', x['msa'])
-    print('mask', x['mask'])
-    print("y", y['inpainting'])
-
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
                                             [0.0010, 0.1250],
                                             [0.0020, 0.2500],
@@ -213,23 +209,33 @@ def test_pad_collate_nd():
     batch = []
     for idx in range(len(shapes)):
         batch.append(torch.ones((shapes[idx])))
-    out = _pad_collate_nd(batch)
+    out, padding_mask = _pad_collate_nd(batch, need_padding_mask=True)
     out_ref = torch.ones((len(shapes), 4, 4))
     out_ref[0, :, -1] = 0.
     out_ref[1, -1, :] = 0.
+    padding_mask_ref = torch.zeros((len(shapes), 4, 4), dtype=torch.bool)
+    padding_mask_ref[0, :, -1] = True
+    padding_mask_ref[1, -1, :] = True
+    
     testing.assert_close(out, out_ref, atol=0, rtol=0)
+    testing.assert_close(padding_mask, padding_mask_ref, atol=0, rtol=0)
 
     # Test 3d
     shapes = [(6, 4, 2), (1, 3, 5)]
     batch = []
     for idx in range(len(shapes)):
         batch.append(torch.ones((shapes[idx])))
-    out = _pad_collate_nd(batch)
+    out, padding_mask = _pad_collate_nd(batch, need_padding_mask=True)
     out_ref = torch.ones((len(shapes), 6, 4, 5))
     out_ref[0, :, :, -3:] = 0.
     out_ref[1, -5:, :, :] = 0.
     out_ref[1, :, -1:, :] = 0.
+    padding_mask_ref = torch.zeros((len(shapes), 6, 4, 5), dtype=torch.bool)
+    padding_mask_ref[0, :, :, -3:] = True
+    padding_mask_ref[1, -5:, :, :] = True
+    padding_mask_ref[1, :, -1:, :] = True
     testing.assert_close(out, out_ref, atol=0, rtol=0)
+    testing.assert_close(padding_mask, padding_mask_ref, atol=0, rtol=0)
 
 
 def test_msa_collator():
@@ -238,20 +244,38 @@ def test_msa_collator():
     S = [5, 4]
     L = [6, 7]
     inpainting = [3, 2]
+    jigsaw = S
+    contrastive_S = S
+    contrastive_L = [8, 5]
 
-    # TODO: Test jigsaw and other tasks as well
     data = [({'msa': torch.zeros((S[idx], L[idx]), dtype=torch.int),
               'mask': torch.zeros((S[idx], L[idx]), dtype=torch.bool),
-              'aux_features': torch.zeros((1, L[idx], 2))},
-             {'inpainting': torch.zeros((inpainting[idx]), dtype=torch.int64)})
+              'aux_features': torch.zeros((1, L[idx], 2)),
+              'contrastive': torch.zeros((contrastive_S[idx], contrastive_L[idx]), dtype=torch.int),
+              'aux_features_contrastive': torch.zeros((1, contrastive_L[idx], 2))},
+             {'inpainting': torch.zeros((inpainting[idx]), dtype=torch.int64),
+              'jigsaw': torch.zeros((jigsaw[idx]), dtype=torch.int64)})
             for idx in range(B)]
 
     x, target = collator(data)
 
+    padding_mask_ref = torch.zeros((B, max(S), max(L)), dtype=torch.bool)
+    padding_mask_ref[0, :, -1] = True
+    padding_mask_ref[1, -1, :] = True
+    padding_mask_contrastive_ref = torch.zeros((B, max(contrastive_S), max(contrastive_L)), dtype=torch.bool)
+    padding_mask_contrastive_ref[1, -1, :] = True
+    padding_mask_contrastive_ref[1, :, -3:] = True
     x_ref = {'msa': torch.zeros((B, max(S), max(L)), dtype=torch.int),
              'mask': torch.zeros((B, max(S), max(L)), dtype=torch.bool),
-             'aux_features': torch.zeros((B, 1, max(L), 2))}
-    target_ref = {'inpainting': torch.zeros((sum(inpainting), ), dtype=torch.int64)}
+             'padding_mask': padding_mask_ref,
+             'aux_features': torch.zeros((B, 1, max(L), 2)),
+             'contrastive': torch.zeros((B, max(contrastive_S), max(contrastive_L)), dtype=torch.int),
+             'padding_mask_contrastive': padding_mask_contrastive_ref,
+             'aux_features_contrastive': torch.zeros((B, 1, max(contrastive_L), 2))}
+    jigsaw_ref = torch.zeros((B, max(S)), dtype=torch.int64)
+    jigsaw_ref[1, -1] = -1
+    target_ref = {'inpainting': torch.zeros((sum(inpainting), ), dtype=torch.int64),
+                  'jigsaw': jigsaw_ref}
 
     for key in x:
         if x[key].is_floating_point():
