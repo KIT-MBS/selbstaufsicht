@@ -49,19 +49,28 @@ if args.task_jigsaw:
     tasks.append("jigsaw")
 if args.task_contrastive:
     tasks.append("contrastive")
-    
+
 if args.num_gpus * args.num_nodes > 1:
     dp_strategy = DDPPlugin(find_unused_parameters=False)
 else:
     dp_strategy = None
 
-# TODO should take token mapping
-transform, task_heads, task_losses, metrics = get_tasks(tasks, args.feature_dim, subsample_depth=args.subsampling_depth, crop=args.cropping_size, masking=args.inpainting_masking_type, p_mask=args.inpainting_masking_p, jigsaw_partitions=args.jigsaw_partitions, jigsaw_classes=args.jigsaw_permutations, simclr_temperature=args.contrastive_temperature)
+# TODO should take token mapping?
+transform, task_heads, task_losses, metrics = get_tasks(tasks,
+                                                        args.feature_dim,
+                                                        subsample_depth=args.subsampling_depth,
+                                                        crop=args.cropping_size,
+                                                        masking=args.inpainting_masking_type,
+                                                        p_mask=args.inpainting_masking_p,
+                                                        jigsaw_partitions=args.jigsaw_partitions,
+                                                        jigsaw_classes=args.jigsaw_permutations,
+                                                        simclr_temperature=args.contrastive_temperature)
 
 root = os.environ['DATA_PATH'] + 'Xfam'
 # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 ds = datasets.Xfam(root, download=True, transform=transform)
 dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(), num_workers=args.num_workers, pin_memory=True)
+# TODO should pass padding token index here
 model = models.self_supervised.MSAModel(
     args.num_blocks,
     args.num_heads,
