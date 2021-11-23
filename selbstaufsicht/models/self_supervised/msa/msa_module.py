@@ -30,6 +30,7 @@ class MSAModel(pl.LightningModule):
             task_heads=None,
             task_losses=None,
             metrics=None,
+            need_attn=False,
             device=None,
             dtype=None):
         super().__init__()
@@ -48,9 +49,12 @@ class MSAModel(pl.LightningModule):
         if task_heads is not None:
             assert self.task_heads.keys() == self.losses.keys()
         self.lr = lr
-        self.lr_warmup = lr_warmup 
+        self.lr_warmup = lr_warmup
+        if need_attn:
+            raise NotImplementedError('Extracting attention maps not yet implemented')
+        self.need_attn = need_attn
 
-    def forward(self, x, aux_features=None):
+    def forward(self, x, padding_mask=None, aux_features=None):
         """
         Forward pass through the model. Use for inference.
         Args:
@@ -66,13 +70,14 @@ class MSAModel(pl.LightningModule):
         if aux_features is not None:
             aux_features = aux_features.expand(-1, x.size(1), -1, -1)
             x = torch.cat((x, aux_features), dim=-1)
-        latent = self.backbone(x)
+        # TODO extract attention maps
+        latent = self.backbone(x, padding_mask, self.need_attn)
         return latent
 
     def training_step(self, batch_data, batch_idx):
         x, y = batch_data
 
-        latent = self(x['msa'], x.get('aux_features', None))
+        latent = self(x['msa'], x.get('padding_mask', None), self.need_attn, x.get('aux_features', None))
         if 'contrastive' in self.tasks:
             if x['msa'].size(0) == 1:
                 print('WARN: contrastive task is not really going to work with batch_size==1')
