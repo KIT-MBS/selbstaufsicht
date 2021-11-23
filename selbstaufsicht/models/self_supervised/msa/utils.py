@@ -10,7 +10,7 @@ from selbstaufsicht.modules import NT_Xent_Loss
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 from torchmetrics import Accuracy
 
-# NOTE mask and delimiter tokens can not be reconstructed
+# NOTE mask and padding tokens can not be reconstructed
 
 
 def get_tasks(tasks,
@@ -38,7 +38,7 @@ def get_tasks(tasks,
     transformslist = [
         RandomMSASubsampling(subsample_depth, contrastive=contrastive),
         RandomMSACropping(crop, contrastive=contrastive),
-        MSATokenize(rna2index, rna2index['START_TOKEN'])]
+        MSATokenize(rna2index)]
 
     if 'jigsaw' in tasks:
         transformslist.append(
@@ -65,17 +65,16 @@ def get_tasks(tasks,
 
     task_heads = ModuleDict()
     task_losses = dict()
-    # TODO always include 'no transformation'
     if 'jigsaw' in tasks:
         head = JigsawHead(dim, jigsaw_classes)
         task_heads['jigsaw'] = head
         task_losses['jigsaw'] = CrossEntropyLoss()
         metrics['jigsaw'] = ModuleDict({'acc': Accuracy()})
     if 'inpainting' in tasks:
-        head = InpaintingHead(dim, len(rna2index) - 1)  # NOTE never predict mask token
+        head = InpaintingHead(dim, len(rna2index) - 2)  # NOTE never predict mask token or padding token
         task_heads['inpainting'] = head
 
-        task_losses['inpainting'] = CrossEntropyLoss()
+        task_losses['inpainting'] = CrossEntropyLoss(ignore_index=-1)
         metrics['inpainting'] = ModuleDict({'acc': Accuracy()})
     if 'contrastive' in tasks:
         head = ContrastiveHead(dim)
@@ -87,6 +86,8 @@ def get_tasks(tasks,
     return transform, task_heads, task_losses, metrics
 
 
+# TODO has to also return the padding mask
+# TODO has to pad the jigsaw target with 'ignore' label -1
 class MSACollator():
     def __init__(self):
         self.collate_dict = {
@@ -100,19 +101,21 @@ class MSACollator():
 
     def __call__(self, batch):
         """
-        x: list of tuples of dicts: e.g. [({input1}, {target1}), ({input2}, {target2})]
+        batch: list of tuples of dicts: e.g. [({input1}, {target1}), ({input2}, {target2})]
         input contains: {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor}
-        target contains one or more of {'inpainting': 1dtensor, 'jigsaw': int, 'contrastive': tensor}
+        target contains one or more of {'inpainting': 1dtensor, 'jigsaw': 1dtensor, 'contrastive': 1dtensor}
         """
 
         first_sample = batch[0]
         if all([isinstance(item, collections.abc.Mapping) for item in first_sample]):
-            return tuple({key: self.collate_dict[key]([sample[idx][key] for sample in batch]) for key in item} for idx, item in enumerate(first_sample))
+            result = tuple({key: self.collate_dict[key]([sample[idx][key] for sample in batch]) for key in item} for idx, item in enumerate(first_sample))
+            return result
         else:
-            return torch.utils.data._utils.collate.default_collate(batch)
+            raise
+            # return torch.utils.data._utils.collate.default_collate(batch)
 
 
-def _pad_collate_nd(batch):
+def _pad_collate_nd(batch, pad_val=0):
     '''
     batch: sequence of nd tensors, that may have different dimensions
     '''
@@ -121,7 +124,7 @@ def _pad_collate_nd(batch):
     n_dims = batch[0].dim()
     dims = [max([sample.size(dim) for sample in batch]) for dim in range(n_dims)]
 
-    out = torch.zeros((B, *dims), dtype=batch[0].dtype)
+    out = torch.full((B, *dims), pad_val, dtype=batch[0].dtype)
     for idx, sample in enumerate(batch):
         inplace_slices = (idx, ) + tuple(slice(sample_dim) for sample_dim in sample.size())
         insert_slices = (slice(None),) * n_dims
