@@ -167,6 +167,7 @@ class ExplicitPositionalEncoding():
     def __init__(self, axis=-1, abs_factor=1000):
         self.axis = axis
         self.abs_factor = abs_factor
+        
 
     def __call__(self, x):
         if type(x) == tuple:
@@ -185,6 +186,17 @@ class ExplicitPositionalEncoding():
             x['aux_features'] = torch.cat((absolute, relative), dim=-1)
         else:
             x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=-1)
+        
+        if 'contrastive' in x:
+            msa = x['contrastive']
+            size = msa.size(self.axis)
+            absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
+            relative = absolute / size
+            absolute = absolute / self.abs_factor
+            if 'aux_features_contrastive' not in x:
+                x['aux_features_contrastive'] = torch.cat((absolute, relative), dim=-1)
+            else:
+                x['aux_features_contrastive'] = torch.cat((msa['aux_features_contrastive'], absolute, relative), dim=-1)
 
         return x, target
 

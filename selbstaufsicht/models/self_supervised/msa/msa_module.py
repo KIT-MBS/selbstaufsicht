@@ -77,11 +77,11 @@ class MSAModel(pl.LightningModule):
     def training_step(self, batch_data, batch_idx):
         x, y = batch_data
 
-        latent = self(x['msa'], x.get('padding_mask', None), self.need_attn, x.get('aux_features', None))
+        latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
         if 'contrastive' in self.tasks:
             if x['msa'].size(0) == 1:
                 print('WARN: contrastive task is not really going to work with batch_size==1')
-            y['contrastive'] = self.task_heads['contrastive'](self(x['contrastive'], x.get('aux_features', None)), x)
+            y['contrastive'] = self.task_heads['contrastive'](self(x['contrastive'], x.get('padding_mask_contrastive', None), x.get('aux_features_contrastive', None)), x)
 
         preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
