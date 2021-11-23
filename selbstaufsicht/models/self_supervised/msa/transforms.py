@@ -94,13 +94,14 @@ class RandomMSAShuffling():
         if permutations is None and (num_partitions is None or num_classes is None):
             raise ValueError("Permutations have to be given explicitely or parameters to generate them.")
 
+        # TODO always include 'no transformation'
         if permutations is None:
             perm_indices = list(range(math.factorial(num_partitions)))
             random.shuffle(perm_indices)
             self.permutations = torch.stack([lehmer_encode(i, num_partitions) for i in perm_indices[:num_classes]]).unsqueeze(0)
         else:
-            # attribute permutations is expected to have shape [num_classes, num_partitions]
-            # add singleton dim for later expansion to num_seq dim
+            # NOTE attribute permutations is expected to have shape [num_classes, num_partitions]
+            # NOTE add singleton dim for later expansion to num_seq dim
             self.permutations = permutations.unsqueeze(0)
         self.num_partitions = max(self.permutations[0, 0])
         self.num_classes = len(self.permutations[0])
@@ -120,18 +121,31 @@ class RandomMSAShuffling():
             num_seq = x['msa'].size(0)
             if label is None:
                 label = torch.randint(0, self.num_classes, (num_seq,))
-            shuffled_msa = _jigsaw(x['msa'], self.permutations.expand(num_seq, -1, -1)[range(num_seq), label], delimiter_token=self.delimiter_token, minleader=self.minleader, mintrailer=self.mintrailer)
+            shuffled_msa = _jigsaw(x['msa'],
+                                   self.permutations.expand(num_seq, -1, -1)[range(num_seq),
+                                   label], delimiter_token=self.delimiter_token,
+                                   minleader=self.minleader,
+                                   mintrailer=self.mintrailer)
             x['msa'] = shuffled_msa
         else:
             num_seq = x.size(0)
             if label is None:
                 label = torch.randint(0, self.num_classes, (num_seq,))
-            shuffled_msa = _jigsaw(x, self.permutations.expand(num_seq, -1, -1)[range(num_seq), label], delimiter_token=self.delimiter_token, minleader=self.minleader, mintrailer=self.mintrailer)
+            shuffled_msa = _jigsaw(x,
+                                   self.permutations.expand(num_seq, -1, -1)[range(num_seq), label],
+                                   delimiter_token=self.delimiter_token,
+                                   minleader=self.minleader,
+                                   mintrailer=self.mintrailer)
             x = {'msa': shuffled_msa}
         y['jigsaw'] = label
         if self.contrastive:
             contrastive_perm = torch.randint(0, self.num_classes, (num_seq,))
-            contrastive_x = _jigsaw(x['contrastive'], self.permutations.expand(num_seq, -1, -1)[range(num_seq), contrastive_perm], delimiter_token=self.delimiter_token, minleader=self.minleader, mintrailer=self.mintrailer)
+            contrastive_x = _jigsaw(x['contrastive'],
+                                    self.permutations.expand(num_seq, -1, -1)[range(num_seq),
+                                    contrastive_perm],
+                                    delimiter_token=self.delimiter_token,
+                                    minleader=self.minleader,
+                                    mintrailer=self.mintrailer)
             x['contrastive'] = contrastive_x
 
         return x, y
