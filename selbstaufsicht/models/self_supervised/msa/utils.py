@@ -38,7 +38,7 @@ def get_tasks(tasks,
     transformslist = [
         RandomMSASubsampling(subsample_depth, contrastive=contrastive),
         RandomMSACropping(crop, contrastive=contrastive),
-        MSATokenize(rna2index)]
+        MSATokenize(rna2index, rna2index['START_TOKEN'])]
 
     if 'jigsaw' in tasks:
         transformslist.append(

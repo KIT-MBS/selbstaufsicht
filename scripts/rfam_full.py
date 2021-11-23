@@ -5,6 +5,7 @@ import urllib.request
 import subprocess
 from Bio import AlignIO
 from Bio import SeqIO
+from selbstaufsicht.datasets._utils import get_family_ids
 
 root = os.environ['DATA_PATH'] + '/Xfam'
 path = root + '/Rfam/14.6/seed/train/'
@@ -27,16 +28,6 @@ def _download(url, path):
                 if not chunk:
                     break
                 f.write(chunk)
-
-
-def get_family_ids(rfam_file):
-    ids = []
-    with gzip.open(rfam_file, 'rt', encoding='latin1') as f:
-        for line in f:
-            line = line.split()
-            if len(line) > 0 and line[0] == '#=GF' and line[1] == 'AC':
-                ids.append(line[2])
-    return ids
 
 
 rfam_ids = get_family_ids(path + filename)
