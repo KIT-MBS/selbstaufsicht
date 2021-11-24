@@ -228,7 +228,7 @@ def test_pad_collate_nd():
 
 
 def test_msa_collator():
-    collator = MSACollator()
+    collator = MSACollator(42)
     B = 2
     S = [5, 4]
     L = [6, 7]
@@ -262,7 +262,7 @@ def test_msa_collator():
              'padding_mask_contrastive': padding_mask_contrastive_ref,
              'aux_features_contrastive': torch.zeros((B, 1, max(contrastive_L), 2))}
     jigsaw_ref = torch.zeros((B, max(S)), dtype=torch.int64)
-    jigsaw_ref[1, -1] = -1
+    jigsaw_ref[1, -1] = 42
     target_ref = {'inpainting': torch.zeros((sum(inpainting), ), dtype=torch.int64),
                   'jigsaw': jigsaw_ref}
 
