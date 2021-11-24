@@ -7,9 +7,8 @@ from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSACropping, RandomMSASubsampling, RandomMSAShuffling
-from selbstaufsicht.modules import NT_Xent_Loss
+from selbstaufsicht.modules import NT_Xent_Loss, Accuracy
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
-from torchmetrics import Accuracy
 
 # NOTE mask and padding tokens can not be reconstructed
 
@@ -70,7 +69,7 @@ def get_tasks(tasks,
         head = JigsawHead(dim, jigsaw_classes)
         task_heads['jigsaw'] = head
         task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_classes)
-        metrics['jigsaw'] = ModuleDict({'acc': Accuracy(ignore_index=jigsaw_classes, num_classes=jigsaw_classes + 1)})
+        metrics['jigsaw'] = ModuleDict({'acc': Accuracy(ignore_index=jigsaw_classes)})
     if 'inpainting' in tasks:
         head = InpaintingHead(dim, len(rna2index) - 2)  # NOTE never predict mask token or padding token
         task_heads['inpainting'] = head
