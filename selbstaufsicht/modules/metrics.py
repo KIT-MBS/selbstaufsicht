@@ -1,11 +1,13 @@
 import torch
+from torch import nn
 
-class Accuracy():
+class Accuracy(nn.Module):
     def __init__(self, class_dim=-1, ignore_index=-1):
+        super(Accuracy, self).__init__()
         self.class_dim = class_dim
         self.ignore_index = ignore_index
     
-    def __call__(self, preds, target):
+    def forward(self, preds, target):
         # check if shapes match (exclude class dim for preds due to one-hot encoding)
         assert preds.shape[:self.class_dim] + (preds.shape[self.class_dim + 1:] if self.class_dim != -1 else ()) == target.shape, "Shapes must match except for \'class_dim\'!"
         

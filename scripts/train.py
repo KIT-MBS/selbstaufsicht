@@ -9,6 +9,8 @@ from selbstaufsicht import models
 from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, MSACollator
 
+from selbstaufsicht.utils import rna2index
+
 
 parser = argparse.ArgumentParser(description='Selbstaufsicht Training Script')
 # Architecture
@@ -61,6 +63,7 @@ transform, task_heads, task_losses, metrics = get_tasks(tasks,
                                                         subsample_depth=args.subsampling_depth,
                                                         crop=args.cropping_size,
                                                         masking=args.inpainting_masking_type,
+                                                        padding_token=rna2index['PADDING_TOKEN'],
                                                         p_mask=args.inpainting_masking_p,
                                                         jigsaw_partitions=args.jigsaw_partitions,
                                                         jigsaw_classes=args.jigsaw_permutations,
@@ -69,7 +72,7 @@ transform, task_heads, task_losses, metrics = get_tasks(tasks,
 root = os.environ['DATA_PATH'] + 'Xfam'
 # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 ds = datasets.Xfam(root, download=True, transform=transform)
-dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(args.jigsaw_permutations), num_workers=args.num_workers, pin_memory=True)
+dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers, pin_memory=True)
 # TODO should pass padding token index here
 model = models.self_supervised.MSAModel(
     args.num_blocks,
@@ -79,7 +82,8 @@ model = models.self_supervised.MSAModel(
     task_heads=task_heads,
     task_losses=task_losses,
     metrics=metrics,
-    in_dict_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
+    in_dict_size=len(ds.token_mapping), 
+    padding_token=ds.token_mapping['PADDING_TOKEN'],
     lr=args.learning_rate,
     lr_warmup=args.learning_rate_warmup
 )

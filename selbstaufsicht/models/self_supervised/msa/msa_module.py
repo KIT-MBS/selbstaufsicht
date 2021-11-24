@@ -39,6 +39,7 @@ class MSAModel(pl.LightningModule):
 
         assert d - aux_input_dim > 0
         self.embedding = nn.Embedding(in_dict_size, d - aux_input_dim, padding_idx=padding_token)
+        self.padding_token = padding_token
         block = TransmorpherLayer2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
         self.backbone = Transmorpher2d(block, num_layers, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
         if task_heads is not None:
@@ -66,7 +67,9 @@ class MSAModel(pl.LightningModule):
 
         # NOTE feature dim = -1
         # TODO optimize embedding
+        #print("pre embedding", x)
         x = self.embedding(x)
+        #print("post embedding", x)
         if aux_features is not None:
             aux_features = aux_features.expand(-1, x.size(1), -1, -1)
             x = torch.cat((x, aux_features), dim=-1)
@@ -84,6 +87,13 @@ class MSAModel(pl.LightningModule):
             y['contrastive'] = self.task_heads['contrastive'](self(x['contrastive'], x.get('padding_mask_contrastive', None), x.get('aux_features_contrastive', None)), x)
 
         preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
+        print("preds", preds["inpainting"].shape)
+        print("target", y["inpainting"].shape)
+        if self.embedding.weight.grad is not None:
+            print("embedding grad", self.embedding.weight.grad)
+            print("embedding shape", self.embedding.weight.grad.shape)
+            nans = torch.isnan(self.embedding.weight.grad)
+            print("embedding nan shape", nans[nans == True].shape)
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
             for m in self.metrics[task]:

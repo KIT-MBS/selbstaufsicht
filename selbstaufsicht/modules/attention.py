@@ -265,15 +265,22 @@ class TransmorpherLayer2d(nn.Module):
         self.activation = _get_activation_function(activation)()
 
     def forward(self, x, padding_mask=None, need_attn=False):
+        #print("pre attn", x.isnan().any().item())
         out = self.attn(x, padding_mask=padding_mask, need_attn=need_attn)
         if need_attn:
             out, attn = out
+        #print("post attn", out.isnan().any().item())
         # TODO what's the last layer of an attention block? should it be a nonlinearity
         x = x + self.dropout1(out)
+        #print("before 1", x.isnan().any().item())
         x = self.norm1(out)
+        #x = self.norm1(x)
+        #print("after 1", x.isnan().any().item())
         out = self.lin2(self.dropout(self.activation(self.lin1(x))))
         x = x + self.dropout2(out)
+        #print("before 2", x.isnan().any().item())
         x = self.norm2(x)
+        #print("after 2", x.isnan().any().item())
         if need_attn:
             return x, attn
         return x
