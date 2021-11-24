@@ -30,7 +30,7 @@ class JigsawHead(nn.Module):
     def forward(self, latent, x):
         # latent is of shape [B, E, L, D]
         latent = latent[:, :, 0, :]  # [B, E, D]
-        return torch.transpose(self.proj(latent), 1, 2)  # B, NClasses, E]
+        return self.proj(latent)  # [B, E, NClasses]
 
 
 # TODO different hidden and out dim?
