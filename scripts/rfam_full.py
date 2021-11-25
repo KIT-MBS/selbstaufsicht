@@ -2,11 +2,12 @@ import os
 import gzip
 import urllib
 import urllib.request
+import subprocess
 from Bio import AlignIO
 from Bio import SeqIO
 from selbstaufsicht.datasets._utils import get_family_ids
 
-root = os.environ['DATA_PATH'] + 'Xfam'
+root = os.environ['DATA_PATH'] + '/Xfam'
 path = root + '/Rfam/14.6/seed/train/'
 filename = 'Rfam.gz'
 
@@ -44,9 +45,10 @@ with gzip.open(path + filename, 'rt', encoding='latin1') as f:
             with gzip.open(fasta_filepath, 'rt', encoding='latin1') as ff:
                 seq_records = [sr for sr in SeqIO.parse(ff, 'fasta')]
                 print(rfam_ids[i], len(a), len(seq_records))
-                if len(a) == len(seq_records):
-                    print("match =(")
-                elif len(a) < len(seq_records):
-                    print("hurraaaaaaaaaaaaaaaay")
-                else:
-                    print('wtf?')
+                if len(a) < len(seq_records):
+                    # TODO generate alignment
+                    full_file_path = root + f'/Rfam/14.6/full/train/{rfam_ids[i]}.sto'
+                    cm_path =  root + f'/Rfam/14.6/cms/{rfam_ids[i]}.cm'
+                    if not os.path.isfile(full_file_path):
+                        print("AAAAAAA")
+                        subprocess.call(['cmsearch', '-A', full_file_path, cm_path, fasta_filepath])
