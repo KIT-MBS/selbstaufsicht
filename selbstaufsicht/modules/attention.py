@@ -37,7 +37,7 @@ class MultiHeadSelfAttention2d(nn.Module):
             assert padding_mask.size() == (B, S, L)
             padding_mask = padding_mask.view(B, 1, 1, 1, S, L).expand(-1, self.num_heads, -1, -1, -1, -1).reshape(B, self.num_heads, 1, 1, S, L)
             attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
-            attn_mask.masked_fill_(padding_mask, float('-inf'))
+            attn_mask.masked_fill_(padding_mask, -10000)
 
         q, k, v = self.in_projection(x).chunk(3, dim=-1)  # [B, S, L, D]
         q = q.view(B, S * L, self.num_heads, self.dim_head)  # [B, S * L, H, DH]
@@ -93,7 +93,7 @@ class AxialSelfAttention2d(nn.Module):
             assert padding_mask.size() == (B, S, L)
             padding_mask = padding_mask.view(B, 1, S, L).expand(-1, self.num_heads, -1, -1)
             attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
-            attn_mask.masked_fill_(padding_mask, float('-inf'))  # [B, H, S, L]
+            attn_mask.masked_fill_(padding_mask, -10000)  # [B, H, S, L]
 
         q, k, v = self.in_row_projection(x).chunk(3, dim=-1)  # [B, S, L, D]
         q = q.view(B, S, L, self.num_heads, self.dim_head)  # [B, S, L, H, DH]
@@ -172,7 +172,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             assert padding_mask.size() == (B, S, L)
             padding_mask = padding_mask.view(B, 1, S, L).expand(-1, self.num_heads, -1, -1)
             attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
-            attn_mask.masked_fill_(padding_mask, float('-inf'))  # [B, H, S, L]
+            attn_mask.masked_fill_(padding_mask, -10000)  # [B, H, S, L]
 
         q, k, v = self.in_row_projection(x).chunk(3, dim=-1)  # [B, S, L, D]
         q = q.view(B, S, L, self.num_heads, self.dim_head)  # [B, S, L, H, DH]
