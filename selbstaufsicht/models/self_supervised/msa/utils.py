@@ -21,6 +21,7 @@ def get_tasks(tasks,
               p_mask=0.15,
               jigsaw_partitions=3,
               jigsaw_classes=4,
+              jigsaw_padding_token=-1,
               simclr_temperature=100.,
               ):
     """
@@ -68,8 +69,8 @@ def get_tasks(tasks,
     if 'jigsaw' in tasks:
         head = JigsawHead(dim, jigsaw_classes)
         task_heads['jigsaw'] = head
-        task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_classes)
-        metrics['jigsaw'] = ModuleDict({'acc': Accuracy(ignore_index=jigsaw_classes)})
+        task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
+        metrics['jigsaw'] = ModuleDict({'acc': Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)})
     if 'inpainting' in tasks:
         head = InpaintingHead(dim, len(rna2index) - 2)  # NOTE never predict mask token or padding token
         task_heads['inpainting'] = head
@@ -87,15 +88,15 @@ def get_tasks(tasks,
 
 
 class MSACollator():
-    def __init__(self, jigsaw_classes):
+    def __init__(self, msa_padding_token, inpainting_mask_padding_token=0, jigsaw_padding_token=-1):
         self.collate_fn = {
-            'msa': partial(_pad_collate_nd, need_padding_mask=True),
-            'mask': _pad_collate_nd,
+            'msa': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
+            'mask': partial(_pad_collate_nd, pad_val=inpainting_mask_padding_token),
             'aux_features': _pad_collate_nd,
             'aux_features_contrastive': _pad_collate_nd,
             'inpainting': _flatten_collate,
-            'jigsaw': partial(_pad_collate_nd, pad_val=jigsaw_classes),
-            'contrastive': partial(_pad_collate_nd, need_padding_mask=True),
+            'jigsaw': partial(_pad_collate_nd, pad_val=jigsaw_padding_token),
+            'contrastive': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
         }
 
     def __call__(self, batch):
