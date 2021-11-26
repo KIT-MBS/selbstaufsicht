@@ -173,7 +173,7 @@ def _pad_collate_nd(batch, pad_val=0, need_padding_mask=False):
             mask_slices = [(idx, ) + tuple(slice(kronecker_delta(dim_i, dim_j) * sample.size(dim_i), None) for dim_i in range(n_dims)) for dim_j in range(n_dims)]
             for mask_slice in mask_slices:
                 if multiprocessing:
-                    out_mask_view[mark_slice] = True
+                    out_mask_view[mask_slice] = True
                 else:
                     out_mask[mask_slice] = True
 
