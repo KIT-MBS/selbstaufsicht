@@ -144,16 +144,19 @@ def _pad_collate_nd(batch, pad_val=0, need_padding_mask=False):
     dims = [max([sample.size(dim) for sample in batch]) for dim in range(n_dims)]
     
     # optimization taken from default collate_fn, using shared memory to avoid a copy when passing data to the main process
-    if torch.utils.data.get_worker_info() is not None:
+    multiprocessing = torch.utils.data.get_worker_info() is not None
+    if multiprocessing:
         elem = batch[0]
         numel = B * torch.tensor(dims).prod().item()
         storage = elem.storage()._new_shared(numel)
         out = elem.new(storage)
         out[:] = pad_val
+        out_view = out.view(B, *dims)
         if need_padding_mask:
             dummy_bool = torch.tensor(False)
             storage_mask = dummy_bool.storage()._new_shared(numel)
             out_mask = dummy_bool.new(storage_mask)
+            out_mask_view = out_mask.view(B, *dims)
     else:
         out = torch.full((B, *dims), pad_val, dtype=batch[0].dtype)
         if need_padding_mask:
@@ -162,11 +165,17 @@ def _pad_collate_nd(batch, pad_val=0, need_padding_mask=False):
     for idx, sample in enumerate(batch):
         inplace_slice = (idx, ) + tuple(slice(sample_dim) for sample_dim in sample.size())
         insert_slice = (slice(None),) * n_dims
-        out[inplace_slice] = sample[insert_slice]
+        if multiprocessing:
+            out_view[inplace_slice] = sample[insert_slice]
+        else:
+            out[inplace_slice] = sample[insert_slice]
         if need_padding_mask:
             mask_slices = [(idx, ) + tuple(slice(kronecker_delta(dim_i, dim_j) * sample.size(dim_i), None) for dim_i in range(n_dims)) for dim_j in range(n_dims)]
             for mask_slice in mask_slices:
-                out_mask[mask_slice] = True
+                if multiprocessing:
+                    out_mask_view[mark_slice] = True
+                else:
+                    out_mask[mask_slice] = True
 
     if need_padding_mask:
         return out, out_mask
