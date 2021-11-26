@@ -142,19 +142,34 @@ def _pad_collate_nd(batch, pad_val=0, need_padding_mask=False):
     B = len(batch)
     n_dims = batch[0].dim()
     dims = [max([sample.size(dim) for sample in batch]) for dim in range(n_dims)]
-
-    out = torch.full((B, *dims), pad_val, dtype=batch[0].dtype)
-    padding_mask = torch.zeros((B, *dims), dtype=torch.bool)
+    
+    # optimization taken from default collate_fn, using shared memory to avoid a copy when passing data to the main process
+    if torch.utils.data.get_worker_info() is not None:
+        elem = batch[0]
+        numel = B * torch.tensor(dims).prod().item()
+        storage = elem.storage()._new_shared(numel)
+        out = elem.new(storage)
+        out[:] = pad_val
+        if need_padding_mask:
+            dummy_bool = torch.tensor(False)
+            storage_mask = dummy_bool.storage()._new_shared(numel)
+            out_mask = dummy_bool.new(storage_mask)
+    else:
+        out = torch.full((B, *dims), pad_val, dtype=batch[0].dtype)
+        if need_padding_mask:
+            out_mask = torch.zeros((B, *dims), dtype=torch.bool)
+    
     for idx, sample in enumerate(batch):
         inplace_slice = (idx, ) + tuple(slice(sample_dim) for sample_dim in sample.size())
         insert_slice = (slice(None),) * n_dims
-        mask_slices = [(idx, ) + tuple(slice(kronecker_delta(dim_i, dim_j) * sample.size(dim_i), None) for dim_i in range(n_dims)) for dim_j in range(n_dims)]
         out[inplace_slice] = sample[insert_slice]
-        for mask_slice in mask_slices:
-            padding_mask[mask_slice] = True
+        if need_padding_mask:
+            mask_slices = [(idx, ) + tuple(slice(kronecker_delta(dim_i, dim_j) * sample.size(dim_i), None) for dim_i in range(n_dims)) for dim_j in range(n_dims)]
+            for mask_slice in mask_slices:
+                out_mask[mask_slice] = True
 
     if need_padding_mask:
-        return out, padding_mask
+        return out, out_mask
     else:
         return out
 
@@ -163,5 +178,12 @@ def _flatten_collate(batch):
     '''
     batch: sequence of 1d tensors, that may be of different length
     '''
-    # TODO optimize for multiple workers
-    return torch.cat(batch, 0)
+    
+    # optimization taken from default collate_fn, using shared memory to avoid a copy when passing data to the main process
+    out = None
+    if torch.utils.data.get_worker_info() is not None:
+        elem = batch[0]
+        numel = sum(x.numel() for x in batch)
+        storage = elem.storage()._new_shared(numel)
+        out = elem.new(storage)
+    return torch.cat(batch, 0, out=out)
