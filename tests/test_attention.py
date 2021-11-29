@@ -67,7 +67,7 @@ def test_padding_mask_MultiHeadAttention2d():
     for s in range(1, S+1):
         attn_pad = attn[pad_B, :, :, s * L + pad_L]
         testing.assert_close(attn_pad, attn_pad_ref,
-                             rtol=0, atol=0, check_stride=False)
+                             rtol=0, atol=0)
 
     # test full padding in L dimension
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
@@ -76,7 +76,7 @@ def test_padding_mask_MultiHeadAttention2d():
     attn_pad_ref = torch.zeros((num_heads, S * L, L))
     attn_pad = attn[pad_B, :, :, (S + pad_S) * L: (S + pad_S + 1) * L]
     testing.assert_close(attn_pad, attn_pad_ref, rtol=0,
-                         atol=0, check_stride=False)
+                         atol=0)
 
     # test full padding in S and L dimensions
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
@@ -85,7 +85,7 @@ def test_padding_mask_MultiHeadAttention2d():
     attn_pad_ref = torch.zeros((num_heads, S * L))
     attn_pad = attn[pad_B, :, :, (S + pad_S + 1) * L + pad_L]
     testing.assert_close(attn_pad, attn_pad_ref, rtol=0,
-                         atol=0, check_stride=False)
+                         atol=0)
 
 
 # NOTE: Comparison of AxialAttention and TiedAxialAttention does not work, since SumReduce(Softmax(x)) != Softmax(SumReduce(x))
@@ -148,7 +148,7 @@ def test_padding_mask_AxialAttention2d():
     row_attn_pad = row_attn[pad_B, :, :, :, pad_L]
     row_attn_pad_ref = torch.zeros((num_heads, S, L))
     testing.assert_close(row_attn_pad, row_attn_pad_ref,
-                         rtol=0, atol=0, check_stride=False)
+                         rtol=0, atol=0)
 
     # test full padding in L dimension
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
@@ -157,7 +157,7 @@ def test_padding_mask_AxialAttention2d():
     col_attn_pad = col_attn[pad_B, :, :, pad_S, :]
     col_attn_pad_ref = torch.zeros((num_heads, S, L))
     testing.assert_close(col_attn_pad, col_attn_pad_ref,
-                         rtol=0, atol=0, check_stride=False)
+                         rtol=0, atol=0)
 
     # test full padding in S and L dimensions
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
@@ -169,9 +169,9 @@ def test_padding_mask_AxialAttention2d():
     row_attn_pad_ref = torch.zeros((num_heads, S+pad_S, L))
     col_attn_pad_ref = torch.zeros((num_heads, S, L+pad_L))
     testing.assert_close(row_attn_pad, row_attn_pad_ref,
-                         atol=0, rtol=0, check_stride=False)
+                         atol=0, rtol=0)
     testing.assert_close(col_attn_pad, col_attn_pad_ref,
-                         atol=0, rtol=0, check_stride=False)
+                         atol=0, rtol=0)
 
 
 # NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
@@ -229,7 +229,7 @@ def test_padding_mask_TiedAxialAttention2d():
     row_attn_pad = row_attn[pad_B, :, 0, :, pad_L]
     row_attn_pad_ref = torch.zeros((num_heads, L))
     testing.assert_close(row_attn_pad, row_attn_pad_ref,
-                         rtol=0, atol=0, check_stride=False)
+                         rtol=0, atol=0)
 
     # test full padding in L dimension
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
@@ -238,7 +238,7 @@ def test_padding_mask_TiedAxialAttention2d():
     col_attn_pad = col_attn[pad_B, :, :, pad_S, :]
     col_attn_pad_ref = torch.zeros((num_heads, S, L))
     testing.assert_close(col_attn_pad, col_attn_pad_ref,
-                         rtol=0, atol=0, check_stride=False)
+                         rtol=0, atol=0)
 
     # test full padding in S and L dimension
     padding_mask = torch.zeros((bs, S, L), dtype=torch.bool)
@@ -251,9 +251,9 @@ def test_padding_mask_TiedAxialAttention2d():
     col_attn_pad_ref = torch.zeros((num_heads, S, L+pad_L))
     
     testing.assert_close(row_attn_pad, row_attn_pad_ref,
-                         rtol=0, atol=0, check_stride=False)
+                         rtol=0, atol=0)
     testing.assert_close(col_attn_pad, col_attn_pad_ref,
-                         rtol=0, atol=0, check_stride=False)
+                         rtol=0, atol=0)
 
 
 # NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
