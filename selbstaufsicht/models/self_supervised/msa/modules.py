@@ -14,10 +14,10 @@ class InpaintingHead(nn.Module):
     # NOTE the output is basically flattened (of  shape (-1, num_classes)) since the number of masked tokens per sample in the batch is not the same
     def forward(self, latent, x):
         # latent is of shape [B, E, L, D]
-        output = self.proj(latent)  # [B, E, L, NReconstructibleTokens]
+        output = self.proj(latent)  # [B, E, L, NClasses]
         output = output[x['mask']]
 
-        output = output.reshape(-1, self.num_classes)  # [NReconstructedTokens, NReconstructibleTokens]
+        output = output.reshape(-1, self.num_classes)  # [B*E*L, NCLasses]
         return output
 
 
