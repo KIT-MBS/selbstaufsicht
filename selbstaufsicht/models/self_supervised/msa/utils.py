@@ -1,3 +1,4 @@
+from functools import partial
 import torch
 import collections
 from torch.nn import CrossEntropyLoss
@@ -6,11 +7,10 @@ from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSACropping, RandomMSASubsampling, RandomMSAShuffling
-from selbstaufsicht.modules import NT_Xent_Loss
+from selbstaufsicht.modules import NT_Xent_Loss, Accuracy
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
-from torchmetrics import Accuracy
 
-# NOTE mask and delimiter tokens can not be reconstructed
+# NOTE mask and padding tokens can not be reconstructed
 
 
 def get_tasks(tasks,
@@ -21,6 +21,7 @@ def get_tasks(tasks,
               p_mask=0.15,
               jigsaw_partitions=3,
               jigsaw_classes=4,
+              jigsaw_padding_token=-1,
               simclr_temperature=100.,
               ):
     """
@@ -38,7 +39,7 @@ def get_tasks(tasks,
     transformslist = [
         RandomMSASubsampling(subsample_depth, contrastive=contrastive),
         RandomMSACropping(crop, contrastive=contrastive),
-        MSATokenize(rna2index, rna2index['START_TOKEN'])]
+        MSATokenize(rna2index)]
 
     if 'jigsaw' in tasks:
         transformslist.append(
@@ -65,14 +66,13 @@ def get_tasks(tasks,
 
     task_heads = ModuleDict()
     task_losses = dict()
-    # TODO always include 'no transformation'
     if 'jigsaw' in tasks:
         head = JigsawHead(dim, jigsaw_classes)
         task_heads['jigsaw'] = head
-        task_losses['jigsaw'] = CrossEntropyLoss()
-        metrics['jigsaw'] = ModuleDict({'acc': Accuracy()})
+        task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
+        metrics['jigsaw'] = ModuleDict({'acc': Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)})
     if 'inpainting' in tasks:
-        head = InpaintingHead(dim, len(rna2index) - 1)  # NOTE never predict mask token
+        head = InpaintingHead(dim, len(rna2index) - 2)  # NOTE never predict mask token or padding token
         task_heads['inpainting'] = head
 
         task_losses['inpainting'] = CrossEntropyLoss()
@@ -88,46 +88,75 @@ def get_tasks(tasks,
 
 
 class MSACollator():
-    def __init__(self):
-        self.collate_dict = {
-            'msa': _pad_collate_nd,
-            'mask': _pad_collate_nd,
+    def __init__(self, msa_padding_token, inpainting_mask_padding_token=0, jigsaw_padding_token=-1):
+        self.collate_fn = {
+            'msa': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
+            'mask': partial(_pad_collate_nd, pad_val=inpainting_mask_padding_token),
             'aux_features': _pad_collate_nd,
+            'aux_features_contrastive': _pad_collate_nd,
             'inpainting': _flatten_collate,
-            'jigsaw': torch.utils.data._utils.collate.default_collate,
-            'contrastive': _pad_collate_nd,
+            'jigsaw': partial(_pad_collate_nd, pad_val=jigsaw_padding_token),
+            'contrastive': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
         }
 
     def __call__(self, batch):
         """
-        x: list of tuples of dicts: e.g. [({input1}, {target1}), ({input2}, {target2})]
-        input contains: {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor}
-        target contains one or more of {'inpainting': 1dtensor, 'jigsaw': int, 'contrastive': tensor}
+        batch: list of tuples of dicts: e.g. [({input1}, {target1}), ({input2}, {target2})]
+        input contains: {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor, 'contrastive': tensor}
+        target contains one or more of {'inpainting': 1dtensor, 'jigsaw': 1dtensor}
         """
 
         first_sample = batch[0]
         if all([isinstance(item, collections.abc.Mapping) for item in first_sample]):
-            return tuple({key: self.collate_dict[key]([sample[idx][key] for sample in batch]) for key in item} for idx, item in enumerate(first_sample))
+            result = tuple(self._collate_dict(idx, item, batch) for idx, item in enumerate(first_sample))
+            return result
         else:
-            return torch.utils.data._utils.collate.default_collate(batch)
+            raise
+            # return torch.utils.data._utils.collate.default_collate(batch)
+    
+    def _collate_dict(self, item_idx, item, batch):
+        
+        out = {}
+        
+        for key in item:
+            collate_result = self.collate_fn[key]([sample[item_idx][key] for sample in batch])
+            
+            if key in ['msa', 'contrastive']:
+                collate_result, padding_mask = collate_result
+                if key == 'msa':
+                    out['padding_mask'] = padding_mask
+                elif key == 'contrastive':
+                    out['padding_mask_contrastive'] = padding_mask
+            out[key] = collate_result
+        
+        return out
 
 
-def _pad_collate_nd(batch):
+def _pad_collate_nd(batch, pad_val=0, need_padding_mask=False):
     '''
-    batch: sequence of nd tensors, that may have different dimensions
+    batch: sequence of nd tensors that may have different dimensions
     '''
+    
+    kronecker_delta = lambda i, j: 1 if i == j else 0
 
     B = len(batch)
     n_dims = batch[0].dim()
     dims = [max([sample.size(dim) for sample in batch]) for dim in range(n_dims)]
 
-    out = torch.zeros((B, *dims), dtype=batch[0].dtype)
+    out = torch.full((B, *dims), pad_val, dtype=batch[0].dtype)
+    padding_mask = torch.zeros((B, *dims), dtype=torch.bool)
     for idx, sample in enumerate(batch):
-        inplace_slices = (idx, ) + tuple(slice(sample_dim) for sample_dim in sample.size())
-        insert_slices = (slice(None),) * n_dims
-        out[inplace_slices] = sample[insert_slices]
+        inplace_slice = (idx, ) + tuple(slice(sample_dim) for sample_dim in sample.size())
+        insert_slice = (slice(None),) * n_dims
+        mask_slices = [(idx, ) + tuple(slice(kronecker_delta(dim_i, dim_j) * sample.size(dim_i), None) for dim_i in range(n_dims)) for dim_j in range(n_dims)]
+        out[inplace_slice] = sample[insert_slice]
+        for mask_slice in mask_slices:
+            padding_mask[mask_slice] = True
 
-    return out
+    if need_padding_mask:
+        return out, padding_mask
+    else:
+        return out
 
 
 def _flatten_collate(batch):

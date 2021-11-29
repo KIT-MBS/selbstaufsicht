@@ -1,3 +1,4 @@
+from functools import partial
 import torch
 from Bio.Align import MultipleSeqAlignment
 import math
@@ -60,10 +61,10 @@ class RandomMSACropping():
 
 class RandomMSAMasking():
     # TODO other tokens instead of mask token
-    def __init__(self, p, mode, mask_token, contrastive=False):
+    def __init__(self, p, mode, mask_token, contrastive=False, start_token=True):
         self.p = p
         self.mask_token = mask_token
-        self.masking_fn = _get_masking_fn(mode)
+        self.masking_fn = _get_masking_fn(mode, start_token)
         self.contrastive = contrastive
 
     def __call__(self, x):
@@ -92,20 +93,24 @@ class RandomMSAShuffling():
     def __init__(self, permutations=None, minleader=1, mintrailer=0, delimiter_token=None, num_partitions=None, num_classes=None, contrastive=False):
         if permutations is None and (num_partitions is None or num_classes is None):
             raise ValueError("Permutations have to be given explicitely or parameters to generate them.")
-        self.permutations = permutations
 
+        # TODO always include 'no transformation'
         if permutations is None:
             perm_indices = list(range(math.factorial(num_partitions)))
             random.shuffle(perm_indices)
-            self.permutations = [lehmer_encode(i, num_partitions) for i in perm_indices[:num_classes]]
-        self.num_partitions = max(self.permutations[0])
-        self.num_classes = len(self.permutations)
+            self.permutations = torch.stack([lehmer_encode(i, num_partitions) for i in perm_indices[:num_classes]]).unsqueeze(0)
+        else:
+            # NOTE attribute permutations is expected to have shape [num_classes, num_partitions]
+            # NOTE add singleton dim for later expansion to num_seq dim
+            self.permutations = permutations.unsqueeze(0)
+        self.num_partitions = max(self.permutations[0, 0])
+        self.num_classes = len(self.permutations[0])
         self.minleader = minleader
         self.mintrailer = mintrailer
         self.delimiter_token = delimiter_token
         self.contrastive = contrastive
 
-    def __call__(self, x):
+    def __call__(self, x, label=None):
         '''
         x is either a tensor or a tuple of input and target dictionaries
         '''
@@ -113,22 +118,34 @@ class RandomMSAShuffling():
         if type(x) == tuple:
             x, y = x
         if type(x) == dict:
-            label = torch.randint(0, self.num_classes, (x['msa'].size(0),))
-            shuffled_msa = _jigsaw(x['msa'], self.permutations[label], delimiter_token=self.delimiter_token, minleader=self.minleader, mintrailer=self.mintrailer)
+            num_seq = x['msa'].size(0)
+            if label is None:
+                label = torch.randint(0, self.num_classes, (num_seq,))
+            shuffled_msa = _jigsaw(x['msa'],
+                                   self.permutations.expand(num_seq, -1, -1)[range(num_seq),
+                                   label], delimiter_token=self.delimiter_token,
+                                   minleader=self.minleader,
+                                   mintrailer=self.mintrailer)
             x['msa'] = shuffled_msa
         else:
-            label = torch.randint(0, self.num_classes, (x.size(0),))
-            shuffled_msa = _jigsaw(x, self.permutations[label], delimiter_token=self.delimiter_token, minleader=self.minleader, mintrailer=self.mintrailer)
+            num_seq = x.size(0)
+            if label is None:
+                label = torch.randint(0, self.num_classes, (num_seq,))
+            shuffled_msa = _jigsaw(x,
+                                   self.permutations.expand(num_seq, -1, -1)[range(num_seq), label],
+                                   delimiter_token=self.delimiter_token,
+                                   minleader=self.minleader,
+                                   mintrailer=self.mintrailer)
             x = {'msa': shuffled_msa}
         y['jigsaw'] = label
         if self.contrastive:
-            contrastive_perm = torch.randint(0, self.num_classes, (1,)).item()
-            contrastive_x = _jigsaw(
-                x['contrastive'],
-                self.permutations[contrastive_perm],
-                delimiter_token=self.delimiter_token,
-                minleader=self.minleader,
-                mintrailer=self.mintrailer)
+            contrastive_perm = torch.randint(0, self.num_classes, (num_seq,))
+            contrastive_x = _jigsaw(x['contrastive'],
+                                    self.permutations.expand(num_seq, -1, -1)[range(num_seq),
+                                    contrastive_perm],
+                                    delimiter_token=self.delimiter_token,
+                                    minleader=self.minleader,
+                                    mintrailer=self.mintrailer)
             x['contrastive'] = contrastive_x
 
         return x, y
@@ -150,6 +167,7 @@ class ExplicitPositionalEncoding():
     def __init__(self, axis=-1, abs_factor=1000):
         self.axis = axis
         self.abs_factor = abs_factor
+        
 
     def __call__(self, x):
         if type(x) == tuple:
@@ -168,6 +186,17 @@ class ExplicitPositionalEncoding():
             x['aux_features'] = torch.cat((absolute, relative), dim=-1)
         else:
             x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=-1)
+        
+        if 'contrastive' in x:
+            msa = x['contrastive']
+            size = msa.size(self.axis)
+            absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
+            relative = absolute / size
+            absolute = absolute / self.abs_factor
+            if 'aux_features_contrastive' not in x:
+                x['aux_features_contrastive'] = torch.cat((absolute, relative), dim=-1)
+            else:
+                x['aux_features_contrastive'] = torch.cat((msa['aux_features_contrastive'], absolute, relative), dim=-1)
 
         return x, target
 
@@ -186,8 +215,8 @@ def _jigsaw(msa, permutations, delimiter_token=None, minleader=1, mintrailer=0):
     # TODO minimum partition size?
     # TODO optimize
     nres = msa.size(-1)
-    assert len(permutations) == msa.size(0)
-    npartitions = len(permutations[0])
+    assert permutations.size(0) == msa.size(0)
+    npartitions = permutations.size(-1)
     partition_length = (nres - minleader - mintrailer) // npartitions
     core_leftover = nres - minleader - mintrailer - (partition_length * npartitions)
     if minleader < minleader + core_leftover:
@@ -209,7 +238,7 @@ def _jigsaw(msa, permutations, delimiter_token=None, minleader=1, mintrailer=0):
         for p in permutation:
             if delimiter_token is not None:
                 line_chunks.append(torch.full((1,), delimiter_token, dtype=torch.int))
-            line_chunks.append(partitions[i][p])
+            line_chunks.append(partitions[p.item()][i])
         if delimiter_token is not None:
             line_chunks.append(torch.full((1,), delimiter_token, dtype=torch.int))
         lines.append(torch.cat(line_chunks, dim=0).unsqueeze(0))
@@ -223,14 +252,14 @@ def _jigsaw(msa, permutations, delimiter_token=None, minleader=1, mintrailer=0):
 
 
 # TODO add capabilities for not masking and replace with random other token
-def _block_mask_msa(msa, p, mask_token):
+def _block_mask_msa(msa, p, mask_token, start_token=True):
     """
     masks out a contiguous block of columns in the given msa
     """
 
-    total_length = msa.size(-1)
+    total_length = msa.size(-1) - int(start_token)
     mask_length = int(total_length * p)
-    begin = torch.randint(total_length - mask_length, (1, )).item()
+    begin = torch.randint(total_length - mask_length, (1, )).item() + int(start_token)
     end = begin + mask_length
 
     mask = torch.zeros_like(msa, dtype=torch.bool)
@@ -241,39 +270,40 @@ def _block_mask_msa(msa, p, mask_token):
     return msa, mask, masked
 
 
-def _column_mask_msa_indexed(msa, col_indices, mask_token):
+def _column_mask_msa_indexed(msa, col_indices, mask_token, start_token=True):
     """
     masks out a given set of columns in the given msa
     """
 
     mask = torch.zeros_like(msa, dtype=torch.bool)
-    mask[:, col_indices] = True
+    mask[:, col_indices + int(start_token)] = True
 
     masked = msa[mask]
     msa[mask] = mask_token
     return msa, mask, masked
 
 
-def _column_mask_msa(msa, p, mask_token):
+def _column_mask_msa(msa, p, mask_token, start_token=True):
     """
     masks out a random set of columns in the given msa
     """
 
-    col_num = msa.size(-1)
+    col_num = msa.size(-1) - int(start_token)
     col_indices = torch.arange(col_num, dtype=torch.long)
     col_mask = torch.full((col_num,), p)
     col_mask = torch.bernoulli(col_mask).to(torch.bool)
     masked_col_indices = (col_mask * col_indices)
-    return _column_mask_msa_indexed(msa, masked_col_indices, mask_token)
+    return _column_mask_msa_indexed(msa, masked_col_indices, mask_token, start_token=start_token)
 
 
 # TODO should seq start token be excluded from masking?
-def _token_mask_msa(msa, p, mask_token):
+def _token_mask_msa(msa, p, mask_token, start_token=True):
     """
     masks out random tokens uniformly sampled from the given msa
     """
 
     mask = torch.full(msa.size(), p)
+    mask[:, :int(start_token)] = 0.
     mask = torch.bernoulli(mask).to(torch.bool)
 
     masked = msa[mask]
@@ -281,13 +311,13 @@ def _token_mask_msa(msa, p, mask_token):
     return msa, mask, masked
 
 
-def _get_masking_fn(mode):
+def _get_masking_fn(mode, start_token):
     if mode == 'token':
-        return _token_mask_msa
+        return partial(_token_mask_msa, start_token=start_token)
     elif mode == 'column':
-        return _column_mask_msa
+        return partial(_column_mask_msa, start_token=start_token)
     elif mode == 'block':
-        return _block_mask_msa
+        return partial(_block_mask_msa, start_token=start_token)
     raise ValueError('unknown token masking mode', mode)
 
 
