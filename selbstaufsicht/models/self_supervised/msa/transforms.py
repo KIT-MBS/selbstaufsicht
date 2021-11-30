@@ -330,9 +330,97 @@ def _subsample_uniform(msa, nseqs):
     return msa
 
 
+def _hamming_distance(seq_1, seq_2):
+    assert len(seq_1) == len(seq_2), "Both sequences are required to have the same length!"
+    return sum(n_1 != n_2 for n_1, n_2 in zip(seq_1, seq_2))
+
+
+def _hamming_distance_matrix(msa):
+    hd_matrix = torch.zeros((len(msa), len(msa)))
+    
+    # computes upper triangular part, without diagonal
+    for idx_1, seq_1 in enumerate(msa):
+        for idx_2, seq_2 in enumerate(msa):
+            if idx_2 <= idx_1:
+                continue
+            hd_matrix[idx_1, idx_2] = _hamming_distance(seq_1.seq, seq_2.seq)
+    
+    # make matrix symmetric for easier handling
+    return hd_matrix + hd_matrix.T
+
+
+def _maximize_diversity_naive(msa, msa_indices, nseqs, sampled_msa):
+    # naive strategy: compute hamming distances on-the-fly, when needed
+    hd_matrix = torch.zeros((len(msa_indices), len(sampled_msa)))
+        
+    for idx_1, idx_msa in enumerate(msa_indices):
+        seq_1 = msa[idx_msa]
+        for idx_2, seq_2 in enumerate(sampled_msa):
+            hd_matrix[idx_1, idx_2] = _hamming_distance(seq_1.seq, seq_2.seq)
+    
+    # average over already sampled sequences
+    avg_hd = torch.mean(hd_matrix, dim=1)
+    # find sequence with maximum average hamming distance
+    idx_max = torch.argmax(avg_hd).item()
+    idx_msa_max = msa_indices[idx_max]
+        
+    sampled_msa.append(msa[idx_msa_max])
+    msa_indices.pop(idx_max)
+    nseqs -= 1
+    
+    if nseqs == 0:
+        return sampled_msa
+    else:
+        return _maximize_diversity_naive(msa, msa_indices, nseqs, sampled_msa)
+                
+
+def _maximize_diversity_cached(msa, msa_indices, nseqs, sampled_msa, sampled_msa_indices, hd_matrix):
+    # cached strategy: use pre-computed hamming distances
+    indices = tuple(zip(*[(msa_idx, sampled_msa_idx) for msa_idx in msa_indices for sampled_msa_idx in sampled_msa_indices]))
+    hd_matrix_reduced = hd_matrix[indices[0], indices[1]].view(len(msa_indices), len(sampled_msa_indices))
+    
+    # average over already sampled sequences
+    if hd_matrix_reduced.dim() == 2:
+        avg_hd = torch.mean(hd_matrix_reduced, dim=1)
+    else:
+        avg_hd = hd_matrix_reduced.float()
+    # find sequence with maximum average hamming distance
+    idx_max = torch.argmax(avg_hd).item()
+    idx_msa_max = msa_indices[idx_max]
+    
+    sampled_msa.append(msa[idx_msa_max])
+    msa_indices.pop(idx_max)
+    sampled_msa_indices.append(idx_msa_max)
+    nseqs -= 1
+    
+    if nseqs == 0:
+        return sampled_msa
+    else:
+        return _maximize_diversity_cached(msa, msa_indices, nseqs, sampled_msa, sampled_msa_indices, hd_matrix)
+    
+
 def _subsample_diversity_maximizing(msa, nseqs, contrastive=False):
-    # TODO
-    raise
+    # since the function is deterministic and contrastive input should be different from the regular input, it is sampled randomly
+    if contrastive:
+        return _subsample_uniform(msa, nseqs)
+    
+    # depending on the total number of sequences and the number of sequences to be subsampled, choose computation strategy:
+    # either compute and cache all hamming distanced between distinct sequences beforehand or use the naive implementation with potentially repeating comparisons
+    
+    n = len(msa)
+    # exclude reference seq
+    m = min(nseqs, n) - 1
+    
+    # symmetric, reflexive n:n relation
+    comparisons_cached = (n**2 - n) / 2
+    # equivalent to sum_{i=1}^{m} i*(N-i), which is the cumulative number of comparisons after the m-th recursive call
+    comparisons_naive = n * m * (m + 1) / 2 - m * (m + 1) * (2 * m + 1) / 6
+    
+    if comparisons_cached <= comparisons_naive:
+        hd_matrix = _hamming_distance_matrix(msa)
+        return _maximize_diversity_cached(msa, list(range(1, n)), m, msa[0:1], [0], hd_matrix)
+    else:
+        return _maximize_diversity_naive(msa, list(range(1, n)), m, msa[0:1])
 
 
 def _get_msa_subsampling_fn(mode):

@@ -16,6 +16,7 @@ from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 def get_tasks(tasks,
               dim,
               subsample_depth=5,
+              subsample_mode="uniform",
               crop=50,
               masking='token',
               p_mask=0.15,
@@ -37,7 +38,7 @@ def get_tasks(tasks,
         contrastive = True
 
     transformslist = [
-        RandomMSASubsampling(subsample_depth, contrastive=contrastive),
+        RandomMSASubsampling(subsample_depth, contrastive=contrastive, mode=subsample_mode),
         RandomMSACropping(crop, contrastive=contrastive),
         MSATokenize(rna2index)]
 
