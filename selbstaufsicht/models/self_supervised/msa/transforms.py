@@ -94,10 +94,11 @@ class RandomMSAShuffling():
         if permutations is None and (num_partitions is None or num_classes is None):
             raise ValueError("Permutations have to be given explicitely or parameters to generate them.")
 
-        # TODO always include 'no transformation'
         if permutations is None:
-            perm_indices = list(range(math.factorial(num_partitions)))
+            perm_indices = list(range(1, math.factorial(num_partitions)))
             random.shuffle(perm_indices)
+            # NOTE always include 'no transformation'
+            perm_indices.insert(0, 0)
             self.permutations = torch.stack([lehmer_encode(i, num_partitions) for i in perm_indices[:num_classes]]).unsqueeze(0)
         else:
             # NOTE attribute permutations is expected to have shape [num_classes, num_partitions]
