@@ -15,6 +15,8 @@ parser = argparse.ArgumentParser(description='Selbstaufsicht Training Script')
 parser.add_argument('--num-blocks', default=2, type=int, help="Number of consecutive Transmorpher blocks")
 parser.add_argument('--feature-dim', default=768, type=int, help="Size of the feature dimension")
 parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
+# Dataset
+parser.add_argument('--xfam-version', default='9.1', type=str, help="Xfam dataset version")
 # Training process
 parser.add_argument('--num-epochs', default=20, type=int, help="Number of training epochs")
 parser.add_argument('--batch-size', default=2, type=int, help="Batch size (local in case of multi-gpu training)")
@@ -68,7 +70,7 @@ transform, task_heads, task_losses, metrics = get_tasks(tasks,
 
 root = os.environ['DATA_PATH'] + 'Xfam'
 # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
-ds = datasets.Xfam(root, download=True, transform=transform)
+ds = datasets.Xfam(root, download=True, transform=transform, version=args.xfam_version)
 dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers, pin_memory=True)
 # TODO should pass padding token index here
 model = models.self_supervised.MSAModel(
