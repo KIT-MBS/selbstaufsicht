@@ -408,7 +408,7 @@ def _subsample_diversity_maximizing(msa, nseqs, contrastive=False):
     
     n = len(msa)
     # exclude reference seq
-    m = nseqs-1
+    m = min(nseqs, n) - 1
     
     # symmetric, reflexive n:n relation
     comparisons_cached = (n**2 - n) / 2
