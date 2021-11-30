@@ -198,7 +198,7 @@ def test_hamming_distance():
     
 def test_hamming_distance_matrix(basic_msa):
     hd_matrix = _hamming_distance_matrix(basic_msa)
-    hd_matrix_ref = torch.tensor([[0, 2, 3, 2], [2, 0, 4, 4], [3, 4, 0, 3], [2, 4, 3, 0]], dtype=torch.int64)
+    hd_matrix_ref = torch.tensor([[0, 2, 3, 2], [2, 0, 4, 4], [3, 4, 0, 3], [2, 4, 3, 0]], dtype=torch.float32)
     testing.assert_close(hd_matrix, hd_matrix_ref, atol=0, rtol=0)
     
 

@@ -335,7 +335,7 @@ def _hamming_distance(seq_1, seq_2):
 
 
 def _hamming_distance_matrix(msa):
-    hd_matrix = torch.zeros((len(msa), len(msa)), dtype=torch.int64)
+    hd_matrix = torch.zeros((len(msa), len(msa)))
     
     # computes upper triangular part, without diagonal
     for idx_1, seq_1 in enumerate(msa):
@@ -350,7 +350,7 @@ def _hamming_distance_matrix(msa):
 
 def _maximize_diversity_naive(msa, msa_indices, nseqs, sampled_msa):
     # naive strategy: compute hamming distances on-the-fly, when needed
-    hd_matrix = torch.zeros((len(msa_indices), len(sampled_msa)), dtype=torch.int64)
+    hd_matrix = torch.zeros((len(msa_indices), len(sampled_msa)))
         
     for idx_1, idx_msa in enumerate(msa_indices):
         seq_1 = msa[idx_msa]
@@ -358,7 +358,7 @@ def _maximize_diversity_naive(msa, msa_indices, nseqs, sampled_msa):
             hd_matrix[idx_1, idx_2] = _hamming_distance(seq_1.seq, seq_2.seq)
     
     # average over already sampled sequences
-    avg_hd = torch.mean(hd_matrix.float(), dim=1)
+    avg_hd = torch.mean(hd_matrix, dim=1)
     # find sequence with maximum average hamming distance
     idx_max = torch.argmax(avg_hd).item()
     idx_msa_max = msa_indices[idx_max]
@@ -380,7 +380,7 @@ def _maximize_diversity_cached(msa, msa_indices, nseqs, sampled_msa, sampled_msa
     
     # average over already sampled sequences
     if hd_matrix_reduced.dim() == 2:
-        avg_hd = torch.mean(hd_matrix_reduced.float(), dim=1)
+        avg_hd = torch.mean(hd_matrix_reduced, dim=1)
     else:
         avg_hd = hd_matrix_reduced.float()
     # find sequence with maximum average hamming distance
