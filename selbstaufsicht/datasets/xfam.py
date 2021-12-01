@@ -25,7 +25,8 @@ class Xfam():
             version: str = '9.1',
             polymer: str = 'rna',
             transform: Callable = None,
-            download: bool = False) -> None:
+            download: bool = False,
+            debug_size: int = -1) -> None:
         if split not in splits:
             raise ValueError(f"split has to be in {splits}")
         if mode not in modes:
@@ -68,6 +69,9 @@ class Xfam():
                             self.samples[i] = AlignIO.read(f, 'stockholm')
                     except ValueError:
                         print(fam_id)
+        
+        if debug_size > 0:
+            self.samples = self.samples[:debug_size]
 
     def __getitem__(self, i):
         if self.transform is not None:
