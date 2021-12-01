@@ -16,7 +16,7 @@ from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 def get_tasks(tasks,
               dim,
               subsample_depth=5,
-              subsample_mode="uniform",
+              subsample_mode='uniform',
               crop=50,
               masking='token',
               p_mask=0.15,
