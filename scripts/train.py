@@ -127,6 +127,5 @@ trainer = Trainer(max_epochs=args.num_epochs,
                   precision=args.precision,
                   accelerator="gpu",
                   strategy=dp_strategy,
-                  enable_progress_bar=not
-                  args.disable_progress_bar)
+                  enable_progress_bar=not args.disable_progress_bar)
 trainer.fit(model, dl)
