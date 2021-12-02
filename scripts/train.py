@@ -1,6 +1,8 @@
 import argparse
 import os
-from torch.utils.data import DataLoader
+
+import torch
+from torch.utils.data import DataLoader, Subset
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.plugins import DDPPlugin
@@ -17,13 +19,15 @@ parser.add_argument('--feature-dim', default=768, type=int, help="Size of the fe
 parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
 # Dataset
 parser.add_argument('--xfam-version', default='9.1', type=str, help="Xfam dataset version")
-parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. Negative numbers refer to using all data.")
+parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. non positive numbers refer to using all data.")
+parser.add_argument('--xfam-mode', default='seed', type=str, help="Xfam dataset mode:seed, full, or enhanced")
 # Training process
 parser.add_argument('--num-epochs', default=20, type=int, help="Number of training epochs")
 parser.add_argument('--batch-size', default=2, type=int, help="Batch size (local in case of multi-gpu training)")
 parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
-parser.add_argument('--learning-rate-warmup', default=16000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
+parser.add_argument('--learning-rate-warmup', default=2000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
 parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
+parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
 # Data parallelism
 parser.add_argument('--num-gpus', default=1, type=int, help="Number of GPUs per node")
 parser.add_argument('--num-nodes', default=1, type=int, help="Number of nodes")
@@ -45,6 +49,7 @@ parser.add_argument('--contrastive-temperature', default=100., type=float, help=
 args = parser.parse_args()
 
 d_head = args.feature_dim // args.num_heads
+assert d_head * args.num_heads == args.feature_dim
 
 tasks = []
 if args.task_inpainting:
@@ -73,7 +78,13 @@ transform, task_heads, task_losses, metrics = get_tasks(tasks,
 
 root = os.environ['DATA_PATH'] + 'Xfam'
 # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
-ds = datasets.Xfam(root, download=True, transform=transform, version=args.xfam_version, debug_size=args.num_data_samples)
+
+ds = datasets.Xfam(root, download=True, transform=transform, version=args.xfam_version)
+if args.num_data_samples > 0:
+    tm = ds.token_mapping
+    ds = Subset(ds, torch.arange(args.num_data_samples))
+    ds.token_mapping = tm
+
 dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers, pin_memory=True)
 # TODO should pass padding token index here
 model = models.self_supervised.MSAModel(
@@ -88,5 +99,12 @@ model = models.self_supervised.MSAModel(
     lr=args.learning_rate,
     lr_warmup=args.learning_rate_warmup
 )
-trainer = Trainer(max_epochs=args.num_epochs, gpus=args.num_gpus, num_nodes=args.num_nodes, precision=args.precision, accelerator="gpu", strategy=dp_strategy)
+trainer = Trainer(max_epochs=args.num_epochs,
+                  gpus=args.num_gpus,
+                  num_nodes=args.num_nodes,
+                  precision=args.precision,
+                  accelerator="gpu",
+                  strategy=dp_strategy,
+                  enable_progress_bar=not
+                  args.disable_progress_bar)
 trainer.fit(model, dl)
