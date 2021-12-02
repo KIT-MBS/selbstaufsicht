@@ -1,5 +1,8 @@
 import argparse
+from functools import partial
+import numpy as np
 import os
+import random
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -7,6 +10,7 @@ from torch.utils.data import DataLoader, Subset
 from pytorch_lightning import Trainer
 from pytorch_lightning.plugins import DDPPlugin
 
+from selbstaufsicht.utils import data_loader_worker_init
 from selbstaufsicht import models
 from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, MSACollator
@@ -18,9 +22,10 @@ parser.add_argument('--num-blocks', default=2, type=int, help="Number of consecu
 parser.add_argument('--feature-dim', default=768, type=int, help="Size of the feature dimension")
 parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
 # Dataset
+parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam")
+parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. Non-positive numbers refer to using all data.")
 parser.add_argument('--xfam-version', default='9.1', type=str, help="Xfam dataset version")
-parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. non positive numbers refer to using all data.")
-parser.add_argument('--xfam-mode', default='seed', type=str, help="Xfam dataset mode:seed, full, or enhanced")
+parser.add_argument('--xfam-mode', default='seed', type=str, help="Xfam dataset mode: seed, full, or enhanced")
 # Training process
 parser.add_argument('--num-epochs', default=20, type=int, help="Number of training epochs")
 parser.add_argument('--batch-size', default=2, type=int, help="Batch size (local in case of multi-gpu training)")
@@ -28,6 +33,7 @@ parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial l
 parser.add_argument('--learning-rate-warmup', default=2000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
 parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
 parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
+parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
 # Data parallelism
 parser.add_argument('--num-gpus', default=1, type=int, help="Number of GPUs per node")
 parser.add_argument('--num-nodes', default=1, type=int, help="Number of nodes")
@@ -38,7 +44,7 @@ parser.add_argument('--task-jigsaw', action='store_true', help="Activates the ji
 parser.add_argument('--task-contrastive', action='store_true', help="Activates the contrastive task")
 # Upstream task configuration
 parser.add_argument('--subsampling-depth', default=4, type=int, help="Number of subsampled sequences")
-parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode (uniform, diversity)")
+parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity")
 parser.add_argument('--cropping-size', default=50, type=int, help="Maximum uncropped sequence length")
 parser.add_argument('--inpainting-masking-type', default='token', type=str, help="MSA masking type in the inpainting task")
 parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MSA masking ratio in the inpainting task")
@@ -59,6 +65,12 @@ if args.task_jigsaw:
 if args.task_contrastive:
     tasks.append("contrastive")
 
+torch.manual_seed(args.rng_seed)
+np.random.seed(args.rng_seed)
+random.seed(args.rng_seed)
+data_loader_rng = torch.Generator()
+data_loader_rng.manual_seed(args.rng_seed)
+
 if args.num_gpus * args.num_nodes > 1:
     dp_strategy = DDPPlugin(find_unused_parameters=False)
 else:
@@ -76,16 +88,24 @@ transform, task_heads, task_losses, metrics = get_tasks(tasks,
                                                         jigsaw_classes=args.jigsaw_permutations,
                                                         simclr_temperature=args.contrastive_temperature)
 
-root = os.environ['DATA_PATH'] + 'Xfam'
+root = os.environ['DATA_PATH']
+dataset_name = args.dataset.lower()
 # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 
-ds = datasets.Xfam(root, download=True, transform=transform, version=args.xfam_version)
+if dataset_name == 'xfam':
+    dataset_path = os.path.join(root, 'Xfam')
+    ds = datasets.Xfam(dataset_path, download=True, transform=transform, version=args.xfam_version)
+# TODO: Add further cases for newly added datasets here
+else:
+    raise ValueError("Unknown dataset: %s" % args.dataset)
+
 if args.num_data_samples > 0:
     tm = ds.token_mapping
     ds = Subset(ds, torch.arange(args.num_data_samples))
     ds.token_mapping = tm
 
-dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers, pin_memory=True)
+dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers, 
+                worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=True)
 # TODO should pass padding token index here
 model = models.self_supervised.MSAModel(
     args.num_blocks,
