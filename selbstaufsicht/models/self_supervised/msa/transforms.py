@@ -220,10 +220,10 @@ def _jigsaw(msa, permutations, delimiter_token=None, minleader=1, mintrailer=0):
     npartitions = permutations.size(-1)
     partition_length = (nres - minleader - mintrailer) // npartitions
     core_leftover = nres - minleader - mintrailer - (partition_length * npartitions)
-    if minleader < minleader + core_leftover:
+    if core_leftover > 0:
         offset = torch.randint(minleader, minleader + core_leftover, (1,)).item()
     else:
-        offset = 0
+        offset = minleader
 
     leader = msa[:, :offset]
     trailer = msa[:, offset + npartitions * partition_length:]
