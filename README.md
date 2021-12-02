@@ -3,7 +3,8 @@ Self-Supervised Learning for Applications in Bioinformatics.
 
 TODO:
 - dummy train dataset
-- refactor transformations: dataset returns tuple of dicts, transforms only expect and manipulate content of dicts, typehinting
+- refactor transformations: dataset returns tuple of dicts, transforms only expect and manipulate content of dicts
+- type hinting (IN PROCESS)
 - ~~test jigsaw with delimiter~~ (DONE [#8](https://github.com/KIT-MBS/selbstaufsicht/pull/8))
 - investigate whether embedding should be more complex
 - ~~train script parameter: seed, dataset selector, dataset modes~~ (DONE [#9](https://github.com/KIT-MBS/selbstaufsicht/pull/9))
