@@ -155,6 +155,39 @@ def test_jigsaw(tokenized_msa):
 
     testing.assert_close(x['msa'], x_ref, rtol=0, atol=0)
     testing.assert_close(y['jigsaw'], label, rtol=0, atol=0)
+    
+
+def test_jigsaw_delimiter(tokenized_msa):
+    delimiter_token = rna2index['DELIMITER_TOKEN']
+    permutations = torch.tensor([[0, 1],
+                                 [1, 0]], dtype=torch.int64)
+    label = torch.tensor([0, 1, 0, 1])
+    shuffling = RandomMSAShuffling(permutations=permutations, delimiter_token=delimiter_token)
+    x, y = shuffling(deepcopy(tokenized_msa), label=label)
+
+    x_ref = torch.tensor([[17, 18, 3, 5, 4, 18, 5, 5, 4, 18, 3],
+                          [17, 18, 1, 5, 4, 18, 3, 3, 4, 18, 3],
+                          [17, 18, 5, 5, 4, 18, 3, 5, 4, 18, 1],
+                          [17, 18, 5, 5, 4, 18, 4, 5, 4, 18, 5]])
+
+    testing.assert_close(x['msa'], x_ref, rtol=0, atol=0)
+    testing.assert_close(y['jigsaw'], label, rtol=0, atol=0)
+
+    permutations = torch.tensor([[0, 1, 2],
+                                 [1, 0, 2],
+                                 [0, 2, 1],
+                                 [2, 0, 1]], dtype=torch.int64)
+    label = torch.tensor([3, 2, 1, 0])
+    shuffling = RandomMSAShuffling(permutations=permutations, delimiter_token=delimiter_token)
+    x, y = shuffling(deepcopy(tokenized_msa), label=label)
+
+    x_ref = torch.tensor([[17, 18, 5, 4, 18, 3, 5, 18, 4, 5, 18, 3],
+                          [17, 18, 3, 3, 18, 5, 4, 18, 4, 1, 18, 3],
+                          [17, 18, 4, 3, 18, 5, 5, 18, 5, 4, 18, 1],
+                          [17, 18, 4, 5, 18, 4, 5, 18, 5, 4, 18, 5]])
+
+    testing.assert_close(x['msa'], x_ref, rtol=0, atol=0)
+    testing.assert_close(y['jigsaw'], label, rtol=0, atol=0)
 
 
 def test_subsampling(basic_msa):
