@@ -94,7 +94,7 @@ dataset_name = args.dataset.lower()
 
 if dataset_name == 'xfam':
     dataset_path = os.path.join(root, 'Xfam')
-    ds = datasets.Xfam(dataset_path, download=True, transform=transform, version=args.xfam_version)
+    ds = datasets.Xfam(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
 # TODO: Add further cases for newly added datasets here
 else:
     raise ValueError("Unknown dataset: %s" % args.dataset)
