@@ -51,6 +51,8 @@ parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MS
 parser.add_argument('--jigsaw-partitions', default=3, type=int, help="Number of partitions in the jigsaw task")
 parser.add_argument('--jigsaw-permutations', default=4, type=int, help="Number of permutations in the jigsaw task")
 parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
+# Logging
+parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
 
 args = parser.parse_args()
 
@@ -127,5 +129,6 @@ trainer = Trainer(max_epochs=args.num_epochs,
                   precision=args.precision,
                   accelerator="gpu",
                   strategy=dp_strategy,
-                  enable_progress_bar=not args.disable_progress_bar)
+                  enable_progress_bar=not args.disable_progress_bar,
+                  log_every_n_steps=args.log_every)
 trainer.fit(model, dl)
