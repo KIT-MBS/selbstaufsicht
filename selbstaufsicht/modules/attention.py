@@ -286,7 +286,7 @@ class Transmorpher2d(nn.Module):
         Transmorpher 2D module, which is used as backbone for unsupervised learning on MSAs.
 
         Args:
-            block (nn.Module): Layer module, which is stacked.
+            block (nn.Module): Block module, which is stacked.
             num_blocks (int): Number of blocks.
             norm (nn.Module, optional): Normalization module, which is applied in the end. Defaults to None.
         """
