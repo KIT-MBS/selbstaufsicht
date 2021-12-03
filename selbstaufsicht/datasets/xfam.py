@@ -80,7 +80,7 @@ class Xfam(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         if self.transform is not None:
-            return self.transform(self.samples[i])
+            return self.transform({'msa': self.samples[i]}, {})
         return self.samples[i]
 
     def __len__(self):
@@ -99,7 +99,7 @@ class Dummy(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         if self.transform is not None:
-            return self.transform(self.samples[i])
+            return self.transform({'msa': self.samples[i]}, {})
         return self.samples[i]
 
     def __len__(self):

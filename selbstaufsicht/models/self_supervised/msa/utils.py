@@ -114,14 +114,14 @@ class MSACollator():
         else:
             raise
             # return torch.utils.data._utils.collate.default_collate(batch)
-    
+
     def _collate_dict(self, item_idx, item, batch):
-        
+
         out = {}
-        
+
         for key in item:
             collate_result = self.collate_fn[key]([sample[item_idx][key] for sample in batch])
-            
+
             if key in ['msa', 'contrastive']:
                 collate_result, padding_mask = collate_result
                 if key == 'msa':
@@ -129,7 +129,7 @@ class MSACollator():
                 elif key == 'contrastive':
                     out['padding_mask_contrastive'] = padding_mask
             out[key] = collate_result
-        
+
         return out
 
 
@@ -137,13 +137,16 @@ def _pad_collate_nd(batch, pad_val=0, need_padding_mask=False):
     '''
     batch: sequence of nd tensors that may have different dimensions
     '''
-    
-    kronecker_delta = lambda i, j: 1 if i == j else 0
+
+    def kronecker_delta(i, j):
+        if i == j:
+            return 1
+        return 0
 
     B = len(batch)
     n_dims = batch[0].dim()
     dims = [max([sample.size(dim) for sample in batch]) for dim in range(n_dims)]
-    
+
     # optimization taken from default collate_fn, using shared memory to avoid a copy when passing data to the main process
     if torch.utils.data.get_worker_info() is not None:
         elem = batch[0]
@@ -161,7 +164,7 @@ def _pad_collate_nd(batch, pad_val=0, need_padding_mask=False):
         out = torch.full((B, *dims), pad_val, dtype=batch[0].dtype)
         if need_padding_mask:
             out_mask = torch.zeros((B, *dims), dtype=torch.bool)
-    
+
     for idx, sample in enumerate(batch):
         inplace_slice = (idx, ) + tuple(slice(sample_dim) for sample_dim in sample.size())
         insert_slice = (slice(None),) * n_dims
@@ -181,7 +184,7 @@ def _flatten_collate(batch):
     '''
     batch: sequence of 1d tensors, that may be of different length
     '''
-    
+
     # optimization taken from default collate_fn, using shared memory to avoid a copy when passing data to the main process
     out = None
     if torch.utils.data.get_worker_info() is not None:

@@ -13,32 +13,20 @@ class MSATokenize():
     def __init__(self, mapping):
         self.mapping = mapping
 
-    # TODO maybe do tensor mapping instead of dict as in:
-    # class OneHotMSAArray(object):
-    #     def __init__(self, mapping):
-    #         maxind = 256
-    #
-    #         self.mapping = np.full((maxind, ), -1)
-    #         for k in mapping:
-    #             self.mapping[ord(k)] = mapping[k]
-    #
-    #     def __call__(self, msa_array):
-    #         """
-    #         msa_array: byte array
-    #         """
-    #
-    #         return self.mapping[msa_array.view(np.uint32)]
     def __call__(self, x):
+        x, y = x
         x['msa'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['msa']], dtype=torch.long)
+        if 'contrastive' in x:
+            x['contrastive'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['contrastive']], dtype=torch.long)
+
         if 'START_TOKEN' in self.mapping:
             prefix = torch.full((x['msa'].size(0), 1), self.mapping['START_TOKEN'], dtype=torch.int)
             x['msa'] = torch.cat([prefix, x['msa']], dim=-1)
-        if 'contrastive' in x:
-            x['contrastive'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['contrastive']], dtype=torch.long)
-            prefix = torch.full((x['contrastive'].size(0), 1), self.mapping['START_TOKEN'], dtype=torch.int)
-            x['contrastive'] = torch.cat([prefix, x['contrastive']], dim=-1)
+            if 'contrastive' in x:
+                prefix = torch.full((x['contrastive'].size(0), 1), self.mapping['START_TOKEN'], dtype=torch.int)
+                x['contrastive'] = torch.cat([prefix, x['contrastive']], dim=-1)
 
-        return x
+        return x, y
 
 
 class RandomMSACropping():
@@ -47,16 +35,18 @@ class RandomMSACropping():
         self.contrastive = contrastive
 
     def __call__(self, x):
-        alen = x['msa'].get_alignment_length()
-        if alen <= self.length:
-            return x
-        start = torch.randint(alen - self.length, (1,)).item()
-        result = {'msa': x['msa'][:, start:start + self.length]}
+        x, y = x
+        msa = x['msa'][:, :]
+        if x['msa'].get_alignment_length() > self.length:
+            start = torch.randint(msa.get_alignment_length() - self.length, (1,)).item()
+            x['msa'] = x['msa'][:, start:start + self.length]
+
         if self.contrastive:
-            start = torch.randint(alen - self.length, (1,)).item()
-            contrastive_x = x['msa'][:, start:start + self.length]
-            result['contrastive'] = contrastive_x
-        return result
+            contrastive_msa = x.get('contrastive', msa)
+            start = torch.randint(contrastive_msa.get_alignment_length() - self.length, (1,)).item()
+            x['contrastive'] = contrastive_msa[:, start:start + self.length]
+
+        return x, y
 
 
 class RandomMSAMasking():
@@ -68,24 +58,13 @@ class RandomMSAMasking():
         self.contrastive = contrastive
 
     def __call__(self, x):
-        y = {}
-        if type(x) == tuple:
-            x, y = x
-        target = None
-        if type(x) == dict:
-            masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.mask_token)
-            x['msa'] = masked_msa
-            x['mask'] = mask
-        elif type(x) == torch.Tensor:
-            masked_msa, mask, target = self.masking_fn(x, self.p, self.mask_token)
-            x = {'msa': masked_msa, 'mask': mask}
-        else:
-            raise ValueError()
+        x, y = x
+        masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.mask_token)
+        x['msa'] = masked_msa
+        x['mask'] = mask
         y['inpainting'] = target
-
         if self.contrastive:
-            contrastive_x, _, _ = self.masking_fn(x['contrastive'], self.p, self.mask_token)
-            x['contrastive'] = contrastive_x
+            x['contrastive'], _, _ = self.masking_fn(x['contrastive'], self.p, self.mask_token)
         return x, y
 
 
@@ -115,39 +94,26 @@ class RandomMSAShuffling():
         '''
         x is either a tensor or a tuple of input and target dictionaries
         '''
-        y = dict()
-        if type(x) == tuple:
-            x, y = x
-        if type(x) == dict:
-            num_seq = x['msa'].size(0)
-            if label is None:
-                label = torch.randint(0, self.num_classes, (num_seq,))
-            shuffled_msa = _jigsaw(x['msa'],
-                                   self.permutations.expand(num_seq, -1, -1)[range(num_seq),
-                                   label], delimiter_token=self.delimiter_token,
-                                   minleader=self.minleader,
-                                   mintrailer=self.mintrailer)
-            x['msa'] = shuffled_msa
-        else:
-            num_seq = x.size(0)
-            if label is None:
-                label = torch.randint(0, self.num_classes, (num_seq,))
-            shuffled_msa = _jigsaw(x,
-                                   self.permutations.expand(num_seq, -1, -1)[range(num_seq), label],
-                                   delimiter_token=self.delimiter_token,
-                                   minleader=self.minleader,
-                                   mintrailer=self.mintrailer)
-            x = {'msa': shuffled_msa}
+        x, y = x
+
+        num_seq = x['msa'].size(0)
+        if label is None:
+            label = torch.randint(0, self.num_classes, (num_seq,))
+        shuffled_msa = _jigsaw(x['msa'],
+                               self.permutations.expand(num_seq, -1, -1)[range(num_seq),
+                               label], delimiter_token=self.delimiter_token,
+                               minleader=self.minleader,
+                               mintrailer=self.mintrailer)
+        x['msa'] = shuffled_msa
         y['jigsaw'] = label
         if self.contrastive:
             contrastive_perm = torch.randint(0, self.num_classes, (num_seq,))
-            contrastive_x = _jigsaw(x['contrastive'],
-                                    self.permutations.expand(num_seq, -1, -1)[range(num_seq),
-                                    contrastive_perm],
-                                    delimiter_token=self.delimiter_token,
-                                    minleader=self.minleader,
-                                    mintrailer=self.mintrailer)
-            x['contrastive'] = contrastive_x
+            x['contrastive'] = _jigsaw(x['contrastive'],
+                                       self.permutations.expand(num_seq, -1, -1)[range(num_seq),
+                                       contrastive_perm],
+                                       delimiter_token=self.delimiter_token,
+                                       minleader=self.minleader,
+                                       mintrailer=self.mintrailer)
 
         return x, y
 
@@ -159,24 +125,23 @@ class RandomMSASubsampling():
         self.nseqs = num_sequences
 
     def __call__(self, x):
+        x, y = x
+        msa = x['msa'][:, :]
+        x['msa'] = self.sampling_fn(msa, self.nseqs)
         if self.contrastive:
-            return {'msa': self.sampling_fn(x, self.nseqs), 'contrastive': self.sampling_fn(x, self.nseqs)}
-        return {'msa': self.sampling_fn(x, self.nseqs)}
+            x['contrastive'] = self.sampling_fn(msa, self.nseqs)
+        return x, y
 
 
 class ExplicitPositionalEncoding():
     def __init__(self, axis=-1, abs_factor=1000):
         self.axis = axis
         self.abs_factor = abs_factor
-        
 
     def __call__(self, x):
-        if type(x) == tuple:
-            x, target = x
-        else:
-            # TODO this is a contrastive dummy label, the model replaces it with the embedding of the contrastive input, maybe it would be better to not have this be needed?
-            target = {'contrastive': torch.tensor(0)}
-            assert type(x) == dict
+        x, y = x
+        # TODO this is a contrastive dummy label, the model replaces it with the embedding of the contrastive input, maybe it would be better to not have this be needed?
+        y['contrastive'] = torch.tensor(0)
 
         msa = x['msa']
         size = msa.size(self.axis)
@@ -187,7 +152,7 @@ class ExplicitPositionalEncoding():
             x['aux_features'] = torch.cat((absolute, relative), dim=-1)
         else:
             x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=-1)
-        
+
         if 'contrastive' in x:
             msa = x['contrastive']
             size = msa.size(self.axis)
@@ -199,7 +164,7 @@ class ExplicitPositionalEncoding():
             else:
                 x['aux_features_contrastive'] = torch.cat((msa['aux_features_contrastive'], absolute, relative), dim=-1)
 
-        return x, target
+        return x, y
 
 
 # TODO test
@@ -337,14 +302,14 @@ def _hamming_distance(seq_1, seq_2):
 
 def _hamming_distance_matrix(msa):
     hd_matrix = torch.zeros((len(msa), len(msa)))
-    
+
     # computes upper triangular part, without diagonal
     for idx_1, seq_1 in enumerate(msa):
         for idx_2, seq_2 in enumerate(msa):
             if idx_2 <= idx_1:
                 continue
             hd_matrix[idx_1, idx_2] = _hamming_distance(seq_1.seq, seq_2.seq)
-    
+
     # make matrix symmetric for easier handling
     return hd_matrix + hd_matrix.T
 
@@ -352,33 +317,33 @@ def _hamming_distance_matrix(msa):
 def _maximize_diversity_naive(msa, msa_indices, nseqs, sampled_msa):
     # naive strategy: compute hamming distances on-the-fly, when needed
     hd_matrix = torch.zeros((len(msa_indices), len(sampled_msa)))
-        
+
     for idx_1, idx_msa in enumerate(msa_indices):
         seq_1 = msa[idx_msa]
         for idx_2, seq_2 in enumerate(sampled_msa):
             hd_matrix[idx_1, idx_2] = _hamming_distance(seq_1.seq, seq_2.seq)
-    
+
     # average over already sampled sequences
     avg_hd = torch.mean(hd_matrix, dim=1)
     # find sequence with maximum average hamming distance
     idx_max = torch.argmax(avg_hd).item()
     idx_msa_max = msa_indices[idx_max]
-        
+
     sampled_msa.append(msa[idx_msa_max])
     msa_indices.pop(idx_max)
     nseqs -= 1
-    
+
     if nseqs == 0:
         return sampled_msa
     else:
         return _maximize_diversity_naive(msa, msa_indices, nseqs, sampled_msa)
-                
+
 
 def _maximize_diversity_cached(msa, msa_indices, nseqs, sampled_msa, sampled_msa_indices, hd_matrix):
     # cached strategy: use pre-computed hamming distances
     indices = tuple(zip(*[(msa_idx, sampled_msa_idx) for msa_idx in msa_indices for sampled_msa_idx in sampled_msa_indices]))
     hd_matrix_reduced = hd_matrix[indices[0], indices[1]].view(len(msa_indices), len(sampled_msa_indices))
-    
+
     # average over already sampled sequences
     if hd_matrix_reduced.dim() == 2:
         avg_hd = torch.mean(hd_matrix_reduced, dim=1)
@@ -387,35 +352,35 @@ def _maximize_diversity_cached(msa, msa_indices, nseqs, sampled_msa, sampled_msa
     # find sequence with maximum average hamming distance
     idx_max = torch.argmax(avg_hd).item()
     idx_msa_max = msa_indices[idx_max]
-    
+
     sampled_msa.append(msa[idx_msa_max])
     msa_indices.pop(idx_max)
     sampled_msa_indices.append(idx_msa_max)
     nseqs -= 1
-    
+
     if nseqs == 0:
         return sampled_msa
     else:
         return _maximize_diversity_cached(msa, msa_indices, nseqs, sampled_msa, sampled_msa_indices, hd_matrix)
-    
+
 
 def _subsample_diversity_maximizing(msa, nseqs, contrastive=False):
     # since the function is deterministic and contrastive input should be different from the regular input, it is sampled randomly
     if contrastive:
         return _subsample_uniform(msa, nseqs)
-    
+
     # depending on the total number of sequences and the number of sequences to be subsampled, choose computation strategy:
     # either compute and cache all hamming distanced between distinct sequences beforehand or use the naive implementation with potentially repeating comparisons
-    
+
     n = len(msa)
     # exclude reference seq
     m = min(nseqs, n) - 1
-    
+
     # symmetric, reflexive n:n relation
     comparisons_cached = (n**2 - n) / 2
     # equivalent to sum_{i=1}^{m} i*(N-i), which is the cumulative number of comparisons after the m-th recursive call
     comparisons_naive = n * m * (m + 1) / 2 - m * (m + 1) * (2 * m + 1) / 6
-    
+
     if comparisons_cached <= comparisons_naive:
         hd_matrix = _hamming_distance_matrix(msa)
         return _maximize_diversity_cached(msa, list(range(1, n)), m, msa[0:1], [0], hd_matrix)

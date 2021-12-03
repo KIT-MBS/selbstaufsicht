@@ -16,18 +16,19 @@ def fix_seed():
 
 
 @pytest.fixture
-def basic_msa():
-    return MultipleSeqAlignment(
-        [
-            SeqRecord(Seq("ACUCCUA"), id='seq1'),
-            SeqRecord(Seq("AAU.CUA"), id='seq2'),
-            SeqRecord(Seq("CCUACU."), id='seq3'),
-            SeqRecord(Seq("UCUCCUC"), id='seq4'),
-        ]
-    )
+def msa_sample():
+    return ({'msa': MultipleSeqAlignment(
+            [
+                SeqRecord(Seq("ACUCCUA"), id='seq1'),
+                SeqRecord(Seq("AAU.CUA"), id='seq2'),
+                SeqRecord(Seq("CCUACU."), id='seq3'),
+                SeqRecord(Seq("UCUCCUC"), id='seq4'),
+            ]
+            )},
+            {})
 
 
 @pytest.fixture
-def tokenized_msa(basic_msa):
+def tokenized_sample(msa_sample):
     tokenize = MSATokenize(rna2index)
-    return tokenize({'msa': basic_msa})
+    return tokenize(msa_sample)
