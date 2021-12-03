@@ -5,7 +5,7 @@ from torch import nn
 
 import pytorch_lightning as pl
 
-from selbstaufsicht.modules import Transmorpher2d, TransmorpherLayer2d
+from selbstaufsicht.modules import Transmorpher2d, TransmorpherBlock2d
 
 # NOTE for using simCLR loss from bolts
 # from pytorch_lightning.models.self_supervised.simclr.simclr_module import SyncFunction
@@ -67,7 +67,7 @@ class MSAModel(pl.LightningModule):
 
         assert d - aux_input_dim > 0
         self.embedding = nn.Embedding(in_dict_size, d - aux_input_dim, padding_idx=padding_token)
-        block = TransmorpherLayer2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
+        block = TransmorpherBlock2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
         self.backbone = Transmorpher2d(block, num_blocks, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
         if task_heads is not None:
             self.tasks = [t for t in task_heads.keys()]
