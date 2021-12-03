@@ -1,6 +1,8 @@
 from functools import partial
 import torch
 import collections
+from typing import List, Tuple
+
 from torch.nn import CrossEntropyLoss
 from torch.nn import ModuleDict
 from selbstaufsicht import transforms
@@ -13,25 +15,44 @@ from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 # NOTE mask and padding tokens can not be reconstructed
 
 
-def get_tasks(tasks,
-              dim,
-              subsample_depth=5,
-              subsample_mode='uniform',
-              crop=50,
-              masking='token',
-              p_mask=0.15,
-              jigsaw_partitions=3,
-              jigsaw_classes=4,
-              jigsaw_padding_token=-1,
-              simclr_temperature=100.,
-              ):
+def get_tasks(tasks: List[str],
+              dim: int,
+              subsample_depth: int = 5,
+              subsample_mode: str = 'uniform',
+              crop: int = 50,
+              masking: str = 'token',
+              p_mask: float = 0.15,
+              jigsaw_partitions: int = 3,
+              jigsaw_classes: int = 4,
+              jigsaw_padding_token: int = -1,
+              simclr_temperature: float = 100.,
+              ) -> Tuple[transforms.SelfSupervisedCompose, Dict[str, nn.Module], Dict[str, nn.Module], Dict[str, ModuleDict]]:
     """
-    configures task heads, losses, data transformations, and evaluation metrics given task parameters
+    Configures task heads, losses, data transformations, and evaluation metrics for given task parameters.
+    
+    Args:
+        tasks (List[str]): Upstream tasks to be performed.
+        dim (int): Embedding dimensionality.
+        subsample_depth (int, optional): Number of subsampled sequences per MSA. Defaults to 5.
+        subsample_mode (str, optional): Subsampling mode. Defaults to 'uniform'.
+        crop (int, optional): Maximum uncropped sequence length. Defaults to 50.
+        masking (str, optional): Masking mode for inpainting. Defaults to 'token'.
+        p_mask (float, optional): Masking probability for inpainting. Defaults to 0.15.
+        jigsaw_partitions (int, optional): Number of shuffled partitions for jigsaw. Defaults to 3.
+        jigsaw_classes (int, optional): Number of allowed permutations for jigsaw. Defaults to 4.
+        jigsaw_padding_token (int, optional): Special token that indicates padded sequences in the jigsaw label. Defaults to -1.
+        simclr_temperature (float, optional): Distillation temperatur for the SimCLR loss of contrastive learning. Defaults to 100..
+
+    Raises:
+        ValueError: Unknown upstream task.
+
+    Returns:
+        Tuple[transforms.SelfSupervisedCompose, Dict[str, nn.Module], Dict[str, nn.Module], Dict[str, ModuleDict]]: Composition of preprocessing transforms; head modules for upstream tasks; 
+        loss functions for upstream tasks; further metrics for upstream tasks
     """
+    
     if not set(tasks) <= {'inpainting', 'jigsaw', 'contrastive'}:
         raise ValueError('unknown task id')
-    if masking != 'token':
-        raise NotImplementedError('only token masking')
 
     contrastive = False
     if 'contrastive' in tasks:
@@ -89,7 +110,16 @@ def get_tasks(tasks,
 
 
 class MSACollator():
-    def __init__(self, msa_padding_token, inpainting_mask_padding_token=0, jigsaw_padding_token=-1):
+    def __init__(self, msa_padding_token: int, inpainting_mask_padding_token: int = 0, jigsaw_padding_token: int = -1) -> None:
+        """
+        Initializes MSA collator.
+
+        Args:
+            msa_padding_token (int): Special token that is used for padding of MSA with different shapes.
+            inpainting_mask_padding_token (int, optional): Special token that is used for padding of boolean MSA inpainting masking masks with different shapes. Defaults to 0.
+            jigsaw_padding_token (int, optional): Special token that indicates padded sequences in the jigsaw label. Defaults to -1.
+        """
+        
         self.collate_fn = {
             'msa': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
             'mask': partial(_pad_collate_nd, pad_val=inpainting_mask_padding_token),
@@ -100,22 +130,33 @@ class MSACollator():
             'contrastive': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
         }
 
-    def __call__(self, batch):
+    def __call__(self, batch: List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]) -> Tuple[Dict[str, torch.Tensor], Dict[torch.Tensor]]:
         """
-        batch: list of tuples of dicts: e.g. [({input1}, {target1}), ({input2}, {target2})]
-        input contains: {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor, 'contrastive': tensor}
-        target contains one or more of {'inpainting': 1dtensor, 'jigsaw': 1dtensor}
+        Performs collation of batch data, i.e., shapes of different batch items are aligned by padding and they are concatenated in a new batch dimension for each tensor.
+
+        Args:
+            batch (List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]): Batch data: Each batch item consists of input and target data, which in turn contain several tensors.
+            Input data contains {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor, 'contrastive': tensor}.
+            Target data contains one or more of {'inpainting': 1dtensor, 'jigsaw': 1dtensor}
+
+        Returns:
+            Tuple[Dict[str, torch.Tensor], Dict[torch.Tensor]]: Collated batch data: Input and target data contain several tensors, which include a batch dimension.
         """
 
-        first_sample = batch[0]
-        if all([isinstance(item, collections.abc.Mapping) for item in first_sample]):
-            result = tuple(self._collate_dict(idx, item, batch) for idx, item in enumerate(first_sample))
-            return result
-        else:
-            raise
-            # return torch.utils.data._utils.collate.default_collate(batch)
+        return tuple(self._collate_dict(idx, item, batch) for idx, item in enumerate(batch[0]))
 
-    def _collate_dict(self, item_idx, item, batch):
+    def _collate_dict(self, item_idx: int, item: Dict[str, torch.Tensor], batch: List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        """
+        Performs collation of batch data for a single data item, i.e., either input or target data.
+
+        Args:
+            item_idx (int): Index of the data item.
+            item (Dict[str, torch.Tensor]): Data item, containing several tensors.
+            batch (List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]): Full batch data: Each batch item consists of input and target data, which in turn contain several tensors.
+
+        Returns:
+            Dict[str, torch.Tensor]: Collated batch data for the given data item, i.e., it contains several tensors, which include a batch dimension.
+        """
 
         out = {}
 
@@ -133,12 +174,31 @@ class MSACollator():
         return out
 
 
-def _pad_collate_nd(batch, pad_val=0, need_padding_mask=False):
-    '''
-    batch: sequence of nd tensors that may have different dimensions
-    '''
+def _pad_collate_nd(batch: List[torch.Tensor], pad_val: int = 0, need_padding_mask: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    """
+    Pads and concatenates a list of possibly differently shaped n-dimensional tensors along a new batch dimension to a single tensor.
 
-    def kronecker_delta(i, j):
+    Args:
+        batch (List[torch.Tensor]): List of possibly differently shaped n-dimensional tensors.
+        pad_val (int, optional): Padding value. Defaults to 0.
+        need_padding_mask (bool, optional): Whether the padding mask is needed as an output. Defaults to False.
+
+    Returns:
+        Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Padded and concatenated tensors; boolean padding mask (optional)
+    """
+
+    def kronecker_delta(i: int, j: int) -> int:
+        """
+        Kronecker delta, which is 1 for two equal numbers and 0 for two different numbers.
+
+        Args:
+            i (int): First number.
+            j (int): Second number.
+
+        Returns:
+            int: Either 1 oder 0.
+        """
+        
         if i == j:
             return 1
         return 0
@@ -180,10 +240,16 @@ def _pad_collate_nd(batch, pad_val=0, need_padding_mask=False):
         return out
 
 
-def _flatten_collate(batch):
-    '''
-    batch: sequence of 1d tensors, that may be of different length
-    '''
+def _flatten_collate(batch: List[torch.Tensor]) -> torch.Tensor:
+    """
+    Concatenates a list of possibly differently shaped 1-dimensional tensors along the existing dimension to a single 1-dimensional tensor.
+
+    Args:
+        batch (List[torch.Tensor]): List of possibly differently shaped 1-dimensional tensors.
+
+    Returns:
+        torch.Tensor: Concatenated 1-dimensional tensor.
+    """
 
     # optimization taken from default collate_fn, using shared memory to avoid a copy when passing data to the main process
     out = None
