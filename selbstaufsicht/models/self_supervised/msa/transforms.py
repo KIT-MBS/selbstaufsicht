@@ -41,9 +41,10 @@ class RandomMSACropping():
 
         if self.contrastive:
             contrastive_msa = x.get('contrastive', msa)
-            start = torch.randint(contrastive_msa.get_alignment_length() - self.length, (1,)).item()
-            x['contrastive'] = contrastive_msa[:, start:start + self.length]
-
+            if contrastive_msa.get_alignment_length() > self.length:
+                start = torch.randint(contrastive_msa.get_alignment_length() - self.length, (1,)).item()
+                contrastive_msa = contrastive_msa[:, start:start + self.length]
+            x['contrastive'] = contrastive_msa
         return x, y
 
 
@@ -130,9 +131,6 @@ class ExplicitPositionalEncoding():
         self.abs_factor = abs_factor
 
     def __call__(self, x, y):
-        # TODO this is a contrastive dummy label, the model replaces it with the embedding of the contrastive input, maybe it would be better to not have this be needed?
-        y['contrastive'] = torch.tensor(0)
-
         msa = x['msa']
         size = msa.size(self.axis)
         absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
