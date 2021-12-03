@@ -8,7 +8,7 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
 from selbstaufsicht.utils import rna2index
-from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, RandomMSASubsampling, RandomMSAShuffling
+from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
@@ -72,17 +72,16 @@ def test_msa_mask_column(tokenized_sample):
                                             [0.0050, 0.6250],
                                             [0.0060, 0.7500],
                                             [0.0070, 0.8750]]]),
-             'msa': torch.tensor([[17, 19, 5, 19, 5, 19, 4, 19],
-                                  [17, 19, 3, 19, 1, 19, 4, 19],
-                                  [17, 19, 5, 19, 3, 19, 4, 19],
-                                  [17, 19, 5, 19, 5, 19, 4, 19]]),
-             'mask': torch.tensor([[False, True, False, True, False, True, False, True],
-                                   [False, True, False, True, False, True, False, True],
-                                   [False, True, False, True, False, True, False, True],
-                                   [False, True, False, True, False, True, False, True]])}
+             'msa': torch.tensor([[17, 3, 5, 19, 5, 19, 4, 19],
+                                  [17, 3, 3, 19, 1, 19, 4, 19],
+                                  [17, 5, 5, 19, 3, 19, 4, 19],
+                                  [17, 4, 5, 19, 5, 19, 4, 19]]),
+             'mask': torch.tensor([[False, False, False, True, False, True, False, True],
+                                   [False, False, False, True, False, True, False, True],
+                                   [False, False, False, True, False, True, False, True],
+                                   [False, False, False, True, False, True, False, True]])}
 
-    y_ref = {'inpainting': torch.tensor(
-        [3, 4, 5, 3, 3, 4, 5, 3, 5, 4, 5, 1, 4, 4, 5, 5])}
+    y_ref = {'inpainting': torch.tensor([4, 5, 3, 4, 5, 3, 4, 5, 1, 4, 5, 5])}
 
     testing.assert_close(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
@@ -192,7 +191,7 @@ def test_jigsaw_delimiter(tokenized_sample):
 
 
 def test_subsampling(msa_sample):
-    sampler = RandomMSASubsampling(3, False, 'uniform')
+    sampler = MSASubsampling(3, False, 'uniform')
     sampled = sampler(*msa_sample)[0]['msa']
 
     sampled_ref = MultipleSeqAlignment(
@@ -257,7 +256,7 @@ def test_maximize_diversity(msa_sample):
 
 
 def test_cropping(msa_sample):
-    sampler = RandomMSASubsampling(4, False, 'uniform')
+    sampler = MSASubsampling(4, False, 'uniform')
     sampled = sampler(*msa_sample)
     cropper = RandomMSACropping(5)
     cropped = cropper(*sampled)
