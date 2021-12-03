@@ -1,5 +1,5 @@
 import copy
-from typing import Tuple, Type, Union
+from typing import List, Tuple, Type, Union
 
 import torch
 from torch import nn
@@ -329,7 +329,7 @@ class Transmorpher2d(nn.Module):
 
 
 class TransmorpherBlock2d(nn.Module):
-    def __init__(self, dim_head: int, num_heads: int, dim_ff: int, dropout: float = 0.1, attention: str, = 'tied', activation: str, = 'relu', layer_norm_eps: float = 1e-5, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
+    def __init__(self, dim_head: int, num_heads: int, dim_ff: int, dropout: float = 0.1, attention: str = 'tied', activation: str = 'relu', layer_norm_eps: float = 1e-5, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
         """
         Initializes Transmorpher 2D block.
 

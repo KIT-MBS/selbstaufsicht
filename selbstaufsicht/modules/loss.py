@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from pl_bolts.losses.self_supervised_learning import nt_xent_loss
 

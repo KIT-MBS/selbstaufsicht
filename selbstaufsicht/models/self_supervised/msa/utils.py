@@ -1,10 +1,10 @@
 from functools import partial
 import torch
 import collections
-from typing import List, Tuple
+from typing import Dict, List, Tuple, Union
 
 from torch.nn import CrossEntropyLoss
-from torch.nn import ModuleDict
+from torch.nn import Module, ModuleDict
 from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
@@ -26,7 +26,7 @@ def get_tasks(tasks: List[str],
               jigsaw_classes: int = 4,
               jigsaw_padding_token: int = -1,
               simclr_temperature: float = 100.,
-              ) -> Tuple[transforms.SelfSupervisedCompose, Dict[str, nn.Module], Dict[str, nn.Module], Dict[str, ModuleDict]]:
+              ) -> Tuple[transforms.SelfSupervisedCompose, Dict[str, Module], Dict[str, Module], Dict[str, ModuleDict]]:
     """
     Configures task heads, losses, data transformations, and evaluation metrics for given task parameters.
     
@@ -130,7 +130,7 @@ class MSACollator():
             'contrastive': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
         }
 
-    def __call__(self, batch: List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]) -> Tuple[Dict[str, torch.Tensor], Dict[torch.Tensor]]:
+    def __call__(self, batch: List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """
         Performs collation of batch data, i.e., shapes of different batch items are aligned by padding and they are concatenated in a new batch dimension for each tensor.
 
@@ -140,7 +140,7 @@ class MSACollator():
             Target data contains one or more of {'inpainting': 1dtensor, 'jigsaw': 1dtensor}
 
         Returns:
-            Tuple[Dict[str, torch.Tensor], Dict[torch.Tensor]]: Collated batch data: Input and target data contain several tensors, which include a batch dimension.
+            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: Collated batch data: Input and target data contain several tensors, which include a batch dimension.
         """
 
         return tuple(self._collate_dict(idx, item, batch) for idx, item in enumerate(batch[0]))
