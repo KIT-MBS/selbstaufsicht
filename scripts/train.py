@@ -22,7 +22,7 @@ parser.add_argument('--num-blocks', default=2, type=int, help="Number of consecu
 parser.add_argument('--feature-dim', default=768, type=int, help="Size of the feature dimension")
 parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
 # Dataset
-parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam")
+parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam, dummy")
 parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. Non-positive numbers refer to using all data.")
 parser.add_argument('--xfam-version', default='9.1', type=str, help="Xfam dataset version")
 parser.add_argument('--xfam-mode', default='seed', type=str, help="Xfam dataset mode: seed, full, or enhanced")
@@ -51,6 +51,8 @@ parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MS
 parser.add_argument('--jigsaw-partitions', default=3, type=int, help="Number of partitions in the jigsaw task")
 parser.add_argument('--jigsaw-permutations', default=4, type=int, help="Number of permutations in the jigsaw task")
 parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
+# Logging
+parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
 
 args = parser.parse_args()
 
@@ -95,7 +97,9 @@ dataset_name = args.dataset.lower()
 if dataset_name == 'xfam':
     dataset_path = os.path.join(root, 'Xfam')
     ds = datasets.Xfam(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
-# TODO: Add further cases for newly added datasets here
+elif dataset_name == 'dummy':
+    ds = datasets.Dummy(transform=transform)
+
 else:
     raise ValueError("Unknown dataset: %s" % args.dataset)
 
@@ -104,7 +108,7 @@ if args.num_data_samples > 0:
     ds = Subset(ds, torch.arange(args.num_data_samples))
     ds.token_mapping = tm
 
-dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers, 
+dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
                 worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=True)
 # TODO should pass padding token index here
 model = models.self_supervised.MSAModel(
@@ -125,6 +129,6 @@ trainer = Trainer(max_epochs=args.num_epochs,
                   precision=args.precision,
                   accelerator="gpu",
                   strategy=dp_strategy,
-                  enable_progress_bar=not
-                  args.disable_progress_bar)
+                  enable_progress_bar=not args.disable_progress_bar,
+                  log_every_n_steps=args.log_every)
 trainer.fit(model, dl)

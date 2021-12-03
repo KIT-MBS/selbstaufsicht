@@ -1,16 +1,16 @@
-class Compose:
+class SelfSupervisedCompose:
     """
     Composes several transforms together.
-    For now functionally identical to torchvision.transforms.Compse.
+    similar to torchvision.transforms.Compse.
     """
 
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, sample):
+    def __call__(self, sample, target):
         for t in self.transforms:
-            sample = t(sample)
-        return sample
+            sample, target = t(sample, target)
+        return (sample, target)
 
     def __repr__(self):
         format_string = self.__class__.__name__ + '('
