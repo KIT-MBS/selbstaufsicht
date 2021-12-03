@@ -13,8 +13,7 @@ class MSATokenize():
     def __init__(self, mapping):
         self.mapping = mapping
 
-    def __call__(self, x):
-        x, y = x
+    def __call__(self, x, y):
         x['msa'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['msa']], dtype=torch.long)
         if 'contrastive' in x:
             x['contrastive'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['contrastive']], dtype=torch.long)
@@ -34,8 +33,7 @@ class RandomMSACropping():
         self.length = length
         self.contrastive = contrastive
 
-    def __call__(self, x):
-        x, y = x
+    def __call__(self, x, y):
         msa = x['msa'][:, :]
         if x['msa'].get_alignment_length() > self.length:
             start = torch.randint(msa.get_alignment_length() - self.length, (1,)).item()
@@ -57,8 +55,7 @@ class RandomMSAMasking():
         self.masking_fn = _get_masking_fn(mode, start_token)
         self.contrastive = contrastive
 
-    def __call__(self, x):
-        x, y = x
+    def __call__(self, x, y):
         masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.mask_token)
         x['msa'] = masked_msa
         x['mask'] = mask
@@ -90,12 +87,7 @@ class RandomMSAShuffling():
         self.delimiter_token = delimiter_token
         self.contrastive = contrastive
 
-    def __call__(self, x, label=None):
-        '''
-        x is either a tensor or a tuple of input and target dictionaries
-        '''
-        x, y = x
-
+    def __call__(self, x, y, label=None):
         num_seq = x['msa'].size(0)
         if label is None:
             label = torch.randint(0, self.num_classes, (num_seq,))
@@ -124,8 +116,7 @@ class RandomMSASubsampling():
         self.sampling_fn = _get_msa_subsampling_fn(mode)
         self.nseqs = num_sequences
 
-    def __call__(self, x):
-        x, y = x
+    def __call__(self, x, y):
         msa = x['msa'][:, :]
         x['msa'] = self.sampling_fn(msa, self.nseqs)
         if self.contrastive:
@@ -138,8 +129,7 @@ class ExplicitPositionalEncoding():
         self.axis = axis
         self.abs_factor = abs_factor
 
-    def __call__(self, x):
-        x, y = x
+    def __call__(self, x, y):
         # TODO this is a contrastive dummy label, the model replaces it with the embedding of the contrastive input, maybe it would be better to not have this be needed?
         y['contrastive'] = torch.tensor(0)
 

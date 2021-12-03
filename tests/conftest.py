@@ -31,4 +31,4 @@ def msa_sample():
 @pytest.fixture
 def tokenized_sample(msa_sample):
     tokenize = MSATokenize(rna2index)
-    return tokenize(msa_sample)
+    return tokenize(*msa_sample)

@@ -61,7 +61,7 @@ def get_tasks(tasks,
 
     transformslist.append(ExplicitPositionalEncoding())
 
-    transform = transforms.Compose(transformslist)
+    transform = transforms.SelfSupervisedCompose(transformslist)
 
     metrics = ModuleDict()
 
