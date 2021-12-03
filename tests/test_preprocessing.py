@@ -8,25 +8,26 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
 from selbstaufsicht.utils import rna2index
-from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, RandomMSASubsampling, RandomMSAShuffling, _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
+from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, RandomMSASubsampling, RandomMSAShuffling
+from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
 
-def test_msa_tokenize(tokenized_msa):
+def test_msa_tokenize(tokenized_sample):
     tokenized_msa_ref = torch.tensor([[17, 3, 5, 4, 5, 5, 4, 3],
                                       [17, 3, 3, 4, 1, 5, 4, 3],
                                       [17, 5, 5, 4, 3, 5, 4, 1],
                                       [17, 4, 5, 4, 5, 5, 4, 5]])
-    testing.assert_close(tokenized_msa['msa'], tokenized_msa_ref, rtol=0, atol=0)
+    testing.assert_close(tokenized_sample[0]['msa'], tokenized_msa_ref, rtol=0, atol=0)
 
 
-def test_msa_mask_token(tokenized_msa):
+def test_msa_mask_token(tokenized_sample):
     masking = RandomMSAMasking(
         p=.5, mode='token', mask_token=rna2index['MASK_TOKEN'])
     positional = ExplicitPositionalEncoding()
 
-    x, y = masking(tokenized_msa)
-    x, y = positional((x, y))
+    x, y = masking(*tokenized_sample)
+    x, y = positional(x, y)
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
                                             [0.0010, 0.1250],
@@ -55,13 +56,13 @@ def test_msa_mask_token(tokenized_msa):
     testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
 
 
-def test_msa_mask_column(tokenized_msa):
+def test_msa_mask_column(tokenized_sample):
     masking = RandomMSAMasking(
         p=.5, mode='column', mask_token=rna2index['MASK_TOKEN'])
     positional = ExplicitPositionalEncoding()
 
-    x, y = masking(tokenized_msa)
-    x, y = positional((x, y))
+    x, y = masking(*tokenized_sample)
+    x, y = positional(x, y)
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
                                             [0.0010, 0.1250],
@@ -90,13 +91,13 @@ def test_msa_mask_column(tokenized_msa):
     testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
 
 
-def test_msa_mask_block(tokenized_msa):
+def test_msa_mask_block(tokenized_sample):
     masking = RandomMSAMasking(
         p=.5, mode='block', mask_token=rna2index['MASK_TOKEN'])
     positional = ExplicitPositionalEncoding()
 
-    x, y = masking(tokenized_msa)
-    x, y = positional((x, y))
+    x, y = masking(*tokenized_sample)
+    x, y = positional(x, y)
 
     x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
                                             [0.0010, 0.1250],
@@ -125,12 +126,12 @@ def test_msa_mask_block(tokenized_msa):
     testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
 
 
-def test_jigsaw(tokenized_msa):
+def test_jigsaw(tokenized_sample):
     permutations = torch.tensor([[0, 1],
                                  [1, 0]], dtype=torch.int64)
     label = torch.tensor([0, 1, 0, 1])
     shuffling = RandomMSAShuffling(permutations=permutations)
-    x, y = shuffling(deepcopy(tokenized_msa), label=label)
+    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
 
     x_ref = torch.tensor([[17, 3, 5, 4, 5, 5, 4, 3],
                           [17, 1, 5, 4, 3, 3, 4, 3],
@@ -146,7 +147,7 @@ def test_jigsaw(tokenized_msa):
                                  [2, 0, 1]], dtype=torch.int64)
     label = torch.tensor([3, 2, 1, 0])
     shuffling = RandomMSAShuffling(permutations=permutations)
-    x, y = shuffling(deepcopy(tokenized_msa), label=label)
+    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
 
     x_ref = torch.tensor([[17, 5, 4, 3, 5, 4, 5, 3],
                           [17, 3, 3, 5, 4, 4, 1, 3],
@@ -155,15 +156,15 @@ def test_jigsaw(tokenized_msa):
 
     testing.assert_close(x['msa'], x_ref, rtol=0, atol=0)
     testing.assert_close(y['jigsaw'], label, rtol=0, atol=0)
-    
 
-def test_jigsaw_delimiter(tokenized_msa):
+
+def test_jigsaw_delimiter(tokenized_sample):
     delimiter_token = rna2index['DELIMITER_TOKEN']
     permutations = torch.tensor([[0, 1],
                                  [1, 0]], dtype=torch.int64)
     label = torch.tensor([0, 1, 0, 1])
     shuffling = RandomMSAShuffling(permutations=permutations, delimiter_token=delimiter_token)
-    x, y = shuffling(deepcopy(tokenized_msa), label=label)
+    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
 
     x_ref = torch.tensor([[17, 18, 3, 5, 4, 18, 5, 5, 4, 18, 3],
                           [17, 18, 1, 5, 4, 18, 3, 3, 4, 18, 3],
@@ -179,7 +180,7 @@ def test_jigsaw_delimiter(tokenized_msa):
                                  [2, 0, 1]], dtype=torch.int64)
     label = torch.tensor([3, 2, 1, 0])
     shuffling = RandomMSAShuffling(permutations=permutations, delimiter_token=delimiter_token)
-    x, y = shuffling(deepcopy(tokenized_msa), label=label)
+    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
 
     x_ref = torch.tensor([[17, 18, 5, 4, 18, 3, 5, 18, 4, 5, 18, 3],
                           [17, 18, 3, 3, 18, 5, 4, 18, 4, 1, 18, 3],
@@ -190,9 +191,9 @@ def test_jigsaw_delimiter(tokenized_msa):
     testing.assert_close(y['jigsaw'], label, rtol=0, atol=0)
 
 
-def test_subsampling(basic_msa):
+def test_subsampling(msa_sample):
     sampler = RandomMSASubsampling(3, False, 'uniform')
-    sampled = sampler(basic_msa)['msa']
+    sampled = sampler(*msa_sample)[0]['msa']
 
     sampled_ref = MultipleSeqAlignment(
         [
@@ -211,54 +212,56 @@ def test_hamming_distance():
     hd = _hamming_distance(seq_1, seq_1)
     hd_ref = 0
     assert hd == hd_ref
-    
+
     seq_2 = "a.c.e.g"
     hd = _hamming_distance(seq_1, seq_2)
     hd_ref = 3
     assert hd == hd_ref
-    
+
     seq_2 = "......."
     hd = _hamming_distance(seq_1, seq_2)
     hd_ref = len(seq_1)
     assert hd == hd_ref
-    
+
     seq_2 = ""
     with pytest.raises(AssertionError) as excinfo:
         hd = _hamming_distance(seq_1, seq_2)
-        
+
     assert str(excinfo.value) == "Both sequences are required to have the same length!"
-    
-    
-def test_hamming_distance_matrix(basic_msa):
+
+
+def test_hamming_distance_matrix(msa_sample):
+    basic_msa = msa_sample[0]['msa']
     hd_matrix = _hamming_distance_matrix(basic_msa)
     hd_matrix_ref = torch.tensor([[0, 2, 3, 2], [2, 0, 4, 4], [3, 4, 0, 3], [2, 4, 3, 0]], dtype=torch.float32)
     testing.assert_close(hd_matrix, hd_matrix_ref, atol=0, rtol=0)
-    
 
-def test_maximize_diversity(basic_msa):
+
+def test_maximize_diversity(msa_sample):
+    basic_msa = msa_sample[0]['msa']
     nseqs = 3
     hd_matrix = _hamming_distance_matrix(basic_msa)
-    sampled_cached = _maximize_diversity_cached(basic_msa, list(range(1, len(basic_msa))), nseqs-1, basic_msa[0:1], [0], hd_matrix)
-    sampled_naive = _maximize_diversity_naive(basic_msa, list(range(1, len(basic_msa))), nseqs-1, basic_msa[0:1])
-    
+    sampled_cached = _maximize_diversity_cached(basic_msa, list(range(1, len(basic_msa))), nseqs - 1, basic_msa[0:1], [0], hd_matrix)
+    sampled_naive = _maximize_diversity_naive(basic_msa, list(range(1, len(basic_msa))), nseqs - 1, basic_msa[0:1])
+
     sampled_ref = MultipleSeqAlignment(
         [
             SeqRecord(Seq("ACUCCUA"), id='seq1'),
             SeqRecord(Seq("CCUACU."), id='seq3'),
             SeqRecord(Seq("AAU.CUA"), id='seq2'),
         ])
-    
+
     for idx in range(len(sampled_ref)):
         assert sampled_naive[idx].seq == sampled_ref[idx].seq
         assert sampled_cached[idx].seq == sampled_ref[idx].seq
 
-    
-def test_cropping(basic_msa):
+
+def test_cropping(msa_sample):
     sampler = RandomMSASubsampling(4, False, 'uniform')
-    sampled = sampler(basic_msa)
+    sampled = sampler(*msa_sample)
     cropper = RandomMSACropping(5)
-    cropped = cropper(sampled)
-    
+    cropped = cropper(*sampled)
+
     cropped_ref = MultipleSeqAlignment(
         [
             SeqRecord(Seq("ACUCC"), id='seq1'),
@@ -267,9 +270,9 @@ def test_cropping(basic_msa):
             SeqRecord(Seq("UCUCC"), id='seq4'),
         ]
     )
-    
+
     for idx in range(len(cropped)):
-        assert cropped['msa'][idx].seq == cropped_ref[idx].seq
+        assert cropped[0]['msa'][idx].seq == cropped_ref[idx].seq
 
 
 def test_pad_collate_nd():
@@ -285,7 +288,7 @@ def test_pad_collate_nd():
     padding_mask_ref = torch.zeros((len(shapes), 4, 4), dtype=torch.bool)
     padding_mask_ref[0, :, -1] = True
     padding_mask_ref[1, -1, :] = True
-    
+
     testing.assert_close(out, out_ref, atol=0, rtol=0)
     testing.assert_close(padding_mask, padding_mask_ref, atol=0, rtol=0)
 
