@@ -362,7 +362,7 @@ def test_msa_collator():
             
             
 def test_compose(msa_sample):
-    sampler = RandomMSASubsampling(3, False, 'uniform')
+    sampler = MSASubsampling(3, False, 'uniform')
     tokenize = MSATokenize(rna2index)
     
     transforms = [sampler, tokenize]
