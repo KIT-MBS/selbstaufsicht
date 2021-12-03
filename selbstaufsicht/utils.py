@@ -36,14 +36,22 @@ rna2index['PADDING_TOKEN'] = len(rna2index)
 #         }
 
 
-def lehmer_encode(i, n):
+def lehmer_encode(i: int, n: int) -> torch.Tensor:
     """
     Encodes an integer i in the interval [0,n!-1] as a permutation of (0,1,2,...,n-1).
 
+    Args:
+        i (int): Lehmer index.
+        n (int): Number of elements in the sequence to be permuted.
+        
     Example:
         >>> lehmer_encode(10,7)
         tensor([0, 1, 2, 4, 6, 3, 5], dtype=torch.int32)
+
+    Returns:
+        torch.Tensor: Permutation.
     """
+
     pos = torch.empty((n - 1,), dtype=torch.int32)
     for j in range(2, n + 1):
         ii = i // j
@@ -73,6 +81,14 @@ def lehmer_encode(i, n):
     return ret
 
 
-def data_loader_worker_init(worker_id, rng_seed):
+def data_loader_worker_init(worker_id: int, rng_seed: int) -> None:
+    """
+    Initialization method for data loader workers, which fixes the random number generator seed.
+
+    Args:
+        worker_id (int): Worker ID.
+        rng_seed (int): Random number generator seed.
+    """
+    
     np.random.seed(rng_seed)
     random.seed(rng_seed)
