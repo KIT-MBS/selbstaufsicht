@@ -8,7 +8,7 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
 from selbstaufsicht.utils import rna2index
-from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, RandomMSASubsampling, RandomMSAShuffling, _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
+from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, MSASubsampling, RandomMSAShuffling, _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
 
@@ -191,7 +191,7 @@ def test_jigsaw_delimiter(tokenized_msa):
 
 
 def test_subsampling(basic_msa):
-    sampler = RandomMSASubsampling(3, False, 'uniform')
+    sampler = MSASubsampling(3, False, 'uniform')
     sampled = sampler(basic_msa)['msa']
 
     sampled_ref = MultipleSeqAlignment(
@@ -254,7 +254,7 @@ def test_maximize_diversity(basic_msa):
 
     
 def test_cropping(basic_msa):
-    sampler = RandomMSASubsampling(4, False, 'uniform')
+    sampler = MSASubsampling(4, False, 'uniform')
     sampled = sampler(basic_msa)
     cropper = RandomMSACropping(5)
     cropped = cropper(sampled)

@@ -6,7 +6,7 @@ from torch.nn import ModuleDict
 from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
-from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSACropping, RandomMSASubsampling, RandomMSAShuffling
+from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.modules import NT_Xent_Loss, Accuracy
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
@@ -38,7 +38,7 @@ def get_tasks(tasks,
         contrastive = True
 
     transformslist = [
-        RandomMSASubsampling(subsample_depth, contrastive=contrastive, mode=subsample_mode),
+        MSASubsampling(subsample_depth, contrastive=contrastive, mode=subsample_mode),
         RandomMSACropping(crop, contrastive=contrastive),
         MSATokenize(rna2index)]
 
