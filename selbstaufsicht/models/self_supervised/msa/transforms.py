@@ -30,7 +30,7 @@ class MSATokenize():
             y (Dict[str, torch.Tensor]): Upstream task labels.
 
         Returns:
-            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Tokenized MSA; y: Upstream task labels.
+            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Tokenized MSA [E, L]; y: Upstream task labels.
         """
         
         x['msa'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['msa']], dtype=torch.long)
@@ -110,14 +110,14 @@ class RandomMSAMasking():
         Performs random masking on the given MSA, according to the predefined masking probability and mode.
 
         Args:
-            x (Dict[str, torch.Tensor]): Tokenized MSA.
+            x (Dict[str, torch.Tensor]): Tokenized MSA [E, L].
             y (Dict[str, torch.Tensor]): Upstream task labels.
 
         Raises:
             ValueError: Unexpected input data type.
 
         Returns:
-            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Masked, tokenized MSA; Masking mask; y: Inpainting label (flattened tensor of masked tokens).
+            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Masked, tokenized MSA [E, L]; Masking mask [E, L]; y: Inpainting label (flattened tensor of masked tokens) [~p*E*L].
         """
         
         masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.mask_token)
@@ -172,12 +172,12 @@ class RandomMSAShuffling():
         Performs random shuffling on the given MSA, according to the predefined allowed permutations.
 
         Args:
-            x (Dict[str, torch.Tensor]): Tokenized MSA.
+            x (Dict[str, torch.Tensor]): Tokenized MSA [E, L].
             y (Dict[str, torch.Tensor]): Upstream task labels.
-            label (torch.Tensor, optional): Explicitly specified jigsaw label [E] (Permutation index per sequence). Is created randomly otherwise. Defaults to None.
+            label (torch.Tensor, optional): Explicitly specified jigsaw label (Permutation index per sequence) [E]. Is created randomly otherwise. Defaults to None.
 
         Returns:
-            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Shuffled, tokenized MSA; y: Jigsaw label (permutation index per sequence).
+            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Shuffled, tokenized MSA [E, L]; y: Jigsaw label (permutation index per sequence) [E].
         """
         
         num_seq = x['msa'].size(0)
@@ -254,11 +254,11 @@ class ExplicitPositionalEncoding():
         Performs explicit positional encoding to create absolute and relative positional auxiliary features.
 
         Args:
-            x (Dict[str, torch.Tensor]): Tokenized MSA.
+            x (Dict[str, torch.Tensor]): Tokenized MSA [E, L].
             y (Dict[str, torch.Tensor]): Upstream task labels.
 
         Returns:
-            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Tokenized MSA; absolute and relative positional auxiliary features; y: Upstream task labels.
+            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Tokenized MSA [E, L]; absolute and relative positional auxiliary features [1, L, 2]; y: Upstream task labels.
         """
         
         msa = x['msa']
@@ -510,7 +510,7 @@ def _hamming_distance_matrix(msa: MultipleSeqAlignment) -> torch.Tensor:
         msa (MultipleSeqAlignment): Lettered MSA.
 
     Returns:
-        torch.Tensor: Symmetric, zero-diagonal matrix with sequence-to-sequence hamming distances [E, E]
+        torch.Tensor: Symmetric, zero-diagonal matrix with sequence-to-sequence hamming distances [E, E].
     """
     
     hd_matrix = torch.zeros((len(msa), len(msa)))
