@@ -1,3 +1,5 @@
+import random
+import numpy as np
 import torch
 
 # TODO token mapping should be part of dataset?
@@ -69,3 +71,8 @@ def lehmer_encode(i, n):
         ret[n - 1] = k
 
     return ret
+
+
+def data_loader_worker_init(worker_id, rng_seed):
+    np.random.seed(rng_seed)
+    random.seed(rng_seed)
