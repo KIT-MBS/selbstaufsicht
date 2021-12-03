@@ -1,9 +1,14 @@
 import os
 import gzip
 from typing import Callable
+
 from tqdm import tqdm
+import torch
 
 from Bio import AlignIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio.Align import MultipleSeqAlignment
 
 from ._utils import get_family_ids, _download
 from ..utils import rna2index
@@ -13,7 +18,7 @@ polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
 modes = ['seed', 'enhanced', 'full']
 
 
-class Xfam():
+class Xfam(torch.utils.data.Dataset):
     """
     Dataset for self-supervised learning based on the xfam family of biological sequence databases.
     """
@@ -69,7 +74,7 @@ class Xfam():
                             self.samples[i] = AlignIO.read(f, 'stockholm')
                     except ValueError:
                         print(fam_id)
-        
+
         if debug_size > 0:
             self.samples = self.samples[:debug_size]
 
@@ -80,3 +85,22 @@ class Xfam():
 
     def __len__(self):
         return len(self.samples)
+
+
+class Dummy(torch.utils.data.Dataset):
+    def __init__(self, transform=None):
+        self.token_mapping = rna2index
+        self.transform = transform
+        self.samples = [MultipleSeqAlignment([
+                        SeqRecord(Seq("AAAACCCC"), id='eins'),
+                        SeqRecord(Seq("AAAACCCC"), id='zwei'),
+                        SeqRecord(Seq("AAAACCCC"), id='drei'),
+                        ])]
+
+    def __getitem__(self, i):
+        if self.transform is not None:
+            return self.transform(self.samples[i])
+        return self.samples[i]
+
+    def __len__(self):
+        return 1
