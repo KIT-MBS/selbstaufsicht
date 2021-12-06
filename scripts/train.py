@@ -56,12 +56,13 @@ parser.add_argument('--contrastive-temperature', default=100., type=float, help=
 # Logging
 parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
 parser.add_argument('--log-dir', default='lightning_logs/', type=str, help='Logging directory. Default: \"lightning_logs/\"')
-parser.add_argument('--log-name', default='%d_%m_%Y__%H_%M_%S', type=str, help='Logging name. Supports 1989 C standard datetime codes. Default: \"%%d_%%m_%%Y__%%H_%%M_%%S\"')
+parser.add_argument('--log-exp-name', default='', type=str, help='Logging experiment name. If empty, this structure level is omitted. Default: \"\"')
+parser.add_argument('--log-run-name', default='%d_%m_%Y__%H_%M_%S', type=str, help='Logging run name. Supports 1989 C standard datetime codes. Default: \"%%d_%%m_%%Y__%%H_%%M_%%S\"')
 
 
 args = parser.parse_args()
 dt_now = datetime.now()
-log_name = dt_now.strftime(args.log_name)
+log_run_name = dt_now.strftime(args.log_run_name)
 
 d_head = args.feature_dim // args.num_heads
 assert d_head * args.num_heads == args.feature_dim
@@ -130,7 +131,7 @@ model = models.self_supervised.MSAModel(
     lr=args.learning_rate,
     lr_warmup=args.learning_rate_warmup
 )
-tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=log_name)
+tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
 trainer = Trainer(max_epochs=args.num_epochs,
                   gpus=args.num_gpus,
                   num_nodes=args.num_nodes,
