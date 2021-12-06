@@ -7,8 +7,9 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
+from selbstaufsicht.transforms import SelfSupervisedCompose
 from selbstaufsicht.utils import rna2index
-from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, MSASubsampling, RandomMSAShuffling
+from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
@@ -358,6 +359,22 @@ def test_msa_collator():
             testing.assert_close(target[key], target_ref[key])
         else:
             testing.assert_close(target[key], target_ref[key], atol=0, rtol=0)
+            
+            
+def test_compose(msa_sample):
+    sampler = MSASubsampling(3, False, 'uniform')
+    tokenize = MSATokenize(rna2index)
+    
+    transforms = [sampler, tokenize]
+    transform_composition = SelfSupervisedCompose(transforms)
+    sample, target = transform_composition(*msa_sample)
+    
+    msa_ref = torch.tensor([[17, 5, 5, 4, 3, 5, 4, 1],
+                            [17, 4, 5, 4, 5, 5, 4, 5],
+                            [17, 3, 5, 4, 5, 5, 4, 3]])
+    
+    testing.assert_close(sample['msa'], msa_ref, rtol=0, atol=0)
+    
 
 
 if __name__ == '__main__':
