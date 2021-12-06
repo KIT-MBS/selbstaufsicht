@@ -2,7 +2,7 @@ import torch
 from torch.nn.functional import multi_head_attention_forward
 import torch.testing as testing
 
-from selbstaufsicht.modules import AxialSelfAttention2d, MultiHeadSelfAttention2d, TiedAxialSelfAttention2d, Transmorpher2d, TransmorpherLayer2d
+from selbstaufsicht.modules import AxialSelfAttention2d, MultiHeadSelfAttention2d, TiedAxialSelfAttention2d, Transmorpher2d, TransmorpherBlock2d
 
 
 def test_MultiHeadAttention2d():
@@ -265,7 +265,7 @@ def test_Transmorpher():
     x = torch.arange(0, bs * embed_dim * S * L,
                      dtype=torch.float).reshape(bs, S, L, embed_dim)
 
-    transmorpher_layer = TransmorpherLayer2d(
+    transmorpher_layer = TransmorpherBlock2d(
         dim_head, num_heads, 2 * dim_head * num_heads, attention='tied', activation='relu', layer_norm_eps=layer_norm_eps)
     transmorpher_norm = torch.nn.LayerNorm((embed_dim,))
     transmorpher = Transmorpher2d(transmorpher_layer, 2, transmorpher_norm)

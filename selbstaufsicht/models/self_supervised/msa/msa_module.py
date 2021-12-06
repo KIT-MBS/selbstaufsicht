@@ -1,10 +1,11 @@
 import math
+from typing import Any, Dict, Tuple, Union
 import torch
 from torch import nn
 
 import pytorch_lightning as pl
 
-from selbstaufsicht.modules import Transmorpher2d, TransmorpherLayer2d
+from selbstaufsicht.modules import Transmorpher2d, TransmorpherBlock2d
 
 # NOTE for using simCLR loss from bolts
 # from pytorch_lightning.models.self_supervised.simclr.simclr_module import SyncFunction
@@ -14,33 +15,60 @@ class MSAModel(pl.LightningModule):
     """
     Model for pre-training on multiple sequence alignments of biological sequences
     """
+    
     def __init__(
             self,
-            num_layers=12,
-            num_heads=12,
-            dim_head=64,
-            aux_input_dim=2,
-            attention='tied',
-            activation='relu',
-            layer_norm_eps=1e-5,
-            in_dict_size=7,
-            lr=1e-4,
-            lr_warmup=16000,
-            padding_token=None,
-            task_heads=None,
-            task_losses=None,
-            metrics=None,
-            need_attn=False,
-            device=None,
-            dtype=None):
+            num_blocks: int = 12,
+            num_heads: int = 12,
+            dim_head: int = 64,
+            aux_input_dim: int = 2,
+            attention: str = 'tied',
+            activation: str = 'relu',
+            layer_norm_eps: float = 1e-5,
+            in_dict_size: int = 7,
+            lr: float = 1e-4,
+            lr_warmup: int = 16000,
+            padding_token: int = None,
+            task_heads: Dict[str, nn.Module] = None,
+            task_losses: Dict[str, nn.Module] = None,
+            metrics: Dict[str, nn.ModuleDict] = None,
+            need_attn: bool = False,
+            device: Union[str, torch.device] = None,
+            dtype: torch.dtype = None) -> None:
+        """
+        Initializes backbone model for pre-training on multiple sequence alignments of biological sequences.
+
+        Args:
+            num_blocks (int, optional): Number of consecutive Transmorpher blocks. Defaults to 12.
+            num_heads (int, optional): Number of parallel Transmorpher heads. Defaults to 12.
+            dim_head (int, optional): Embedding dimensionality of a single Transmorpher head. Defaults to 64.
+            aux_input_dim (int, optional): Dimensionality of auxiliary input features. Defaults to 2.
+            attention (str, optional): Used attention mechanism. Defaults to 'tied'.
+            activation (str, optional): Used activation function. Defaults to 'relu'.
+            layer_norm_eps (float, optional): Epsilon used by LayerNormalization. Defaults to 1e-5.
+            in_dict_size (int, optional): Input alphabet size. Defaults to 7.
+            lr (float, optional): Initial learning rate. Defaults to 1e-4.
+            lr_warmup (int, optional): Warmup parameter for inverse square root rule of learning rate scheduling. Defaults to 16000.
+            padding_token (int, optional): Numerical token that is used for padding in evolutionary and sequence dimensions. Defaults to None.
+            task_heads (Dict[str, nn.Module], optional): Head modules for upstream tasks. Defaults to None.
+            task_losses (Dict[str, nn.Module], optional): Loss functions for upstream tasks. Defaults to None.
+            metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
+            need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
+            device (Union[str, torch.device], optional): Used computation device. Defaults to None.
+            dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
+
+        Raises:
+            NotImplementedError: If need_attn=True: Extracting attention maps not yet implemented.
+        """
+        
         super().__init__()
         factory_kwargs = {'device': device, 'dtype': dtype}
         d = num_heads * dim_head
 
         assert d - aux_input_dim > 0
         self.embedding = nn.Embedding(in_dict_size, d - aux_input_dim, padding_idx=padding_token)
-        block = TransmorpherLayer2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
-        self.backbone = Transmorpher2d(block, num_layers, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
+        block = TransmorpherBlock2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
+        self.backbone = Transmorpher2d(block, num_blocks, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
         if task_heads is not None:
             self.tasks = [t for t in task_heads.keys()]
         self.task_heads = task_heads
@@ -54,15 +82,19 @@ class MSAModel(pl.LightningModule):
             raise NotImplementedError('Extracting attention maps not yet implemented')
         self.need_attn = need_attn
 
-    def forward(self, x, padding_mask=None, aux_features=None):
+    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
         """
-        Forward pass through the model. Use for inference.
+        Receives cropped, subsampled and tokenized MSAs as input data, passes them through several layers with attention mechanism to yield a latent representation.
+
         Args:
-            batch is a tuple of an input dict and a target dict
-            the input dict contains a tokenized msa, any auxiliary features ('aux_features')
-            and any additional for the task heads e.g. the mask where the loss is to be measured for the inpainting task.
-            the output dict contains the target per task loss keyed per task
+            x (torch.Tensor): Cropped, subsampled and tokenized input MSAs [B, E, L].
+            padding_mask (torch.Tensor, optional): Bool tensor that points out locations of padded values in the input data [B, E, L]. Defaults to None.
+            aux_features (torch.Tensor, optional): Auxiliary features (positional encoding). Defaults to None.
+
+        Returns:
+            torch.Tensor: Latent representation [B, E, L, D].
         """
+        
 
         # NOTE feature dim = -1
         # TODO optimize embedding
@@ -74,7 +106,19 @@ class MSAModel(pl.LightningModule):
         latent = self.backbone(x, padding_mask, self.need_attn)
         return latent
 
-    def training_step(self, batch_data, batch_idx):
+    def training_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
+        """
+        Performs a single training step: First passes cropped, subsampled and tokenized MSAs through the backbone model, whose latent representation output is then passed through the upstream task related head models. 
+        Eventually, using task specific loss function and further metrics, the obtained prediction results are evaluated against the corresponding label data.
+
+        Args:
+            batch_data (Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]): Input data, Label data.
+            batch_idx (int): Batch number.
+
+        Returns:
+            torch.Tensor: Summed loss across all upstream tasks
+        """
+        
         x, y = batch_data
 
         latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
@@ -96,14 +140,38 @@ class MSAModel(pl.LightningModule):
         self.log('training loss', loss, on_step=True, on_epoch=False)
         return loss
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> Dict[str, Any]:
+        """
+        Configures optimization algorithm.
+
+        Returns:
+            Dict[str, Any]: Optimization algorithm, lr scheduler.
+        """
+        
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
 
         class inverse_square_root_rule():
-            def __init__(self, warmup):
+            def __init__(self, warmup: int) -> None:
+                """
+                Initializes InverseSquareRootRule used for lr scheduling.
+
+                Args:
+                    warmup (int): Warmup parameter.
+                """
+                
                 self.warmup = warmup
 
-            def __call__(self, i):
+            def __call__(self, i: int) -> float:
+                """
+                Performs InverseSquareRootRule used for lr scheduling.
+
+                Args:
+                    i (int): Epoch number.
+
+                Returns:
+                    float: Multiplicative factor for lr scheduling.
+                """
+                
                 return min((i + 1) / self.warmup, math.sqrt(self.warmup / (i + 1)))
 
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(self.lr_warmup))
