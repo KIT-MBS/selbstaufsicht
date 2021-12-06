@@ -130,7 +130,7 @@ model = models.self_supervised.MSAModel(
     lr=args.learning_rate,
     lr_warmup=args.learning_rate_warmup
 )
-tb_logger = pl_loggers.TensorBoardLogger(save_dir=args.log_dir, name=args.log_name)
+tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_name)
 trainer = Trainer(max_epochs=args.num_epochs,
                   gpus=args.num_gpus,
                   num_nodes=args.num_nodes,
