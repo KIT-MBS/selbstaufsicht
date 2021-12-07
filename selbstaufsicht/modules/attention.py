@@ -23,7 +23,7 @@ class MultiHeadSelfAttention2d(nn.Module):
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
         """
-        
+
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(MultiHeadSelfAttention2d, self).__init__()
         self.num_heads = num_heads
@@ -49,7 +49,7 @@ class MultiHeadSelfAttention2d(nn.Module):
 
         B, E, L, D = x.size()
         assert D == self.embed_dim
-        
+
         attn_mask = None
         if padding_mask is not None:
             assert padding_mask.dtype == torch.bool
@@ -82,7 +82,13 @@ class MultiHeadSelfAttention2d(nn.Module):
 
 class AxialSelfAttention2d(nn.Module):
     # TODO optimize einsum strings using opt_einsum package
-    def __init__(self, num_heads: int, dim_head: int, dropout: float = 0., layer_norm_eps: float = 1e-5, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
+    def __init__(self,
+                 num_heads: int,
+                 dim_head: int,
+                 dropout: float = 0.,
+                 layer_norm_eps: float = 1e-5,
+                 device: Union[str, torch.device] = None,
+                 dtype: torch.dtype = None) -> None:
         """
         Initializes multi head axial self-attention 2D module.
 
@@ -94,7 +100,7 @@ class AxialSelfAttention2d(nn.Module):
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
         """
-        
+
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(AxialSelfAttention2d, self).__init__()
         self.num_heads = num_heads
@@ -111,7 +117,10 @@ class AxialSelfAttention2d(nn.Module):
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+    def forward(self,
+                x: torch.Tensor,
+                padding_mask: torch.Tensor = None,
+                need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
         """
         Performs axial self-attention on 2D data.
 
@@ -121,12 +130,14 @@ class AxialSelfAttention2d(nn.Module):
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: Output data [B, E, L, D]; row attention maps [B, H, E, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
+            Union[torch.Tensor,
+                Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: Output batch_data [B, E, L, D];
+                row attention maps [B, H, E, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
         """
 
         B, E, L, D = x.size()
         assert D == self.embed_dim
-        
+
         attn_mask = None
         if padding_mask is not None:
             assert padding_mask.dtype == torch.bool
@@ -183,7 +194,13 @@ class AxialSelfAttention2d(nn.Module):
 
 # NOTE difference to original tied axial attention: Row attention done first, to have something akin to a learned positional embedding along the evolutionary axis
 class TiedAxialSelfAttention2d(nn.Module):
-    def __init__(self, num_heads: int, dim_head: int, dropout: float = 0., layer_norm_eps: float = 1e-5, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
+    def __init__(self,
+                 num_heads: int,
+                 dim_head: int,
+                 dropout: float = 0.,
+                 layer_norm_eps: float = 1e-5,
+                 device: Union[str, torch.device] = None,
+                 dtype: torch.dtype = None) -> None:
         """
         Initializes multi head tied axial self-attention 2D module.
 
@@ -195,7 +212,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
         """
-        
+
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(TiedAxialSelfAttention2d, self).__init__()
         self.num_heads = num_heads
@@ -211,7 +228,10 @@ class TiedAxialSelfAttention2d(nn.Module):
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+    def forward(self,
+                x: torch.Tensor,
+                padding_mask: torch.Tensor = None,
+                need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
         """
         Performs tied axial self-attention on 2D data.
 
@@ -221,12 +241,13 @@ class TiedAxialSelfAttention2d(nn.Module):
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: Output data [B, E, L, D]; row attention maps [B, H, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
+            Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+            Output data [B, E, L, D]; row attention maps [B, H, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
         """
-        
+
         B, E, L, D = x.size()
         assert D == self.embed_dim
-        
+
         attn_mask = None
         if padding_mask is not None:
             assert padding_mask.dtype == torch.bool
@@ -290,14 +311,17 @@ class Transmorpher2d(nn.Module):
             num_blocks (int): Number of blocks.
             norm (nn.Module, optional): Normalization module, which is applied in the end. Defaults to None.
         """
-        
+
         super(Transmorpher2d, self).__init__()
         self.blocks = nn.ModuleList([copy.deepcopy(block) for i in range(num_blocks)])
         self.num_blocks = num_blocks
         self.norm = norm
 
     # TODO need attn is a bit clunkily done
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, need_attn_maps: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
+    def forward(self,
+                x: torch.Tensor,
+                padding_mask: torch.Tensor = None,
+                need_attn_maps: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
         """
         Passes input data through the self-attention based backbone, resulting in a latent representation.
 
@@ -307,9 +331,10 @@ class Transmorpher2d(nn.Module):
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to False.
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]: Output data [B, E, L, D]; list of blocks' attention maps (optional).
+            Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
+            Output data [B, E, L, D]; list of blocks' attention maps (optional).
         """
-        
+
         out = x
         if need_attn_maps:
             attns = []
@@ -329,7 +354,16 @@ class Transmorpher2d(nn.Module):
 
 
 class TransmorpherBlock2d(nn.Module):
-    def __init__(self, dim_head: int, num_heads: int, dim_ff: int, dropout: float = 0.1, attention: str = 'tied', activation: str = 'relu', layer_norm_eps: float = 1e-5, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
+    def __init__(self,
+                 dim_head: int,
+                 num_heads: int,
+                 dim_ff: int,
+                 dropout: float = 0.1,
+                 attention: str = 'tied',
+                 activation: str = 'relu',
+                 layer_norm_eps: float = 1e-5,
+                 device: Union[str, torch.device] = None,
+                 dtype: torch.dtype = None) -> None:
         """
         Initializes Transmorpher 2D block.
 
@@ -344,7 +378,7 @@ class TransmorpherBlock2d(nn.Module):
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
         """
-        
+
         factory_kwargs = {'device': device, 'dtype': dtype}
         dim_model = dim_head * num_heads
         super(TransmorpherBlock2d, self).__init__()
@@ -361,7 +395,10 @@ class TransmorpherBlock2d(nn.Module):
 
         self.activation = _get_activation_function(activation)()
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, need_attn_maps: bool = False) -> Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+    def forward(self,
+                x: torch.Tensor,
+                padding_mask: torch.Tensor = None,
+                need_attn_maps: bool = False) -> Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
         """
         Passes input data through the self-attention based block, resulting in a latent representation.
 
@@ -373,7 +410,7 @@ class TransmorpherBlock2d(nn.Module):
         Returns:
             Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: Output data [B, E, L, D]; attention maps (optional).
         """
-        
+
         out = self.attn(x, padding_mask=padding_mask, need_attn_maps=need_attn_maps)
         if need_attn_maps:
             out, attn = out
@@ -401,7 +438,7 @@ def _get_attention_function(attention: str) -> Type[nn.Module]:
     Returns:
         Type[nn.Module]: Attention module.
     """
-    
+
     if attention == 'full':
         return MultiHeadSelfAttention2d
     elif attention == 'axial':
@@ -424,7 +461,7 @@ def _get_activation_function(activation: str) -> Type[nn.Module]:
     Returns:
         Type[nn.Module]: Activation function module.
     """
-    
+
     if activation == 'relu':
         return nn.ReLU
     elif activation == 'gelu':

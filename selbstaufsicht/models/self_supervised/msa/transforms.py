@@ -266,7 +266,7 @@ class ExplicitPositionalEncoding():
 
         Returns:
             Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
-            x: Tokenized MSA [E, L]; absolute and relative positional auxiliary features [1, L, 2];
+            x: Tokenized MSA [E, L]; absolute and relative positional auxiliary features [1, L];
             y: Upstream task labels.
         """
 
