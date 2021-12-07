@@ -59,28 +59,29 @@ if task_contrastive:
 
 def create_script(log_exp_name, num_blocks, num_heads, feature_dim, batch_size, lr):
     lines = [
-        "#!/bin/bash",
-        "#SBATCH --ntasks=1",
-        "#SBATCH --cpus-per-task=%d" % cpus_per_task,
-        "#SBATCH --mem-per-cpu=%dgb" % mem_per_cpu_gb,
-        "#SBATCH --nodes=%d" % num_nodes,
-        "#SBATCH --time=%s" % time,
-        "#SBATCH --job-name=%s" % job_name,
-        "#SBATCH --mail-type=%s" % mail_type,
-        "#SBATCH --mail-user=%s" % mail_user,
-        "#SBATCH --partition=%s" % partition,
-        "#SBATCH --gres=%s" % gres,
+        "#!/bin/bash\n",
+        "#SBATCH --ntasks=1\n",
+        "#SBATCH --cpus-per-task=%d\n" % cpus_per_task,
+        "#SBATCH --mem-per-cpu=%dgb\n" % mem_per_cpu_gb,
+        "#SBATCH --nodes=%d\n" % num_nodes,
+        "#SBATCH --time=%s\n" % time,
+        "#SBATCH --job-name=%s\n" % job_name,
+        "#SBATCH --mail-type=%s\n" % mail_type,
+        "#SBATCH --mail-user=%s\n" % mail_user,
+        "#SBATCH --partition=%s\n" % partition,
+        "#SBATCH --gres=%s\n" % gres,
         "\n"
-        "module load devel/cuda/11.1",
+        "module load devel/cuda/11.1\n",
         "\n",
-        """srun python train.py --num-blocks %d --num-heads %d --feature-dim %d 
-        --xfam-version %s --xfam-mode %s --num-epochs %d --batch-size %d 
-        --learning-rate %.6f --learning-rate-warmup %d --precision %d 
-        --disable-progress-bar --num-gpus %d --num-nodes %d --num-workers %d %s
-        --subsampling-depth %d --subsampling-mode %s --cropping-size %d 
-        --inpainting-masking-type %s --inpainting-masking-p %.2f --jigsaw-partitions %d 
-        --jigsaw-permutations %d --contrastive-temperature %.3f --log-dir %s 
-        --log-exp-name %s --log-run-name %s""" % (num_blocks, 
+        """\
+srun python train.py --num-blocks %d --num-heads %d --feature-dim %d \
+--xfam-version %s --xfam-mode %s --num-epochs %d --batch-size %d \
+--learning-rate %.6f --learning-rate-warmup %d --precision %d \
+--disable-progress-bar --num-gpus %d --num-nodes %d --num-workers %d %s\
+--subsampling-depth %d --subsampling-mode %s --cropping-size %d \
+--inpainting-masking-type %s --inpainting-masking-p %.2f --jigsaw-partitions %d \
+--jigsaw-permutations %d --contrastive-temperature %.3f --log-dir %s \
+--log-exp-name %s --log-run-name %s""" % (num_blocks, 
                                                   num_heads, 
                                                   feature_dim, 
                                                   xfam_version, 
