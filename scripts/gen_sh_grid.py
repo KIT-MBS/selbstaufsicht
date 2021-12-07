@@ -40,8 +40,10 @@ jigsaw_partitions = 2
 jigsaw_permutations = 2
 contrastive_temperature = 100.
 
+# OTHER PARAMETERS
 log_dir = 'lightning_logs/'
 log_run_name = '%d_%m_%Y__%H_%M_%S'
+run_file_prefix = 'run_grid'
 ########################################
 
 task_arg = ''
@@ -108,7 +110,7 @@ srun python train.py --num-blocks %d --num-heads %d --feature-dim %d \
                                                   log_run_name)
     ]
     
-    sh_filename = 'run__' + log_exp_name + '.sh'
+    sh_filename = '%s__' + log_exp_name + '.sh' % run_file_prefix
     
     with open(sh_filename, "w") as filestream:
         filestream.writelines(lines)
