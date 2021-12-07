@@ -135,7 +135,7 @@ class ExplicitPositionalEncoding():
         seqlen = msa.size(-1)
         if seqlen > self.max_seqlen:
             raise ValueError(f'Sequence dimension in input too large: {seqlen} > {self.max_seqlen}')
-        absolute = torch.arange(1, seqlen + 1, dtype=torch.long)
+        absolute = torch.arange(1, seqlen + 1, dtype=torch.long).unsqueeze(0)
         if 'aux_features' not in x:
             x['aux_features'] = absolute
         else:
@@ -145,7 +145,7 @@ class ExplicitPositionalEncoding():
             msa = x['contrastive']
             seqlen = msa.size(-1)
 
-            absolute = torch.arange(1, seqlen + 1, dtype=torch.long)
+            absolute = torch.arange(1, seqlen + 1, dtype=torch.long).unsqueeze(0)
             if 'aux_features_contrastive' not in x:
                 x['aux_features_contrastive'] = absolute
             else:
