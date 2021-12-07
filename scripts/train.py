@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 from functools import partial
 import numpy as np
 import os
@@ -8,6 +9,7 @@ import torch
 from torch.utils.data import DataLoader, Subset
 
 from pytorch_lightning import Trainer
+from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.plugins import DDPPlugin
 
 from selbstaufsicht.utils import data_loader_worker_init
@@ -53,8 +55,14 @@ parser.add_argument('--jigsaw-permutations', default=4, type=int, help="Number o
 parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
 # Logging
 parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
+parser.add_argument('--log-dir', default='lightning_logs/', type=str, help='Logging directory. Default: \"lightning_logs/\"')
+parser.add_argument('--log-exp-name', default='', type=str, help='Logging experiment name. If empty, this structure level is omitted. Default: \"\"')
+parser.add_argument('--log-run-name', default='%d_%m_%Y__%H_%M_%S', type=str, help='Logging run name. Supports 1989 C standard datetime codes. Default: \"%%d_%%m_%%Y__%%H_%%M_%%S\"')
+
 
 args = parser.parse_args()
+dt_now = datetime.now()
+log_run_name = dt_now.strftime(args.log_run_name)
 
 d_head = args.feature_dim // args.num_heads
 assert d_head * args.num_heads == args.feature_dim
@@ -122,6 +130,7 @@ model = models.self_supervised.MSAModel(
     lr=args.learning_rate,
     lr_warmup=args.learning_rate_warmup
 )
+tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
 trainer = Trainer(max_epochs=args.num_epochs,
                   gpus=args.num_gpus,
                   num_nodes=args.num_nodes,
@@ -129,5 +138,6 @@ trainer = Trainer(max_epochs=args.num_epochs,
                   accelerator="gpu",
                   strategy=dp_strategy,
                   enable_progress_bar=not args.disable_progress_bar,
-                  log_every_n_steps=args.log_every)
+                  log_every_n_steps=args.log_every,
+                  logger=tb_logger)
 trainer.fit(model, dl)
