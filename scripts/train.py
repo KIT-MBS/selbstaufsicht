@@ -115,7 +115,6 @@ model = models.self_supervised.MSAModel(
     args.num_blocks,
     args.num_heads,
     d_head,
-    aux_input_dim=2,
     task_heads=task_heads,
     task_losses=task_losses,
     metrics=metrics,

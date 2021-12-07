@@ -6,9 +6,6 @@ import pytorch_lightning as pl
 
 from selbstaufsicht.modules import Transmorpher2d, TransmorpherLayer2d
 
-# NOTE for using simCLR loss from bolts
-# from pytorch_lightning.models.self_supervised.simclr.simclr_module import SyncFunction
-
 
 class MSAModel(pl.LightningModule):
     """
@@ -19,7 +16,6 @@ class MSAModel(pl.LightningModule):
             num_layers=12,
             num_heads=12,
             dim_head=64,
-            aux_input_dim=2,
             attention='tied',
             activation='relu',
             layer_norm_eps=1e-5,
@@ -27,6 +23,8 @@ class MSAModel(pl.LightningModule):
             lr=1e-4,
             lr_warmup=16000,
             padding_token=None,
+            pos_padding_token=0,
+            max_seqlen=5000,
             task_heads=None,
             task_losses=None,
             metrics=None,
@@ -37,8 +35,8 @@ class MSAModel(pl.LightningModule):
         factory_kwargs = {'device': device, 'dtype': dtype}
         d = num_heads * dim_head
 
-        assert d - aux_input_dim > 0
-        self.embedding = nn.Embedding(in_dict_size, d - aux_input_dim, padding_idx=padding_token)
+        self.embedding = nn.Embedding(in_dict_size, d, padding_idx=padding_token, scale_grad_by_freq=True)
+        self.positional_embedding = nn.Embedding(max_seqlen, d, padding_idx=pos_padding_token)
         block = TransmorpherLayer2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
         self.backbone = Transmorpher2d(block, num_layers, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
         if task_heads is not None:
@@ -65,11 +63,7 @@ class MSAModel(pl.LightningModule):
         """
 
         # NOTE feature dim = -1
-        # TODO optimize embedding
-        x = self.embedding(x)
-        if aux_features is not None:
-            aux_features = aux_features.expand(-1, x.size(1), -1, -1)
-            x = torch.cat((x, aux_features), dim=-1)
+        x = self.embedding(x) + self.positional_embedding(aux_features)
         # TODO extract attention maps
         latent = self.backbone(x, padding_mask, self.need_attn)
         return latent
@@ -87,7 +81,8 @@ class MSAModel(pl.LightningModule):
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
             for m in self.metrics[task]:
-                self.log(f'{task} {m}: ', self.metrics[task][m](preds[task], y[task]))
+                mvalue = self.metrics[task][m](preds[task], y[task])
+                self.log(f'{task} {m}: ', mvalue)
         # TODO weights
         loss = sum([lossvals[task] for task in self.tasks])
         for task in self.tasks:

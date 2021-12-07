@@ -125,37 +125,35 @@ class RandomMSASubsampling():
         return x, y
 
 
+# TODO this is sort of a hacky way to fix the incorrect way of PE without having to touch everything
 class ExplicitPositionalEncoding():
-    def __init__(self, axis=-1, abs_factor=1000):
-        self.axis = axis
-        self.abs_factor = abs_factor
+    def __init__(self, max_seqlen=5000):
+        self.max_seqlen = max_seqlen
 
     def __call__(self, x, y):
         msa = x['msa']
-        size = msa.size(self.axis)
-        absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
-        relative = absolute / size
-        absolute = absolute / self.abs_factor
+        seqlen = msa.size(-1)
+        if seqlen > self.max_seqlen:
+            raise ValueError(f'Sequence dimension in input too large: {seqlen} > {self.max_seqlen}')
+        absolute = torch.arange(1, seqlen + 1, dtype=torch.long)
         if 'aux_features' not in x:
-            x['aux_features'] = torch.cat((absolute, relative), dim=-1)
+            x['aux_features'] = absolute
         else:
-            x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=-1)
+            raise
 
         if 'contrastive' in x:
             msa = x['contrastive']
-            size = msa.size(self.axis)
-            absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
-            relative = absolute / size
-            absolute = absolute / self.abs_factor
+            seqlen = msa.size(-1)
+
+            absolute = torch.arange(1, seqlen + 1, dtype=torch.long)
             if 'aux_features_contrastive' not in x:
-                x['aux_features_contrastive'] = torch.cat((absolute, relative), dim=-1)
+                x['aux_features_contrastive'] = absolute
             else:
-                x['aux_features_contrastive'] = torch.cat((msa['aux_features_contrastive'], absolute, relative), dim=-1)
+                raise
 
         return x, y
 
 
-# TODO test
 # TODO maybe remove possible shortcut of e.g.
 # >AAA|BB
 # >BB|AAA
