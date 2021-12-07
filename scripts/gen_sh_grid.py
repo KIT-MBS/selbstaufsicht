@@ -44,7 +44,7 @@ log_dir = 'lightning_logs/'
 log_run_name = '%d_%m_%Y__%H_%M_%S'
 ########################################
 
-tasg_arg = ''
+task_arg = ''
 task_name = ''
 if task_inpainting:
     task_arg += '--task-inpainting '
