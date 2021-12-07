@@ -110,7 +110,7 @@ srun python train.py --num-blocks %d --num-heads %d --feature-dim %d \
                                                   log_run_name)
     ]
     
-    sh_filename = '%s__' + log_exp_name + '.sh' % run_file_prefix
+    sh_filename = '%s__%s.sh' % (run_file_prefix, log_exp_name)
     
     with open(sh_filename, "w") as filestream:
         filestream.writelines(lines)
