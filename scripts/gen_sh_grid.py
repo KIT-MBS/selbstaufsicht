@@ -120,12 +120,12 @@ def main():
                 for batch_size in batch_size_list:
                     eff_batch_size = batch_size * num_gpus * num_nodes
                     for lr in lr_list:
-                        log_exp_name = "%s_nb_%d__nh_%d__d_%d__bs_%d__lr_%.3f" % (task_name,
+                        log_exp_name = ("%s_nb_%d__nh_%d__d_%d__bs_%d__lr_%.3f" % (task_name,
                                                                                   num_blocks, 
                                                                                   num_heads, 
                                                                                   feature_dim, 
                                                                                   eff_batch_size, 
-                                                                                  lr).replace('.', '_')
+                                                                                  lr)).replace('.', '_')
                         create_script(log_exp_name, num_blocks, num_heads, feature_dim, batch_size, lr)
 
 
