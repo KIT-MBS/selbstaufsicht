@@ -29,14 +29,14 @@ def test_msa_mask_token(tokenized_sample):
     x, y = masking(*tokenized_sample)
     x, y = positional(x, y)
 
-    x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
-                                            [0.0010, 0.1250],
-                                            [0.0020, 0.2500],
-                                            [0.0030, 0.3750],
-                                            [0.0040, 0.5000],
-                                            [0.0050, 0.6250],
-                                            [0.0060, 0.7500],
-                                            [0.0070, 0.8750]]]),
+    x_ref = {'aux_features': torch.tensor([[1,
+                                            2,
+                                            3,
+                                            4,
+                                            5,
+                                            6,
+                                            7,
+                                            8]]),
              'msa': torch.tensor([[17,  3, 19,  4, 19,  5, 19,  3],
                                   [17, 19,  3,  4,  1,  5,  4, 19],
                                   [17,  5, 19,  4, 19, 19, 19,  1],
@@ -64,14 +64,7 @@ def test_msa_mask_column(tokenized_sample):
     x, y = masking(*tokenized_sample)
     x, y = positional(x, y)
 
-    x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
-                                            [0.0010, 0.1250],
-                                            [0.0020, 0.2500],
-                                            [0.0030, 0.3750],
-                                            [0.0040, 0.5000],
-                                            [0.0050, 0.6250],
-                                            [0.0060, 0.7500],
-                                            [0.0070, 0.8750]]]),
+    x_ref = {'aux_features': torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]]),
              'msa': torch.tensor([[17, 19, 5, 19, 5, 19, 4, 19],
                                   [17, 19, 3, 19, 1, 19, 4, 19],
                                   [17, 19, 5, 19, 3, 19, 4, 19],
@@ -99,14 +92,7 @@ def test_msa_mask_block(tokenized_sample):
     x, y = masking(*tokenized_sample)
     x, y = positional(x, y)
 
-    x_ref = {'aux_features': torch.tensor([[[0.0000, 0.0000],
-                                            [0.0010, 0.1250],
-                                            [0.0020, 0.2500],
-                                            [0.0030, 0.3750],
-                                            [0.0040, 0.5000],
-                                            [0.0050, 0.6250],
-                                            [0.0060, 0.7500],
-                                            [0.0070, 0.8750]]]),
+    x_ref = {'aux_features': torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]]),
              'msa': torch.tensor([[17, 3, 5, 19, 19, 19, 4, 3],
                                   [17, 3, 3, 19, 19, 19, 4, 3],
                                   [17, 5, 5, 19, 19, 19, 4, 1],
