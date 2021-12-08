@@ -25,6 +25,7 @@ class MSAModel(pl.LightningModule):
             lr: float = 1e-4,
             lr_warmup: int = 16000,
             padding_token: int = None,
+            emb_grad_freq_scale: bool = False,
             pos_padding_token: int = 0,
             max_seqlen: int = 5000,
             task_heads: Dict[str, nn.Module] = None,
@@ -47,6 +48,7 @@ class MSAModel(pl.LightningModule):
             lr (float, optional): Initial learning rate. Defaults to 1e-4.
             lr_warmup (int, optional): Warmup parameter for inverse square root rule of learning rate scheduling. Defaults to 16000.
             padding_token (int, optional): Numerical token that is used for padding in evolutionary and sequence dimensions. Defaults to None.
+            emb_grad_freq_scale (bool, optional): flag whether to scale gradients by the inverse of frequency of the tokens in the mini-batch
             pos_padding_token (int, optional): Numerical token that is used for padding in positional embedding in auxiliary input
             max_seqlen (int, optional): maximum sequence length for learned positional embedding
             task_heads (Dict[str, nn.Module], optional): Head modules for upstream tasks. Defaults to None.
@@ -64,7 +66,7 @@ class MSAModel(pl.LightningModule):
         factory_kwargs = {'device': device, 'dtype': dtype}
         d = num_heads * dim_head
 
-        self.embedding = nn.Embedding(alphabet_size, d, padding_idx=padding_token, scale_grad_by_freq=True)
+        self.embedding = nn.Embedding(alphabet_size, d, padding_idx=padding_token, scale_grad_by_freq=emb_grad_freq_scale)
         self.positional_embedding = nn.Embedding(max_seqlen, d, padding_idx=pos_padding_token)
         block = TransmorpherBlock2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
         self.backbone = Transmorpher2d(block, num_blocks, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
