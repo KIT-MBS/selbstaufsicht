@@ -177,7 +177,7 @@ def test_jigsaw_delimiter(tokenized_sample):
     testing.assert_close(y['jigsaw'], label, rtol=0, atol=0)
 
 
-def test_subsampling(msa_sample):
+def test_subsampling_uniform(msa_sample):
     sampler = MSASubsampling(3, False, 'uniform')
     sampled = sampler(*msa_sample)[0]['msa']
 
@@ -186,11 +186,34 @@ def test_subsampling(msa_sample):
             SeqRecord(Seq("CCUACU."), id='seq3'),
             SeqRecord(Seq("UCUCCUC"), id='seq4'),
             SeqRecord(Seq("ACUCCUA"), id='seq1'),
-        ]
-    )
+        ])
 
     for idx in range(len(sampled)):
         assert sampled[idx].seq == sampled_ref[idx].seq
+
+
+def test_subsampling_fixed(msa_sample):
+    sampler = MSASubsampling(2, True, 'fixed')
+    sampled = sampler(*msa_sample)[0]['msa']
+    sampled_contrastive = sampler(*msa_sample)[0]['contrastive']
+    
+    sampled_ref = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq("ACUCCUA"), id='seq1'),
+            SeqRecord(Seq("AAU.CUA"), id='seq2'),
+        ])
+    
+    sampled_contrastive_ref = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq("CCUACU."), id='seq3'),
+            SeqRecord(Seq("UCUCCUC"), id='seq4'),
+        ])
+    
+    for idx in range(len(sampled)):
+        assert sampled[idx].seq == sampled_ref[idx].seq
+        
+    for idx in range(len(sampled_contrastive)):
+        assert sampled_contrastive[idx].seq == sampled_contrastive_ref[idx].seq
 
 
 def test_hamming_distance():
