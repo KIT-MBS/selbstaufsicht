@@ -200,8 +200,7 @@ class RandomMSAShuffling():
                                minleader=self.minleader,
                                mintrailer=self.mintrailer)
         x['msa'] = shuffled_msa
-        if 'jigsaw' not in y:
-            y['jigsaw'] = label
+        y['jigsaw'] = label
 
         if self.contrastive:
             contrastive_perm = torch.randint(0, self.num_classes, (num_seq,))
