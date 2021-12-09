@@ -190,7 +190,8 @@ class RandomMSAShuffling():
 
         num_seq = x['msa'].size(0)
         if 'jigsaw' in y:
-            label = y['jigsaw']
+            # TODO: ugly, only works for fixed subsampling mode
+            label = y['jigsaw'][:num_seq]
         else:
             label = torch.randint(0, self.num_classes, (num_seq,))
         shuffled_msa = _jigsaw(x['msa'],
