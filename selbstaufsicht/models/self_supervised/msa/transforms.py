@@ -219,7 +219,7 @@ class MSASubsampling():
         Args:
             num_sequences (int): Number of subsampled sequences.
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
-            mode (str, optional): Subsampling mode. Currently implemented: uniform, diversity. Defaults to 'uniform'.
+            mode (str, optional): Subsampling mode. Currently implemented: uniform, diversity, fixed. Defaults to 'uniform'.
         """
 
         self.contrastive = contrastive
@@ -239,9 +239,9 @@ class MSASubsampling():
         """
 
         msa = x['msa'][:, :]
-        x['msa'] = self.sampling_fn(msa, self.nseqs)
+        x['msa'] = self.sampling_fn(msa, self.nseqs, False)
         if self.contrastive:
-            x['contrastive'] = self.sampling_fn(msa, self.nseqs)
+            x['contrastive'] = self.sampling_fn(msa, self.nseqs, True)
         return x, y
 
 
@@ -657,12 +657,31 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, contr
         return _maximize_diversity_naive(msa, list(range(1, n)), m, msa[0:1])
 
 
+def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool = False) -> MultipleSeqAlignment:
+    """
+    Subsamples the first n sequences from the MSA.
+
+    Args:
+        msa (MultipleSeqAlignment): Lettered MSA.
+        nseqs (int): Number of sequences to be subsampled.
+        contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
+
+    Returns:
+        MultipleSeqAlignment: Subsampled, lettered MSA.
+    """
+    
+    if contrastive:
+        return msa[nseqs:2*nseqs]
+    else:
+        return msa[:nseqs]
+
+
 def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]:
     """
     Returns the subsampling function that corresponds to the given subsampling mode.
 
     Args:
-        mode (str): Subsampling mode. Currently implemented: uniform, diversity.
+        mode (str): Subsampling mode. Currently implemented: uniform, diversity, fixed.
 
     Raises:
         ValueError: Unknown subsampling mode.
@@ -676,4 +695,6 @@ def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, O
         return _subsample_uniform
     if mode == 'diversity':
         return _subsample_diversity_maximizing
+    if mode == 'fixed':
+        return _subsample_fixed
     raise ValueError('unkown msa sampling mode', mode)

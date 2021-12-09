@@ -47,7 +47,7 @@ parser.add_argument('--task-jigsaw', action='store_true', help="Activates the ji
 parser.add_argument('--task-contrastive', action='store_true', help="Activates the contrastive task")
 # Upstream task configuration
 parser.add_argument('--subsampling-depth', default=4, type=int, help="Number of subsampled sequences")
-parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity")
+parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
 parser.add_argument('--cropping-size', default=50, type=int, help="Maximum uncropped sequence length")
 parser.add_argument('--inpainting-masking-type', default='token', type=str, help="MSA masking type in the inpainting task")
 parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MSA masking ratio in the inpainting task")
