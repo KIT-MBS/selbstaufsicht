@@ -30,7 +30,7 @@ def getitem_modified(self, idx: int, num_data_samples: int, jigsaw_force_permuta
             sample = self.samples[idx]
             labels = {}
         return self.transform({'msa': sample}, labels)
-    return self.samples[i]
+    return self.samples[idx]
 
 def len_modified(self, num_data_samples: int, jigsaw_force_permutations: int):
     if jigsaw_force_permutations:
