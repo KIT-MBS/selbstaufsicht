@@ -2,8 +2,8 @@
 Self-Supervised Learning for Applications in Bioinformatics.
 
 TODO:
-- new `subsampling_mode`: fixed (take first n sequences)
-- adapt `num_gpu` in trainung script: `num_gpu` -> cpu utilization
+- ~~new `subsampling_mode`: fixed (take first n sequences)~~ [DONE [#16](https://github.com/KIT-MBS/selbstaufsicht/pull/16)] 
+- ~~adapt `num_gpu` in trainung script: `num_gpu` -> cpu utilization~~ [DONE [#16](https://github.com/KIT-MBS/selbstaufsicht/pull/16)]
 - set new default values in training script
 - test duplicated MSA, fixed subsampling, different permutations
 - make new `DummyDataset` variants (more complex token patterns)
