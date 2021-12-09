@@ -143,7 +143,7 @@ def main():
                       precision=args.precision,
                       strategy=dp_strategy,
                       enable_progress_bar=not args.disable_progress_bar,
-                      log_every_n_steps=args.log_every,
+                      log_every_n_steps=min(args.log_every, args.num_data_samples),
                       logger=tb_logger)
     trainer.fit(model, dl)
 
