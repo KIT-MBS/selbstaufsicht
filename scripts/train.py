@@ -55,7 +55,7 @@ def main():
     parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MSA masking ratio in the inpainting task")
     parser.add_argument('--jigsaw-partitions', default=3, type=int, help="Number of partitions in the jigsaw task")
     parser.add_argument('--jigsaw-permutations', default=4, type=int, help="Number of permutations in the jigsaw task")
-    parser.add_argument('--jigsaw-all-permutations', action='store_true', help="Duplicates the number of used data samples times the number of permutations in the jigsaw task, where each duplicate is labeled with a different permutation.")
+    parser.add_argument('--jigsaw-force-permutations', default=0, type=int, help="Duplicates the number of used data samples times the specified number in the jigsaw task, where each duplicate is labeled with a different permutation in numerical order. Value 0 disables this mechanism.")
     parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
     # Logging
     parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
@@ -117,10 +117,9 @@ def main():
         raise ValueError("Unknown dataset: %s" % args.dataset)
 
     num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds)
-    jigsaw_all_permutations = args.jigsaw_permutations if args.jigsaw_all_permutations else 0
     ds_type = type(ds)
-    ds_type.__getitem__ = MethodType(partial(datasets.getitem_modified, num_data_samples=num_data_samples, jigsaw_all_permutations=jigsaw_all_permutations), ds)
-    ds_type.__len__ = MethodType(partial(datasets.len_modified, num_data_samples=num_data_samples, jigsaw_all_permutations=jigsaw_all_permutations), ds)
+    ds_type.__getitem__ = MethodType(partial(datasets.getitem_modified, num_data_samples=num_data_samples, jigsaw_force_permutations=args.jigsaw_force_permutations), ds)
+    ds_type.__len__ = MethodType(partial(datasets.len_modified, num_data_samples=num_data_samples, jigsaw_force_permutations=args.jigsaw_force_permutations), ds)
 
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
                     worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)

@@ -18,9 +18,9 @@ polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
 modes = ['seed', 'enhanced', 'full']
 
 
-def getitem_modified(self, idx: int, num_data_samples: int, jigsaw_all_permutations: int):
+def getitem_modified(self, idx: int, num_data_samples: int, jigsaw_force_permutations: int):
     if self.transform is not None:
-        if jigsaw_all_permutations:
+        if jigsaw_force_permutations:
             real_sample_idx = idx % num_data_samples
             permutation_idx = idx // num_data_samples
             sample = self.samples[real_sample_idx]
@@ -32,9 +32,9 @@ def getitem_modified(self, idx: int, num_data_samples: int, jigsaw_all_permutati
         return self.transform({'msa': sample}, labels)
     return self.samples[i]
 
-def len_modified(self, num_data_samples: int, jigsaw_all_permutations: int):
-    if jigsaw_all_permutations:
-        return min(len(self.samples), num_data_samples) * jigsaw_all_permutations
+def len_modified(self, num_data_samples: int, jigsaw_force_permutations: int):
+    if jigsaw_force_permutations:
+        return min(len(self.samples), num_data_samples) * jigsaw_force_permutations
     else:
         return min(len(self.samples), num_data_samples)
 
