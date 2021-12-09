@@ -176,21 +176,22 @@ class RandomMSAShuffling():
         self.delimiter_token = delimiter_token
         self.contrastive = contrastive
 
-    def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor], label: torch.Tensor = None) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """
         Performs random shuffling on the given MSA, according to the predefined allowed permutations.
 
         Args:
             x (Dict[str, torch.Tensor]): Tokenized MSA [E, L].
             y (Dict[str, torch.Tensor]): Upstream task labels.
-            label (torch.Tensor, optional): Explicitly specified jigsaw label (Permutation index per sequence) [E]. Is created randomly otherwise. Defaults to None.
 
         Returns:
             Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Shuffled, tokenized MSA [E, L]; y: Jigsaw label (permutation index per sequence) [E].
         """
 
         num_seq = x['msa'].size(0)
-        if label is None:
+        if 'jigsaw' in y:
+            label = y['jigsaw']
+        else:
             label = torch.randint(0, self.num_classes, (num_seq,))
         shuffled_msa = _jigsaw(x['msa'],
                                self.permutations.expand(num_seq, -1, -1)[range(num_seq),
@@ -198,7 +199,9 @@ class RandomMSAShuffling():
                                minleader=self.minleader,
                                mintrailer=self.mintrailer)
         x['msa'] = shuffled_msa
-        y['jigsaw'] = label
+        if 'jigsaw' not in y:
+            y['jigsaw'] = label
+
         if self.contrastive:
             contrastive_perm = torch.randint(0, self.num_classes, (num_seq,))
             x['contrastive'] = _jigsaw(x['contrastive'],

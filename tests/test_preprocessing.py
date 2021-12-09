@@ -117,7 +117,7 @@ def test_jigsaw(tokenized_sample):
                                  [1, 0]], dtype=torch.int64)
     label = torch.tensor([0, 1, 0, 1])
     shuffling = RandomMSAShuffling(permutations=permutations)
-    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
+    x, y = shuffling(deepcopy(tokenized_sample)[0], {'jigsaw': label})
 
     x_ref = torch.tensor([[17, 3, 5, 4, 5, 5, 4, 3],
                           [17, 1, 5, 4, 3, 3, 4, 3],
@@ -133,7 +133,7 @@ def test_jigsaw(tokenized_sample):
                                  [2, 0, 1]], dtype=torch.int64)
     label = torch.tensor([3, 2, 1, 0])
     shuffling = RandomMSAShuffling(permutations=permutations)
-    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
+    x, y = shuffling(deepcopy(tokenized_sample)[0], {'jigsaw': label})
 
     x_ref = torch.tensor([[17, 5, 4, 3, 5, 4, 5, 3],
                           [17, 3, 3, 5, 4, 4, 1, 3],
@@ -150,7 +150,7 @@ def test_jigsaw_delimiter(tokenized_sample):
                                  [1, 0]], dtype=torch.int64)
     label = torch.tensor([0, 1, 0, 1])
     shuffling = RandomMSAShuffling(permutations=permutations, delimiter_token=delimiter_token)
-    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
+    x, y = shuffling(deepcopy(tokenized_sample)[0], {'jigsaw': label})
 
     x_ref = torch.tensor([[17, 18, 3, 5, 4, 18, 5, 5, 4, 18, 3],
                           [17, 18, 1, 5, 4, 18, 3, 3, 4, 18, 3],
@@ -166,7 +166,7 @@ def test_jigsaw_delimiter(tokenized_sample):
                                  [2, 0, 1]], dtype=torch.int64)
     label = torch.tensor([3, 2, 1, 0])
     shuffling = RandomMSAShuffling(permutations=permutations, delimiter_token=delimiter_token)
-    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
+    x, y = shuffling(deepcopy(tokenized_sample)[0], {'jigsaw': label})
 
     x_ref = torch.tensor([[17, 18, 5, 4, 18, 3, 5, 18, 4, 5, 18, 3],
                           [17, 18, 3, 3, 18, 5, 4, 18, 4, 1, 18, 3],
