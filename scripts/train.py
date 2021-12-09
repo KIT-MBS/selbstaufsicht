@@ -23,6 +23,7 @@ parser = argparse.ArgumentParser(description='Selbstaufsicht Training Script')
 parser.add_argument('--num-blocks', default=2, type=int, help="Number of consecutive Transmorpher blocks")
 parser.add_argument('--feature-dim', default=768, type=int, help="Size of the feature dimension")
 parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
+parser.add_argument("--emb-grad-freq-scale", action='store_true', help="If set, this will scale gradients by the inverse of frequency of the words in the mini-batch")
 # Dataset
 parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam, dummy")
 parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. Non-positive numbers refer to using all data.")
@@ -123,13 +124,13 @@ model = models.self_supervised.MSAModel(
     args.num_blocks,
     args.num_heads,
     d_head,
-    aux_input_dim=2,
     task_heads=task_heads,
     task_losses=task_losses,
     metrics=metrics,
-    in_dict_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
+    alphabet_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
     lr=args.learning_rate,
-    lr_warmup=args.learning_rate_warmup
+    lr_warmup=args.learning_rate_warmup,
+    emb_grad_freq_scale=args.emb_grad_freq_scale
 )
 tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
 trainer = Trainer(max_epochs=args.num_epochs,

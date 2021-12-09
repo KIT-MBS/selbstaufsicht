@@ -18,7 +18,7 @@ class MSATokenize():
         Args:
             mapping (Dict[str, int]): Mapping from the lettered input alphabet to its numerical token representation.
         """
-        
+
         self.mapping = mapping
 
     def __call__(self, x: Dict[str, MultipleSeqAlignment], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
@@ -32,7 +32,7 @@ class MSATokenize():
         Returns:
             Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Tokenized MSA [E, L]; y: Upstream task labels.
         """
-        
+
         x['msa'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['msa']], dtype=torch.long)
         if 'contrastive' in x:
             x['contrastive'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['contrastive']], dtype=torch.long)
@@ -56,7 +56,7 @@ class RandomMSACropping():
             length (int): Maximum uncropped sequence length.
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
         """
-        
+
         self.length = length
         self.contrastive = contrastive
 
@@ -71,7 +71,7 @@ class RandomMSACropping():
         Returns:
             Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]: x: Cropped, lettered MSA; y: Upstream task labels.
         """
-        
+
         msa = x['msa'][:, :]
         if x['msa'].get_alignment_length() > self.length:
             start = torch.randint(msa.get_alignment_length() - self.length, (1,)).item()
@@ -99,7 +99,7 @@ class RandomMSAMasking():
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
             start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
         """
-        
+
         self.p = p
         self.mask_token = mask_token
         self.masking_fn = _get_masking_fn(mode, start_token)
@@ -117,9 +117,10 @@ class RandomMSAMasking():
             ValueError: Unexpected input data type.
 
         Returns:
-            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Masked, tokenized MSA [E, L]; Masking mask [E, L]; y: Inpainting label (flattened tensor of masked tokens) [~p*E*L].
+            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Masked, tokenized MSA [E, L]; Masking mask [E, L]; y: Inpainting label
+                (flattened tensor of masked tokens) [~p*E*L].
         """
-        
+
         masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.mask_token)
         x['msa'] = masked_msa
         x['mask'] = mask
@@ -130,12 +131,20 @@ class RandomMSAMasking():
 
 
 class RandomMSAShuffling():
-    def __init__(self, permutations: torch.Tensor = None, minleader: int = 1, mintrailer: int = 0, delimiter_token: int = None, num_partitions: int = None, num_classes: int = None, contrastive: bool = False):
+    def __init__(self,
+                 permutations: torch.Tensor = None,
+                 minleader: int = 1,
+                 mintrailer: int = 0,
+                 delimiter_token: int = None,
+                 num_partitions: int = None,
+                 num_classes: int = None,
+                 contrastive: bool = False):
         """
         Initializes random MSA shuffling.
 
         Args:
-            permutations (torch.Tensor, optional): Explicitly specified permutations [NClasses, NPartitions]. Is inferred from \"num_partitions\" and \"num_classes\" otherwise. Defaults to None.
+            permutations (torch.Tensor, optional): Explicitly specified permutations [NClasses, NPartitions].
+                Is inferred from \"num_partitions\" and \"num_classes\" otherwise. Defaults to None.
             minleader (int, optional): Minimum number of unshuffled tokens at the start of each sequence. Defaults to 1.
             mintrailer (int, optional): Minimum number of unshuffled tokens at the end of each sequence. Defaults to 0.
             delimiter_token (int, optional): Special token that is used to separate shuffled partitions from each other. Defaults to None.
@@ -146,7 +155,7 @@ class RandomMSAShuffling():
         Raises:
             ValueError: Either \"permutations\" or \"num_partitions\" and \"num_classes\" need to be specified.
         """
-        
+
         if permutations is None and (num_partitions is None or num_classes is None):
             raise ValueError("Permutations have to be given explicitely or parameters to generate them.")
 
@@ -179,7 +188,7 @@ class RandomMSAShuffling():
         Returns:
             Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Shuffled, tokenized MSA [E, L]; y: Jigsaw label (permutation index per sequence) [E].
         """
-        
+
         num_seq = x['msa'].size(0)
         if label is None:
             label = torch.randint(0, self.num_classes, (num_seq,))
@@ -212,7 +221,7 @@ class MSASubsampling():
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
             mode (str, optional): Subsampling mode. Currently implemented: uniform, diversity. Defaults to 'uniform'.
         """
-        
+
         self.contrastive = contrastive
         self.sampling_fn = _get_msa_subsampling_fn(mode)
         self.nseqs = num_sequences
@@ -228,7 +237,7 @@ class MSASubsampling():
         Returns:
             Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]: x: Subsampled lettered MSA; y: Upstream task labels.
         """
-        
+
         msa = x['msa'][:, :]
         x['msa'] = self.sampling_fn(msa, self.nseqs)
         if self.contrastive:
@@ -236,18 +245,16 @@ class MSASubsampling():
         return x, y
 
 
+# TODO this is sort of a hacky way to fix the incorrect way of PE without having to touch everything
 class ExplicitPositionalEncoding():
-    def __init__(self, axis: int = -1, abs_factor: float = 1000) -> None:
+    def __init__(self, max_seqlen=5000):
         """
-        Initializes explizit positional encoding.
+        Initializes explicite positional encoding.
 
         Args:
-            axis (int, optional): Dimension index in which positional encoding is applied. Defaults to -1.
-            abs_factor (float, optional): Multiplicative factor for absolute positional features. Defaults to 1000.
+            max_seqlen (int, optional): longest sequence length allowed. Defaults to 5000.
         """
-        
-        self.axis = axis
-        self.abs_factor = abs_factor
+        self.max_seqlen = max_seqlen
 
     def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """
@@ -258,34 +265,34 @@ class ExplicitPositionalEncoding():
             y (Dict[str, torch.Tensor]): Upstream task labels.
 
         Returns:
-            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Tokenized MSA [E, L]; absolute and relative positional auxiliary features [1, L, 2]; y: Upstream task labels.
+            Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+            x: Tokenized MSA [E, L]; absolute and relative positional auxiliary features [1, L];
+            y: Upstream task labels.
         """
-        
+
         msa = x['msa']
-        size = msa.size(self.axis)
-        absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
-        relative = absolute / size
-        absolute = absolute / self.abs_factor
+        seqlen = msa.size(-1)
+        if seqlen > self.max_seqlen:
+            raise ValueError(f'Sequence dimension in input too large: {seqlen} > {self.max_seqlen}')
+        absolute = torch.arange(1, seqlen + 1, dtype=torch.long).unsqueeze(0)
         if 'aux_features' not in x:
-            x['aux_features'] = torch.cat((absolute, relative), dim=-1)
+            x['aux_features'] = absolute
         else:
-            x['aux_features'] = torch.cat((msa['aux_features'], absolute, relative), dim=-1)
+            raise
 
         if 'contrastive' in x:
             msa = x['contrastive']
-            size = msa.size(self.axis)
-            absolute = torch.arange(0, size, dtype=torch.float).unsqueeze(0).unsqueeze(-1)
-            relative = absolute / size
-            absolute = absolute / self.abs_factor
+            seqlen = msa.size(-1)
+
+            absolute = torch.arange(1, seqlen + 1, dtype=torch.long).unsqueeze(0)
             if 'aux_features_contrastive' not in x:
-                x['aux_features_contrastive'] = torch.cat((absolute, relative), dim=-1)
+                x['aux_features_contrastive'] = absolute
             else:
-                x['aux_features_contrastive'] = torch.cat((msa['aux_features_contrastive'], absolute, relative), dim=-1)
+                raise
 
         return x, y
 
 
-# TODO test
 # TODO maybe remove possible shortcut of e.g.
 # >AAA|BB
 # >BB|AAA
@@ -296,7 +303,7 @@ def _jigsaw(msa: torch.Tensor, permutations: torch.Tensor, delimiter_token: int 
     Shuffles the given MSA according to the given permutations.
 
     Args:
-        msa (torch.Tensor): Tokenized MSA to be shuffled [E, L]. 
+        msa (torch.Tensor): Tokenized MSA to be shuffled [E, L].
         permutations (torch.Tensor): Permutations to be applied sequence-wise to the MSA [E, NPartitions].
         delimiter_token (int, optional): Special token that is used to separate shuffled partitions from each other. Defaults to None.
         minleader (int, optional): Minimum number of unshuffled tokens at the start of each sequence. Defaults to 1.
@@ -305,7 +312,7 @@ def _jigsaw(msa: torch.Tensor, permutations: torch.Tensor, delimiter_token: int 
     Returns:
         torch.Tensor: Shuffled, tokenized MSA [E, L].
     """
-    
+
     # TODO relative leader and trailer?
     # TODO minimum partition size?
     # TODO optimize
@@ -454,9 +461,10 @@ def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, flo
         ValueError: Unknown masking mode.
 
     Returns:
-        Callable[[torch.Tensor, float, int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]: Masking function (tokenized MSA [E, L]; masking probability/ratio; masking token -> masked MSA [E, L]; boolean masking mask [E, L]; masked tokens [~p*E*L])
+        Callable[[torch.Tensor, float, int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]: Masking function
+        (tokenized MSA [E, L]; masking probability/ratio; masking token -> masked MSA [E, L]; boolean masking mask [E, L]; masked tokens [~p*E*L])
     """
-    
+
     if mode == 'token':
         return partial(_token_mask_msa, start_token=start_token)
     elif mode == 'column':
@@ -478,7 +486,7 @@ def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool 
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
-    
+
     max_nseqs = len(msa)
     if max_nseqs > nseqs:
         indices = torch.randperm(max_nseqs)[:nseqs]
@@ -497,7 +505,7 @@ def _hamming_distance(seq_1: str, seq_2: str) -> int:
     Returns:
         int: Hamming distance.
     """
-    
+
     assert len(seq_1) == len(seq_2), "Both sequences are required to have the same length!"
     return sum(n_1 != n_2 for n_1, n_2 in zip(seq_1, seq_2))
 
@@ -512,7 +520,7 @@ def _hamming_distance_matrix(msa: MultipleSeqAlignment) -> torch.Tensor:
     Returns:
         torch.Tensor: Symmetric, zero-diagonal matrix with sequence-to-sequence hamming distances [E, E].
     """
-    
+
     hd_matrix = torch.zeros((len(msa), len(msa)))
 
     # computes upper triangular part, without diagonal
@@ -540,7 +548,7 @@ def _maximize_diversity_naive(msa: MultipleSeqAlignment, msa_indices: List[int],
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
-    
+
     # naive strategy: compute hamming distances on-the-fly, when needed
     hd_matrix = torch.zeros((len(msa_indices), len(sampled_msa)))
 
@@ -565,7 +573,12 @@ def _maximize_diversity_naive(msa: MultipleSeqAlignment, msa_indices: List[int],
         return _maximize_diversity_naive(msa, msa_indices, nseqs, sampled_msa)
 
 
-def _maximize_diversity_cached(msa: MultipleSeqAlignment, msa_indices: List[int], nseqs: int, sampled_msa: MultipleSeqAlignment, sampled_msa_indices: List[int], hd_matrix: torch.Tensor) -> MultipleSeqAlignment:
+def _maximize_diversity_cached(msa: MultipleSeqAlignment,
+                               msa_indices: List[int],
+                               nseqs: int,
+                               sampled_msa: MultipleSeqAlignment,
+                               sampled_msa_indices: List[int],
+                               hd_matrix: torch.Tensor) -> MultipleSeqAlignment:
     """
     Subsamples sequences from the given MSA according to the greedy diviserty maximization scheme.
     This function uses the cached strategy, where hamming distances between all non-reflexive sequences-to-sequence pairs are computed beforehand and cached.
@@ -581,7 +594,7 @@ def _maximize_diversity_cached(msa: MultipleSeqAlignment, msa_indices: List[int]
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
-    
+
     # cached strategy: use pre-computed hamming distances
     indices = tuple(zip(*[(msa_idx, sampled_msa_idx) for msa_idx in msa_indices for sampled_msa_idx in sampled_msa_indices]))
     hd_matrix_reduced = hd_matrix[indices[0], indices[1]].view(len(msa_indices), len(sampled_msa_indices))
@@ -619,7 +632,7 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, contr
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
-    
+
     # since the function is deterministic and contrastive input should be different from the regular input, it is sampled randomly
     if contrastive:
         return _subsample_uniform(msa, nseqs)
@@ -627,7 +640,7 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, contr
     # depending on the total number of sequences and the number of sequences to be subsampled, choose computation strategy:
     # either compute and cache all hamming distanced between distinct sequences beforehand or use the naive implementation with potentially repeating comparisons
     # TODO: Combine naive and chached strategies to optimal strategy: Compute hamming distances on-the-fly when needed, but cache for later re-use
-    
+
     n = len(msa)
     # exclude reference seq
     m = min(nseqs, n) - 1
@@ -655,9 +668,10 @@ def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, O
         ValueError: Unknown subsampling mode.
 
     Returns:
-        Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]: Subsampling function (lettered MSA; number of sequences to be subsampled; whether contrastive lerning is active -> subsampled, lettered MSA)
+        Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]: Subsampling function
+        (lettered MSA; number of sequences to be subsampled; whether contrastive lerning is active -> subsampled, lettered MSA)
     """
-    
+
     if mode == 'uniform':
         return _subsample_uniform
     if mode == 'diversity':
