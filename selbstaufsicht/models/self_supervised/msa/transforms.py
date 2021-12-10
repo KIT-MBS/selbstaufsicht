@@ -47,18 +47,20 @@ class MSATokenize():
         return x, y
 
 
-class RandomMSACropping():
-    def __init__(self, length: int, contrastive: bool = False) -> None:
+class MSACropping():
+    def __init__(self, length: int, contrastive: bool = False, mode: str = 'random-dependent') -> None:
         """
-        Initializes random MSA cropping transform.
+        Initializes MSA cropping transform.
 
         Args:
             length (int): Maximum uncropped sequence length.
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
+            mode (str, optional): Cropping mode. Currently implemented: random-dependent, random-independent, fixed. Defaults to 'random-dependent'.
         """
 
         self.length = length
         self.contrastive = contrastive
+        self.cropping_fn = _get_msa_cropping_fn(mode)
 
     def __call__(self, x: Dict[str, MultipleSeqAlignment], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
         """
@@ -74,14 +76,12 @@ class RandomMSACropping():
 
         msa = x['msa'][:, :]
         if x['msa'].get_alignment_length() > self.length:
-            start = torch.randint(msa.get_alignment_length() - self.length, (1,)).item()
-            x['msa'] = x['msa'][:, start:start + self.length]
+            x['msa'] = self.cropping_fn(x['msa'], self.length, False)
 
         if self.contrastive:
             contrastive_msa = x.get('contrastive', msa)
             if contrastive_msa.get_alignment_length() > self.length:
-                start = torch.randint(contrastive_msa.get_alignment_length() - self.length, (1,)).item()
-                contrastive_msa = contrastive_msa[:, start:start + self.length]
+                contrastive_msa = self.cropping_fn(contrastive_msa, self.length, True)
             x['contrastive'] = contrastive_msa
         return x, y
 
@@ -701,3 +701,83 @@ def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, O
     if mode == 'fixed':
         return _subsample_fixed
     raise ValueError('unkown msa sampling mode', mode)
+
+
+def _crop_random_dependent(msa: MultipleSeqAlignment, length: int, contrastive: bool = False) -> MultipleSeqAlignment:
+    """
+    Crops each sequence of the given lettered MSA randomly to the predefined length. 
+    Cropping start is the same for all sequences.
+
+    Args:
+        msa (MultipleSeqAlignment): Lettered MSA.
+        length (int): Maximum uncropped sequence length.
+        contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
+
+    Returns:
+        MultipleSeqAlignment: Cropped, lettered MSA.
+    """
+    
+    start = torch.randint(msa.get_alignment_length() - length, (1,)).item()
+    return msa[:, start : start + length]
+
+
+def _crop_random_independent(msa: MultipleSeqAlignment, length: int, contrastive: bool = False) -> MultipleSeqAlignment:
+    """
+    Crops each sequence of the given lettered MSA randomly to the predefined length. 
+    Cropping start is randomly sampled for all sequences.
+
+    Args:
+        msa (MultipleSeqAlignment): Lettered MSA.
+        length (int): Maximum uncropped sequence length.
+        contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
+
+    Returns:
+        MultipleSeqAlignment: Cropped, lettered MSA.
+    """
+    
+    starts = torch.randint(msa.get_alignment_length() - length, (len(msa),))
+    cropped_msa = MultipleSeqAlignment([])
+    for idx in range(len(msa)):
+        start = starts[idx].item()
+        cropped_msa.append(msa[idx, start : start + length])
+    return cropped_msa
+
+
+def _crop_fixed(msa: MultipleSeqAlignment, length: int, contrastive: bool = False) -> MultipleSeqAlignment:
+    """
+    Crops each sequence of the given lettered MSA in a left-aligned way to the predefined length.
+
+    Args:
+        msa (MultipleSeqAlignment): Lettered MSA.
+        length (int): Maximum uncropped sequence length.
+        contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
+
+    Returns:
+        MultipleSeqAlignment: Cropped, lettered MSA.
+    """
+
+    return msa[:, :length]
+
+
+def _get_msa_cropping_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]:
+    """
+    Returns the cropping function that corresponds to the given cropping mode.
+
+    Args:
+        mode (str): Cropping mode. Currently implemented: random-dependent, random-independent, fixed.
+
+    Raises:
+        ValueError: Unknown cropping mode.
+
+    Returns:
+        Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]: Cropping function
+        (lettered MSA; maximum uncropped sequence length; whether contrastive lerning is active -> cropped, lettered MSA)
+    """
+
+    if mode == 'random-dependent':
+        return _crop_random_dependent
+    if mode == 'random-independent':
+        return _crop_random_independent
+    if mode == 'fixed':
+        return _crop_fixed
+    raise ValueError('unkown msa cropping mode', mode)

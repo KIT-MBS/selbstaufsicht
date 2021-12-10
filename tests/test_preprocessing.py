@@ -9,7 +9,7 @@ from Bio.Align import MultipleSeqAlignment
 
 from selbstaufsicht.transforms import SelfSupervisedCompose
 from selbstaufsicht.utils import rna2index
-from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, MSASubsampling, RandomMSAShuffling
+from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
@@ -265,18 +265,50 @@ def test_maximize_diversity(msa_sample):
         assert sampled_cached[idx].seq == sampled_ref[idx].seq
 
 
-def test_cropping(msa_sample):
-    sampler = MSASubsampling(4, False, 'uniform')
-    sampled = sampler(*msa_sample)
-    cropper = RandomMSACropping(5)
-    cropped = cropper(*sampled)
+def test_cropping_random_dependent(msa_sample):
+    cropper = MSACropping(3, False, 'random-dependent')
+    cropped = cropper(*msa_sample)
 
     cropped_ref = MultipleSeqAlignment(
         [
-            SeqRecord(Seq("ACUCC"), id='seq1'),
-            SeqRecord(Seq("AAU.C"), id='seq2'),
-            SeqRecord(Seq("CCUAC"), id='seq3'),
-            SeqRecord(Seq("UCUCC"), id='seq4'),
+            SeqRecord(Seq("UCC"), id='seq1'),
+            SeqRecord(Seq("U.C"), id='seq2'),
+            SeqRecord(Seq("UAC"), id='seq3'),
+            SeqRecord(Seq("UCC"), id='seq4'),
+        ]
+    )
+
+    for idx in range(len(cropped)):
+        assert cropped[0]['msa'][idx].seq == cropped_ref[idx].seq
+
+
+def test_cropping_random_independent(msa_sample):
+    cropper = MSACropping(3, False, 'random-independent')
+    cropped = cropper(*msa_sample)
+
+    cropped_ref = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq("UCC"), id='seq1'),
+            SeqRecord(Seq(".CU"), id='seq2'),
+            SeqRecord(Seq("CCU"), id='seq3'),
+            SeqRecord(Seq("UCC"), id='seq4'),
+        ]
+    )
+
+    for idx in range(len(cropped)):
+        assert cropped[0]['msa'][idx].seq == cropped_ref[idx].seq
+
+
+def test_cropping_fixed(msa_sample):
+    cropper = MSACropping(3, False, 'fixed')
+    cropped = cropper(*msa_sample)
+
+    cropped_ref = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq("ACU"), id='seq1'),
+            SeqRecord(Seq("AAU"), id='seq2'),
+            SeqRecord(Seq("CCU"), id='seq3'),
+            SeqRecord(Seq("UCU"), id='seq4'),
         ]
     )
 

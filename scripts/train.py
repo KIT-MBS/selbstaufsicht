@@ -51,6 +51,7 @@ def main():
     parser.add_argument('--subsampling-depth', default=4, type=int, help="Number of subsampled sequences")
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
     parser.add_argument('--cropping-size', default=50, type=int, help="Maximum uncropped sequence length")
+    parser.add_argument('--cropping-mode', default='random-dependent', type=int, help="Cropping mode: random-dependent, random-independent, fixed")
     parser.add_argument('--inpainting-masking-type', default='token', type=str, help="MSA masking type in the inpainting task")
     parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MSA masking ratio in the inpainting task")
     parser.add_argument('--jigsaw-partitions', default=3, type=int, help="Number of partitions in the jigsaw task")
@@ -97,7 +98,8 @@ def main():
                                                             args.feature_dim,
                                                             subsample_depth=args.subsampling_depth,
                                                             subsample_mode=args.subsampling_mode,
-                                                            crop=args.cropping_size,
+                                                            crop_size=args.cropping_size,
+                                                            crop_mode=args.cropping_mode,
                                                             masking=args.inpainting_masking_type,
                                                             p_mask=args.inpainting_masking_p,
                                                             jigsaw_partitions=args.jigsaw_partitions,

@@ -8,7 +8,7 @@ from torch.nn import Module, ModuleDict
 from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
-from selbstaufsicht.models.self_supervised.msa.transforms import RandomMSACropping, MSASubsampling, RandomMSAShuffling
+from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.modules import NT_Xent_Loss, Accuracy
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
@@ -19,7 +19,8 @@ def get_tasks(tasks: List[str],
               dim: int,
               subsample_depth: int = 5,
               subsample_mode: str = 'uniform',
-              crop: int = 50,
+              crop_size: int = 50,
+              crop_mode: str = 'random-dependent',
               masking: str = 'token',
               p_mask: float = 0.15,
               jigsaw_partitions: int = 3,
@@ -35,7 +36,8 @@ def get_tasks(tasks: List[str],
         dim (int): Embedding dimensionality.
         subsample_depth (int, optional): Number of subsampled sequences per MSA. Defaults to 5.
         subsample_mode (str, optional): Subsampling mode. Defaults to 'uniform'.
-        crop (int, optional): Maximum uncropped sequence length. Defaults to 50.
+        crop_size (int, optional): Maximum uncropped sequence length. Defaults to 50.
+        crop_mode (str, optional): Cropping mode. Defaults to 'random-dependent'.
         masking (str, optional): Masking mode for inpainting. Defaults to 'token'.
         p_mask (float, optional): Masking probability for inpainting. Defaults to 0.15.
         jigsaw_partitions (int, optional): Number of shuffled partitions for jigsaw. Defaults to 3.
@@ -60,7 +62,7 @@ def get_tasks(tasks: List[str],
 
     transformslist = [
         MSASubsampling(subsample_depth, contrastive=contrastive, mode=subsample_mode),
-        RandomMSACropping(crop, contrastive=contrastive),
+        MSACropping(crop_size, contrastive=contrastive, mode=crop_mode),
         MSATokenize(rna2index)]
 
     if 'jigsaw' in tasks:
