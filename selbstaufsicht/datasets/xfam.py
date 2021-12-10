@@ -96,6 +96,9 @@ class Xfam(torch.utils.data.Dataset):
                         print(fam_id)
 
     def __getitem__(self, i):
+        if "getitem_modified" in self.__dict__:
+            return self.getitem_modified(self, i)
+        
         if self.transform is not None:
             return self.transform({'msa': self.samples[i]}, {})
         return self.samples[i]
@@ -115,6 +118,9 @@ class Dummy(torch.utils.data.Dataset):
                         ])]
 
     def __getitem__(self, i):
+        if "getitem_modified" in self.__dict__:
+            return self.getitem_modified(self, i)
+        
         if self.transform is not None:
             return self.transform({'msa': self.samples[i]}, {})
         return self.samples[i]

@@ -120,7 +120,7 @@ def main():
 
     num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds)
     ds_type = type(ds)
-    ds_type.__getitem__ = MethodType(partial(datasets.getitem_modified, num_data_samples=num_data_samples, jigsaw_force_permutations=args.jigsaw_force_permutations), ds)
+    ds.getitem_modified = partial(datasets.getitem_modified, num_data_samples=num_data_samples, jigsaw_force_permutations=args.jigsaw_force_permutations)
     ds_type.__len__ = MethodType(partial(datasets.len_modified, num_data_samples=num_data_samples, jigsaw_force_permutations=args.jigsaw_force_permutations), ds)
 
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
