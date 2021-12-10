@@ -38,6 +38,7 @@ def main():
     parser.add_argument('--learning-rate-warmup', default=2000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
+    parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
     # Data parallelism
     parser.add_argument('--num-gpus', default=1, type=int, help="Number of GPUs per node. -1 refers to using all available GPUs. 0 refers to using the CPU.")
@@ -123,7 +124,7 @@ def main():
     ds.getitem_modified = partial(datasets.getitem_modified, num_data_samples=num_data_samples, jigsaw_force_permutations=args.jigsaw_force_permutations)
     ds_type.__len__ = MethodType(partial(datasets.len_modified, num_data_samples=num_data_samples, jigsaw_force_permutations=args.jigsaw_force_permutations), ds)
 
-    dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
+    dl = DataLoader(ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
                     worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
     # TODO should pass padding token index here
     model = models.self_supervised.MSAModel(
