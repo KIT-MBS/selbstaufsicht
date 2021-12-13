@@ -18,11 +18,11 @@ polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
 modes = ['seed', 'enhanced', 'full']
 
 
-def getitem_modified(self, idx: int, num_data_samples: int, jigsaw_force_permutations: int):
+def getitem_modified(self, idx: int, jigsaw_force_permutations: int):
     if self.transform is not None:
         if jigsaw_force_permutations:
-            real_sample_idx = idx % num_data_samples
-            permutation_idx = idx // num_data_samples
+            real_sample_idx = idx // jigsaw_force_permutations
+            permutation_idx = idx % jigsaw_force_permutations
             sample = self.samples[real_sample_idx]
             num_seq = len(sample)
             labels = {'jigsaw': torch.full((num_seq,), permutation_idx, dtype=torch.int64)}
