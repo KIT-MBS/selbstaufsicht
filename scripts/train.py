@@ -135,7 +135,8 @@ def main():
         alphabet_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
-        emb_grad_freq_scale=args.emb_grad_freq_scale
+        emb_grad_freq_scale=args.emb_grad_freq_scale,
+        h_params=args
     )
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,
