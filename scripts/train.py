@@ -119,10 +119,8 @@ def main():
     else:
         raise ValueError("Unknown dataset: %s" % args.dataset)
 
-    num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds)
-    ds_type = type(ds)
-    ds.getitem_modified = partial(datasets.getitem_modified, num_data_samples=num_data_samples, jigsaw_force_permutations=args.jigsaw_force_permutations)
-    ds_type.__len__ = MethodType(partial(datasets.len_modified, num_data_samples=num_data_samples, jigsaw_force_permutations=args.jigsaw_force_permutations), ds)
+    ds.num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds.samples)
+    ds.jigsaw_force_permutations = args.jigsaw_force_permutations
 
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
                     worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
