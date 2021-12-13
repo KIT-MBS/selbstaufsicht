@@ -21,27 +21,27 @@ from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, MSACollat
 def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Training Script')
     # Architecture
-    parser.add_argument('--num-blocks', default=2, type=int, help="Number of consecutive Transmorpher blocks")
+    parser.add_argument('--num-blocks', default=6, type=int, help="Number of consecutive Transmorpher blocks")
     parser.add_argument('--feature-dim', default=768, type=int, help="Size of the feature dimension")
     parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
-    parser.add_argument("--emb-grad-freq-scale", action='store_true', help="If set, this will scale gradients by the inverse of frequency of the words in the mini-batch")
+    parser.add_argument("--disable-emb-grad-freq-scale", action='store_true', help="If set, this will scale gradients by the inverse of frequency of the words in the mini-batch")
     # Dataset
     parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam, dummy")
     parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. Non-positive numbers refer to using all data.")
-    parser.add_argument('--xfam-version', default='9.1', type=str, help="Xfam dataset version")
+    parser.add_argument('--xfam-version', default='14.6', type=str, help="Xfam dataset version")
     parser.add_argument('--xfam-mode', default='seed', type=str, help="Xfam dataset mode: seed, full, or enhanced")
     # Training process
-    parser.add_argument('--num-epochs', default=20, type=int, help="Number of training epochs")
-    parser.add_argument('--batch-size', default=2, type=int, help="Batch size (local in case of multi-gpu training)")
+    parser.add_argument('--num-epochs', default=200, type=int, help="Number of training epochs")
+    parser.add_argument('--batch-size', default=16, type=int, help="Batch size (local in case of multi-gpu training)")
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
-    parser.add_argument('--learning-rate-warmup', default=2000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
+    parser.add_argument('--learning-rate-warmup', default=200, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
     # Data parallelism
-    parser.add_argument('--num-gpus', default=1, type=int, help="Number of GPUs per node. -1 refers to using all available GPUs. 0 refers to using the CPU.")
+    parser.add_argument('--num-gpus', default=-1, type=int, help="Number of GPUs per node. -1 refers to using all available GPUs. 0 refers to using the CPU.")
     parser.add_argument('--num-nodes', default=1, type=int, help="Number of nodes")
-    parser.add_argument('--num-workers', default=1, type=int, help="Number of data loader worker processes")
+    parser.add_argument('--num-workers', default=4, type=int, help="Number of data loader worker processes")
     # Upstream tasks
     parser.add_argument('--task-inpainting', action='store_true', help="Activates the inpainting task")
     parser.add_argument('--task-jigsaw', action='store_true', help="Activates the jigsaw task")
@@ -49,18 +49,18 @@ def main():
     # Upstream task configuration
     parser.add_argument('--subsampling-depth', default=4, type=int, help="Number of subsampled sequences")
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
-    parser.add_argument('--cropping-size', default=50, type=int, help="Maximum uncropped sequence length")
+    parser.add_argument('--cropping-size', default=400, type=int, help="Maximum uncropped sequence length")
     parser.add_argument('--inpainting-masking-type', default='token', type=str, help="MSA masking type in the inpainting task")
     parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MSA masking ratio in the inpainting task")
     parser.add_argument('--jigsaw-partitions', default=3, type=int, help="Number of partitions in the jigsaw task")
-    parser.add_argument('--jigsaw-permutations', default=4, type=int, help="Number of permutations in the jigsaw task")
+    parser.add_argument('--jigsaw-permutations', default=6, type=int, help="Number of permutations in the jigsaw task")
     parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
     # Logging
     parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
     parser.add_argument('--log-dir', default='lightning_logs/', type=str, help='Logging directory. Default: \"lightning_logs/\"')
     parser.add_argument('--log-exp-name', default='', type=str, help='Logging experiment name. If empty, this structure level is omitted. Default: \"\"')
-    parser.add_argument('--log-run-name', default='%d_%m_%Y__%H_%M_%S', type=str, help='Logging run name. Supports 1989 C standard datetime codes. Default: \"%%d_%%m_%%Y__%%H_%%M_%%S\"')
-
+    parser.add_argument('--log-run-name', default='%d_%m_%Y__%H_%M_%S', type=str,
+                        help='Logging run name. Supports 1989 C standard datetime codes. Default: \"%%d_%%m_%%Y__%%H_%%M_%%S\"')
 
     args = parser.parse_args()
     dt_now = datetime.now()
@@ -133,7 +133,7 @@ def main():
         alphabet_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
-        emb_grad_freq_scale=args.emb_grad_freq_scale
+        emb_grad_freq_scale=not args.disable_emb_grad_freq_scale
     )
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,
