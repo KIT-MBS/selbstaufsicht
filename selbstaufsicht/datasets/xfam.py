@@ -95,7 +95,23 @@ class Dummy(torch.utils.data.Dataset):
                         SeqRecord(Seq("AAAACCCC"), id='eins'),
                         SeqRecord(Seq("AAAACCCC"), id='zwei'),
                         SeqRecord(Seq("AAAACCCC"), id='drei'),
-                        ])]
+                        ]),
+                        MultipleSeqAlignment([
+                            SeqRecord(Seq("AAAAAAAC"), id='eins'),
+                            SeqRecord(Seq("AAAAAAAU"), id='zwei'),
+                            SeqRecord(Seq("AAAAAAAG"), id='drei'),
+                        ]),
+                        MultipleSeqAlignment([
+                            SeqRecord(Seq("AAAAAAAC"), id='eins'),
+                            SeqRecord(Seq("--AAAA--"), id='zwei'),
+                            SeqRecord(Seq("---AAAA-"), id='drei'),
+                        ]),
+                        MultipleSeqAlignment([
+                            SeqRecord(Seq("AAAA--------CAUA"), id='eins'),
+                            SeqRecord(Seq("AAAA--------CAGA"), id='zwei'),
+                            SeqRecord(Seq("AAAA--------CA.A"), id='drei'),
+                        ]),
+                        ]
 
     def __getitem__(self, i):
         if self.transform is not None:
