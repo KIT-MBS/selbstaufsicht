@@ -2,7 +2,6 @@
 Self-Supervised Learning for Applications in Bioinformatics.
 
 TODO:
-- set new default values in training script
 - test non-linear architecture for `JigsawHead`
 - parameterize tasks
 - train test split: large unlabeled train (~4000), small unlabeled val (~100), small labeled train (~10), large labeled val (~100)

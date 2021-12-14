@@ -1,6 +1,5 @@
 from functools import partial
 import torch
-import collections
 from typing import Dict, List, Tuple, Union
 
 from torch.nn import CrossEntropyLoss
@@ -26,11 +25,12 @@ def get_tasks(tasks: List[str],
               jigsaw_partitions: int = 3,
               jigsaw_classes: int = 4,
               jigsaw_padding_token: int = -1,
+              jigsaw_linear: bool = True,
               simclr_temperature: float = 100.,
               ) -> Tuple[transforms.SelfSupervisedCompose, Dict[str, Module], Dict[str, Module], Dict[str, ModuleDict]]:
     """
     Configures task heads, losses, data transformations, and evaluation metrics for given task parameters.
-    
+
     Args:
         tasks (List[str]): Upstream tasks to be performed.
         dim (int): Embedding dimensionality.
@@ -43,16 +43,18 @@ def get_tasks(tasks: List[str],
         jigsaw_partitions (int, optional): Number of shuffled partitions for jigsaw. Defaults to 3.
         jigsaw_classes (int, optional): Number of allowed permutations for jigsaw. Defaults to 4.
         jigsaw_padding_token (int, optional): Special token that indicates padded sequences in the jigsaw label. Defaults to -1.
+        jigsaw_linear (bool, optional): if True linear head, otherwise two layer MLP. Defaults to True.
         simclr_temperature (float, optional): Distillation temperatur for the SimCLR loss of contrastive learning. Defaults to 100..
 
     Raises:
         ValueError: Unknown upstream task.
 
     Returns:
-        Tuple[transforms.SelfSupervisedCompose, Dict[str, nn.Module], Dict[str, nn.Module], Dict[str, ModuleDict]]: Composition of preprocessing transforms; head modules for upstream tasks; 
+        Tuple[transforms.SelfSupervisedCompose, Dict[str, nn.Module], Dict[str, nn.Module], Dict[str, ModuleDict]]:
+        Composition of preprocessing transforms; head modules for upstream tasks;
         loss functions for upstream tasks; further metrics for upstream tasks
     """
-    
+
     if not set(tasks) <= {'inpainting', 'jigsaw', 'contrastive'}:
         raise ValueError('unknown task id')
 
@@ -91,7 +93,7 @@ def get_tasks(tasks: List[str],
     task_heads = ModuleDict()
     task_losses = dict()
     if 'jigsaw' in tasks:
-        head = JigsawHead(dim, jigsaw_classes)
+        head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear)
         task_heads['jigsaw'] = head
         task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
         metrics['jigsaw'] = ModuleDict({'acc': Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)})
@@ -121,7 +123,7 @@ class MSACollator():
             inpainting_mask_padding_token (int, optional): Special token that is used for padding of boolean MSA inpainting masking masks with different shapes. Defaults to 0.
             jigsaw_padding_token (int, optional): Special token that indicates padded sequences in the jigsaw label. Defaults to -1.
         """
-        
+
         self.collate_fn = {
             'msa': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
             'mask': partial(_pad_collate_nd, pad_val=inpainting_mask_padding_token),
@@ -137,7 +139,8 @@ class MSACollator():
         Performs collation of batch data, i.e., shapes of different batch items are aligned by padding and they are concatenated in a new batch dimension for each tensor.
 
         Args:
-            batch (List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]): Batch data: Each batch item consists of input and target data, which in turn contain several tensors.
+            batch (List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]):
+            Batch data: Each batch item consists of input and target data, which in turn contain several tensors.
             Input data contains {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor, 'contrastive': tensor}.
             Target data contains one or more of {'inpainting': 1dtensor, 'jigsaw': 1dtensor}
 
@@ -154,7 +157,8 @@ class MSACollator():
         Args:
             item_idx (int): Index of the data item.
             item (Dict[str, torch.Tensor]): Data item, containing several tensors.
-            batch (List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]): Full batch data: Each batch item consists of input and target data, which in turn contain several tensors.
+            batch (List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]):
+            Full batch data: Each batch item consists of input and target data, which in turn contain several tensors.
 
         Returns:
             Dict[str, torch.Tensor]: Collated batch data for the given data item, i.e., it contains several tensors, which include a batch dimension.
@@ -200,7 +204,7 @@ def _pad_collate_nd(batch: List[torch.Tensor], pad_val: int = 0, need_padding_ma
         Returns:
             int: Either 1 oder 0.
         """
-        
+
         if i == j:
             return 1
         return 0

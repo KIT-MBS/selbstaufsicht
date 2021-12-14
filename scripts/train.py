@@ -60,6 +60,7 @@ def main():
                         help="""Duplicates the number of used data samples times the specified number in the jigsaw task,
                         where each duplicate is labeled with a different permutation in numerical order. Value 0 disables this mechanism."""
                         )
+    parser.add_argument('--jigsaw-nonlinear', action='store_true', help="Uses a non-linear projection head for the jigsaw task.")
     parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
     # Logging
     parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
@@ -107,6 +108,7 @@ def main():
                                                             p_mask=args.inpainting_masking_p,
                                                             jigsaw_partitions=args.jigsaw_partitions,
                                                             jigsaw_classes=args.jigsaw_permutations,
+                                                            jigsaw_linear=not args.jigsaw_nonlinear,
                                                             simclr_temperature=args.contrastive_temperature)
 
     root = os.environ['DATA_PATH']
