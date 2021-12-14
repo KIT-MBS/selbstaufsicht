@@ -54,6 +54,7 @@ def main():
     parser.add_argument('--cropping-mode', default='random-dependent', type=str, help="Cropping mode: random-dependent, random-independent, fixed")
     parser.add_argument('--inpainting-masking-type', default='token', type=str, help="MSA masking type in the inpainting task")
     parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MSA masking ratio in the inpainting task")
+    parser.add_argument('--inpainting-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
     parser.add_argument('--jigsaw-partitions', default=3, type=int, help="Number of partitions in the jigsaw task")
     parser.add_argument('--jigsaw-permutations', default=6, type=int, help="Number of permutations in the jigsaw task")
     parser.add_argument('--jigsaw-force-permutations', default=0, type=int,
@@ -61,7 +62,9 @@ def main():
                         where each duplicate is labeled with a different permutation in numerical order. Value 0 disables this mechanism."""
                         )
     parser.add_argument('--jigsaw-nonlinear', action='store_true', help="Uses a non-linear projection head for the jigsaw task.")
+    parser.add_argument('--jigsaw-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
     parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
+    parser.add_argument('--contrastive-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
     # Logging
     parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
     parser.add_argument('--log-dir', default='lightning_logs/', type=str, help='Logging directory. Default: \"lightning_logs/\"')
@@ -77,12 +80,16 @@ def main():
     assert d_head * args.num_heads == args.feature_dim
 
     tasks = []
+    task_loss_weights = {}
     if args.task_inpainting:
         tasks.append("inpainting")
+        task_loss_weights["inpainting"] = args.inpainting_loss_weight
     if args.task_jigsaw:
         tasks.append("jigsaw")
+        task_loss_weights["jigsaw"] = args.jigsaw_loss_weight
     if args.task_contrastive:
         tasks.append("contrastive")
+        task_loss_weights["contrastive"] = args.contrastive_loss_weight
 
     torch.manual_seed(args.rng_seed)
     np.random.seed(args.rng_seed)
@@ -135,6 +142,7 @@ def main():
         d_head,
         task_heads=task_heads,
         task_losses=task_losses,
+        task_loss_weights=task_loss_weights,
         metrics=metrics,
         alphabet_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
         lr=args.learning_rate,

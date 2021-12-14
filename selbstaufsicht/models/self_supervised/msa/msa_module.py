@@ -31,6 +31,7 @@ class MSAModel(pl.LightningModule):
             h_params: Dict[str, Any] = None,
             task_heads: Dict[str, nn.Module] = None,
             task_losses: Dict[str, nn.Module] = None,
+            task_loss_weights: Dict[str, float] = None,
             metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
             device: Union[str, torch.device] = None,
@@ -55,6 +56,7 @@ class MSAModel(pl.LightningModule):
             h_params (Dict[str, Any], optional): Hyperparameters for logging. Defaults to None.
             task_heads (Dict[str, nn.Module], optional): Head modules for upstream tasks. Defaults to None.
             task_losses (Dict[str, nn.Module], optional): Loss functions for upstream tasks. Defaults to None.
+            task_loss_weights (Dict[str, float], optional): per task loss weights. Defaults to None.
             metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
@@ -72,8 +74,16 @@ class MSAModel(pl.LightningModule):
         self.positional_embedding = nn.Embedding(max_seqlen, d, padding_idx=pos_padding_token)
         block = TransmorpherBlock2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
         self.backbone = Transmorpher2d(block, num_blocks, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
+        self.tasks = None
+        # TODO adapt to non-simultaneous multi task training (all the heads will be present in model, but not all targets in one input)
         if task_heads is not None:
             self.tasks = [t for t in task_heads.keys()]
+        self.task_loss_weights = task_loss_weights
+        if self.tasks is not None and self.task_loss_weights is None:
+            self.task_loss_weights = {t: 1. for t in self.tasks}
+        if self.task_loss_weights is not None:
+            self.task_loss_weights = {t: self.task_loss_weights[t] / (sum(self.task_loss_weights.values())) for t in self.task_loss_weights}
+
         self.task_heads = task_heads
         self.losses = task_losses
         self.metrics = metrics
@@ -134,7 +144,7 @@ class MSAModel(pl.LightningModule):
                 mvalue = self.metrics[task][m](preds[task], y[task])
                 self.log(f'{task} {m}: ', mvalue)
         # TODO weights
-        loss = sum([lossvals[task] for task in self.tasks])
+        loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         for task in self.tasks:
             self.log(f'{task} loss', lossvals[task])
 
