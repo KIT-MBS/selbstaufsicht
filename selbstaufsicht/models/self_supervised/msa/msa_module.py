@@ -132,13 +132,13 @@ class MSAModel(pl.LightningModule):
         for task in self.tasks:
             for m in self.metrics[task]:
                 mvalue = self.metrics[task][m](preds[task], y[task])
-                self.log(f'{task} {m}: ', mvalue)
+                self.log(f'{task} {m}: ', mvalue, on_step=True, on_epoch=True)
         # TODO weights
         loss = sum([lossvals[task] for task in self.tasks])
         for task in self.tasks:
-            self.log(f'{task} loss', lossvals[task])
+            self.log(f'{task} loss', lossvals[task], on_step=True, on_epoch=True)
 
-        self.log('training loss', loss, on_step=True, on_epoch=False)
+        self.log('training loss', loss, on_step=True, on_epoch=True)
         return loss
 
     def configure_optimizers(self) -> Dict[str, Any]:
