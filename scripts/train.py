@@ -6,7 +6,7 @@ import os
 import random
 
 import torch
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -37,6 +37,7 @@ def main():
     parser.add_argument('--learning-rate-warmup', default=200, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
+    parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
     # Data parallelism
     parser.add_argument('--num-gpus', default=-1, type=int, help="Number of GPUs per node. -1 refers to using all available GPUs. 0 refers to using the CPU.")
@@ -50,10 +51,15 @@ def main():
     parser.add_argument('--subsampling-depth', default=4, type=int, help="Number of subsampled sequences")
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
     parser.add_argument('--cropping-size', default=400, type=int, help="Maximum uncropped sequence length")
+    parser.add_argument('--cropping-mode', default='random-dependent', type=str, help="Cropping mode: random-dependent, random-independent, fixed")
     parser.add_argument('--inpainting-masking-type', default='token', type=str, help="MSA masking type in the inpainting task")
     parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MSA masking ratio in the inpainting task")
     parser.add_argument('--jigsaw-partitions', default=3, type=int, help="Number of partitions in the jigsaw task")
     parser.add_argument('--jigsaw-permutations', default=6, type=int, help="Number of permutations in the jigsaw task")
+    parser.add_argument('--jigsaw-force-permutations', default=0, type=int,
+                        help="""Duplicates the number of used data samples times the specified number in the jigsaw task,
+                        where each duplicate is labeled with a different permutation in numerical order. Value 0 disables this mechanism."""
+                        )
     parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
     # Logging
     parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
@@ -95,7 +101,8 @@ def main():
                                                             args.feature_dim,
                                                             subsample_depth=args.subsampling_depth,
                                                             subsample_mode=args.subsampling_mode,
-                                                            crop=args.cropping_size,
+                                                            crop_size=args.cropping_size,
+                                                            crop_mode=args.cropping_mode,
                                                             masking=args.inpainting_masking_type,
                                                             p_mask=args.inpainting_masking_p,
                                                             jigsaw_partitions=args.jigsaw_partitions,
@@ -111,16 +118,13 @@ def main():
         ds = datasets.Xfam(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
     elif dataset_name == 'dummy':
         ds = datasets.Dummy(transform=transform)
-
     else:
         raise ValueError("Unknown dataset: %s" % args.dataset)
 
-    if args.num_data_samples > 0:
-        tm = ds.token_mapping
-        ds = Subset(ds, torch.arange(args.num_data_samples))
-        ds.token_mapping = tm
+    ds.num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds.samples)
+    ds.jigsaw_force_permutations = args.jigsaw_force_permutations
 
-    dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
+    dl = DataLoader(ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
                     worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
     # TODO should pass padding token index here
     model = models.self_supervised.MSAModel(
@@ -133,7 +137,8 @@ def main():
         alphabet_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
-        emb_grad_freq_scale=not args.disable_emb_grad_freq_scale
+        emb_grad_freq_scale=not args.disable_emb_grad_freq_scale,
+        h_params=args
     )
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,

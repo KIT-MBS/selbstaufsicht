@@ -18,7 +18,38 @@ polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
 modes = ['seed', 'enhanced', 'full']
 
 
-class Xfam(torch.utils.data.Dataset):
+class ShrinkedForceJigsawDataset(torch.utils.data.Dataset):
+    """
+    Dataset that supports dataset shrinking and forced jigsaw permutations by MSA duplications.
+    """
+
+    def __init__(self):
+        self.num_data_samples = 0
+        self.jigsaw_force_permutations = 0
+
+    def __getitem__(self, idx):
+        if self.transform is not None:
+            if self.jigsaw_force_permutations:
+                # data-sample-major order (batches of data samples, which are labeled with several permutations)
+                real_sample_idx = idx // self.jigsaw_force_permutations
+                permutation_idx = idx % self.jigsaw_force_permutations
+                sample = self.samples[real_sample_idx]
+                num_seq = len(sample)
+                labels = {'jigsaw': torch.full((num_seq,), permutation_idx, dtype=torch.int64)}
+            else:
+                sample = self.samples[idx]
+                labels = {}
+            return self.transform({'msa': sample}, labels)
+        return self.samples[idx]
+
+    def __len__(self):
+        if self.jigsaw_force_permutations:
+            return min(len(self.samples), self.num_data_samples) * self.jigsaw_force_permutations
+        else:
+            return min(len(self.samples), self.num_data_samples)
+
+
+class Xfam(ShrinkedForceJigsawDataset):
     """
     Dataset for self-supervised learning based on the xfam family of biological sequence databases.
     """
@@ -30,8 +61,8 @@ class Xfam(torch.utils.data.Dataset):
             version: str = '9.1',
             polymer: str = 'rna',
             transform: Callable = None,
-            download: bool = False,
-            debug_size: int = -1) -> None:
+            download: bool = False) -> None:
+        super().__init__()
         if split not in splits:
             raise ValueError(f"split has to be in {splits}")
         if mode not in modes:
@@ -75,20 +106,10 @@ class Xfam(torch.utils.data.Dataset):
                     except ValueError:
                         print(fam_id)
 
-        if debug_size > 0:
-            self.samples = self.samples[:debug_size]
 
-    def __getitem__(self, i):
-        if self.transform is not None:
-            return self.transform({'msa': self.samples[i]}, {})
-        return self.samples[i]
-
-    def __len__(self):
-        return len(self.samples)
-
-
-class Dummy(torch.utils.data.Dataset):
+class Dummy(ShrinkedForceJigsawDataset):
     def __init__(self, transform=None):
+        super().__init__()
         self.token_mapping = rna2index
         self.transform = transform
         self.samples = [MultipleSeqAlignment([
@@ -112,11 +133,3 @@ class Dummy(torch.utils.data.Dataset):
                             SeqRecord(Seq("AAAA--------CA.A"), id='drei'),
                         ]),
                         ]
-
-    def __getitem__(self, i):
-        if self.transform is not None:
-            return self.transform({'msa': self.samples[i]}, {})
-        return self.samples[i]
-
-    def __len__(self):
-        return 1

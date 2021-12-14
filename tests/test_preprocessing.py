@@ -9,7 +9,7 @@ from Bio.Align import MultipleSeqAlignment
 
 from selbstaufsicht.transforms import SelfSupervisedCompose
 from selbstaufsicht.utils import rna2index
-from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, RandomMSACropping, MSASubsampling, RandomMSAShuffling
+from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
@@ -117,7 +117,7 @@ def test_jigsaw(tokenized_sample):
                                  [1, 0]], dtype=torch.int64)
     label = torch.tensor([0, 1, 0, 1])
     shuffling = RandomMSAShuffling(permutations=permutations)
-    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
+    x, y = shuffling(deepcopy(tokenized_sample)[0], {'jigsaw': label})
 
     x_ref = torch.tensor([[17, 3, 5, 4, 5, 5, 4, 3],
                           [17, 1, 5, 4, 3, 3, 4, 3],
@@ -133,7 +133,7 @@ def test_jigsaw(tokenized_sample):
                                  [2, 0, 1]], dtype=torch.int64)
     label = torch.tensor([3, 2, 1, 0])
     shuffling = RandomMSAShuffling(permutations=permutations)
-    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
+    x, y = shuffling(deepcopy(tokenized_sample)[0], {'jigsaw': label})
 
     x_ref = torch.tensor([[17, 5, 4, 3, 5, 4, 5, 3],
                           [17, 3, 3, 5, 4, 4, 1, 3],
@@ -150,7 +150,7 @@ def test_jigsaw_delimiter(tokenized_sample):
                                  [1, 0]], dtype=torch.int64)
     label = torch.tensor([0, 1, 0, 1])
     shuffling = RandomMSAShuffling(permutations=permutations, delimiter_token=delimiter_token)
-    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
+    x, y = shuffling(deepcopy(tokenized_sample)[0], {'jigsaw': label})
 
     x_ref = torch.tensor([[17, 18, 3, 5, 4, 18, 5, 5, 4, 18, 3],
                           [17, 18, 1, 5, 4, 18, 3, 3, 4, 18, 3],
@@ -166,7 +166,7 @@ def test_jigsaw_delimiter(tokenized_sample):
                                  [2, 0, 1]], dtype=torch.int64)
     label = torch.tensor([3, 2, 1, 0])
     shuffling = RandomMSAShuffling(permutations=permutations, delimiter_token=delimiter_token)
-    x, y = shuffling(*deepcopy(tokenized_sample), label=label)
+    x, y = shuffling(deepcopy(tokenized_sample)[0], {'jigsaw': label})
 
     x_ref = torch.tensor([[17, 18, 5, 4, 18, 3, 5, 18, 4, 5, 18, 3],
                           [17, 18, 3, 3, 18, 5, 4, 18, 4, 1, 18, 3],
@@ -265,18 +265,50 @@ def test_maximize_diversity(msa_sample):
         assert sampled_cached[idx].seq == sampled_ref[idx].seq
 
 
-def test_cropping(msa_sample):
-    sampler = MSASubsampling(4, False, 'uniform')
-    sampled = sampler(*msa_sample)
-    cropper = RandomMSACropping(5)
-    cropped = cropper(*sampled)
+def test_cropping_random_dependent(msa_sample):
+    cropper = MSACropping(3, False, 'random-dependent')
+    cropped = cropper(*msa_sample)
 
     cropped_ref = MultipleSeqAlignment(
         [
-            SeqRecord(Seq("ACUCC"), id='seq1'),
-            SeqRecord(Seq("AAU.C"), id='seq2'),
-            SeqRecord(Seq("CCUAC"), id='seq3'),
-            SeqRecord(Seq("UCUCC"), id='seq4'),
+            SeqRecord(Seq("UCC"), id='seq1'),
+            SeqRecord(Seq("U.C"), id='seq2'),
+            SeqRecord(Seq("UAC"), id='seq3'),
+            SeqRecord(Seq("UCC"), id='seq4'),
+        ]
+    )
+
+    for idx in range(len(cropped)):
+        assert cropped[0]['msa'][idx].seq == cropped_ref[idx].seq
+
+
+def test_cropping_random_independent(msa_sample):
+    cropper = MSACropping(3, False, 'random-independent')
+    cropped = cropper(*msa_sample)
+
+    cropped_ref = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq("UCC"), id='seq1'),
+            SeqRecord(Seq(".CU"), id='seq2'),
+            SeqRecord(Seq("CCU"), id='seq3'),
+            SeqRecord(Seq("UCC"), id='seq4'),
+        ]
+    )
+
+    for idx in range(len(cropped)):
+        assert cropped[0]['msa'][idx].seq == cropped_ref[idx].seq
+
+
+def test_cropping_fixed(msa_sample):
+    cropper = MSACropping(3, False, 'fixed')
+    cropped = cropper(*msa_sample)
+
+    cropped_ref = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq("ACU"), id='seq1'),
+            SeqRecord(Seq("AAU"), id='seq2'),
+            SeqRecord(Seq("CCU"), id='seq3'),
+            SeqRecord(Seq("UCU"), id='seq4'),
         ]
     )
 

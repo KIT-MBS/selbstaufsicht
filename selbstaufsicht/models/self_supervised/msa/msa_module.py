@@ -28,6 +28,7 @@ class MSAModel(pl.LightningModule):
             emb_grad_freq_scale: bool = False,
             pos_padding_token: int = 0,
             max_seqlen: int = 5000,
+            h_params: Dict[str, Any] = None,
             task_heads: Dict[str, nn.Module] = None,
             task_losses: Dict[str, nn.Module] = None,
             metrics: Dict[str, nn.ModuleDict] = None,
@@ -51,6 +52,7 @@ class MSAModel(pl.LightningModule):
             emb_grad_freq_scale (bool, optional): flag whether to scale gradients by the inverse of frequency of the tokens in the mini-batch
             pos_padding_token (int, optional): Numerical token that is used for padding in positional embedding in auxiliary input
             max_seqlen (int, optional): maximum sequence length for learned positional embedding
+            h_params (Dict[str, Any], optional): Hyperparameters for logging. Defaults to None.
             task_heads (Dict[str, nn.Module], optional): Head modules for upstream tasks. Defaults to None.
             task_losses (Dict[str, nn.Module], optional): Loss functions for upstream tasks. Defaults to None.
             metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
@@ -82,6 +84,7 @@ class MSAModel(pl.LightningModule):
         if need_attn:
             raise NotImplementedError('Extracting attention maps not yet implemented')
         self.need_attn = need_attn
+        self.save_hyperparameters(h_params)
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
         """
