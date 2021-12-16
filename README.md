@@ -2,7 +2,6 @@
 Self-Supervised Learning for Applications in Bioinformatics.
 
 TODO:
-- test non-linear architecture for `JigsawHead`
 - task loss weights
 - run one training into walltime limit
 - DROPOUT/REGULARIZATION

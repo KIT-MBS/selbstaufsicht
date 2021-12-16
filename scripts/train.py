@@ -130,7 +130,8 @@ def main():
     else:
         raise ValueError("Unknown dataset: %s" % args.dataset)
 
-    ds.num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds.samples)
+    num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds.samples)
+    ds.num_data_samples = num_data_samples
     ds.jigsaw_force_permutations = args.jigsaw_force_permutations
 
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
@@ -158,7 +159,7 @@ def main():
                       precision=args.precision,
                       strategy=dp_strategy,
                       enable_progress_bar=not args.disable_progress_bar,
-                      log_every_n_steps=min(args.log_every, args.num_data_samples),
+                      log_every_n_steps=min(args.log_every, num_data_samples),
                       logger=tb_logger)
     trainer.fit(model, dl)
 
