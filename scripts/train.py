@@ -33,12 +33,14 @@ def main():
     # Training process
     parser.add_argument('--num-epochs', default=200, type=int, help="Number of training epochs")
     parser.add_argument('--batch-size', default=16, type=int, help="Batch size (local in case of multi-gpu training)")
+    parser.add_argument('--validation-size', default=100, type=float, help="Either relative (if in range 0...1) or absolute (if integer) size of the validation dataset split")
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=200, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
+    parser.add_argument('--disable-random-split', action='store_true', help="disables the random dataset split")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
     # Data parallelism
     parser.add_argument('--num-gpus', default=-1, type=int, help="Number of GPUs per node. -1 refers to using all available GPUs. 0 refers to using the CPU.")
@@ -145,9 +147,22 @@ def main():
     num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds.samples)
     ds.num_data_samples = num_data_samples
     ds.jigsaw_force_permutations = args.jigsaw_force_permutations
+    
+    if args.validation_size.is_integer():
+        validation_size = args.validation_size
+    else:
+        if 0 <= args.validation_size <= 1:
+            validation_size = int(args.validation_size * num_data_samples)
+        else:
+            raise ValueError("Validation dataset size needs to be either in range 0...1 or an integer!")
+    train_ds, val_ds = ds.split(validation_size, random=not args.disable_random_split)
+    del ds
 
-    dl = DataLoader(ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
-                    worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
+    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
+                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
+    valid_dl = DataLoader(valid_ds, batch_size=args.batch_size, shuffle=False, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
+                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
+    
     # TODO should pass padding token index here
     model = models.self_supervised.MSAModel(
         args.num_blocks,
@@ -174,7 +189,7 @@ def main():
                       enable_progress_bar=not args.disable_progress_bar,
                       log_every_n_steps=min(args.log_every, num_data_samples),
                       logger=tb_logger)
-    trainer.fit(model, dl)
+    trainer.fit(model, train_dl, valid_dl)
 
 
 if __name__ == '__main__':

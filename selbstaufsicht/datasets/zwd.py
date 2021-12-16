@@ -7,15 +7,12 @@ import torch
 from Bio import AlignIO
 
 from .shrinked_force_permutations import ShrinkedForcePermutationsDataset
-from ..utils import rna2index
 
 
 class ZwdDataset(ShrinkedForcePermutationsDataset):
     def __init__(self, root: str , transform: Callable = None):
+        super().__init__(transform=transform)
         self.root = root
-        self.transform = transform
-        self.token_mapping = rna2index
-        self.samples = []
         
         if not os.path.isfile(root + '/not-for-Rfam'):
             sp.call(['git', 'clone', 'https://bitbucket.org/zashaw/zashaweinbergdata.git', f'{root}/'])

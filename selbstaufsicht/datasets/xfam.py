@@ -12,7 +12,6 @@ from Bio.Align import MultipleSeqAlignment
 
 from .shrinked_force_permutations import ShrinkedForcePermutationsDataset
 from ._utils import get_family_ids, _download
-from ..utils import rna2index
 
 splits = ['train', 'val', 'test']
 polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
@@ -32,7 +31,7 @@ class XfamDataset(ShrinkedForcePermutationsDataset):
             polymer: str = 'rna',
             transform: Callable = None,
             download: bool = False) -> None:
-        super().__init__()
+        super().__init__(transform=transform)
         if split not in splits:
             raise ValueError(f"split has to be in {splits}")
         if mode not in modes:
@@ -45,8 +44,6 @@ class XfamDataset(ShrinkedForcePermutationsDataset):
         self.version = version
         self.root = root
         self.base_folder = db
-        self.transform = transform
-        self.token_mapping = rna2index
 
         if mode == 'full' and float(version) >= 12:
             raise ValueError('Starting with Rfam version 12.0 full alignments are no longer generated fully automatically.')
