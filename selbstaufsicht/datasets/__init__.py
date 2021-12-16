@@ -1,3 +1,3 @@
-from .xfam import Xfam
+from .xfam import XfamDataset
 from .zwd import zwd
-from .xfam import Dummy
+from .dummy import DummyDataset

@@ -125,9 +125,9 @@ def main():
 
     if dataset_name == 'xfam':
         dataset_path = os.path.join(root, 'Xfam')
-        ds = datasets.Xfam(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
+        ds = datasets.XfamDataset(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
     elif dataset_name == 'dummy':
-        ds = datasets.Dummy(transform=transform)
+        ds = datasets.DummyDataset(transform=transform)
     else:
         raise ValueError("Unknown dataset: %s" % args.dataset)
 
