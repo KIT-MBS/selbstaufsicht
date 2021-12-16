@@ -145,13 +145,13 @@ class MSAModel(pl.LightningModule):
         for task in self.tasks:
             for m in self.metrics[task]:
                 mvalue = self.metrics[task][m](preds[task], y[task])
-                self.log(f'{task}_{mode}_{m}', mvalue, on_step=True, on_epoch=True)
+                self.log(f'{task}_{mode}_{m}', mvalue, on_step=self.training, on_epoch=True)
         # TODO weights
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         for task in self.tasks:
-            self.log(f'{task}_{mode}_loss', lossvals[task], on_step=True, on_epoch=True)
+            self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
 
-        self.log(f'{mode}_loss', loss, on_step=True, on_epoch=True)
+        self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
         if self.training:
             return loss
 
