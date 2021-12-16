@@ -36,7 +36,7 @@ class ShrinkedForcePermutationsDataset(torch.utils.data.Dataset):
         else:
             return min(len(self.samples), self.num_data_samples)
 
-    def split(self, validation_size: int, random: bool = True) -> Tuple[ShrinkedForcePermutationsDataset, ShrinkedForcePermutationsDataset]:
+    def split(self, validation_size: int, random: bool = True) -> Tuple['ShrinkedForcePermutationsDataset', 'ShrinkedForcePermutationsDataset']:
         """
         Splits the given dataset into a training and a validation dataset.
 
