@@ -135,6 +135,8 @@ def main():
         xfam_ds = datasets.XfamDataset(xfam_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
         zwd_ds = datasets.ZwdDataset(zwd_path, transform=transform)
         ds = datasets.CombinedDataset(xfam_ds, zwd_ds)
+        del xfam_ds
+        del zwd_ds
     elif dataset_name == 'dummy':
         ds = datasets.DummyDataset(transform=transform)
     else:
