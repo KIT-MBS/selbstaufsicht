@@ -24,6 +24,7 @@ class MSAModel(pl.LightningModule):
             alphabet_size: int = 7,
             lr: float = 1e-4,
             lr_warmup: int = 16000,
+            dropout: float = 0.1,
             padding_token: int = None,
             emb_grad_freq_scale: bool = False,
             pos_padding_token: int = 0,
@@ -49,6 +50,7 @@ class MSAModel(pl.LightningModule):
             alphabet_size (int, optional): Input alphabet size. Defaults to 7.
             lr (float, optional): Initial learning rate. Defaults to 1e-4.
             lr_warmup (int, optional): Warmup parameter for inverse square root rule of learning rate scheduling. Defaults to 16000.
+            dropout (float, optional): Dropout probability. Defaults to 0.1.
             padding_token (int, optional): Numerical token that is used for padding in evolutionary and sequence dimensions. Defaults to None.
             emb_grad_freq_scale (bool, optional): flag whether to scale gradients by the inverse of frequency of the tokens in the mini-batch
             pos_padding_token (int, optional): Numerical token that is used for padding in positional embedding in auxiliary input
@@ -72,7 +74,7 @@ class MSAModel(pl.LightningModule):
 
         self.embedding = nn.Embedding(alphabet_size, d, padding_idx=padding_token, scale_grad_by_freq=emb_grad_freq_scale)
         self.positional_embedding = nn.Embedding(max_seqlen, d, padding_idx=pos_padding_token)
-        block = TransmorpherBlock2d(dim_head, num_heads, 2 * dim_head * num_heads, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
+        block = TransmorpherBlock2d(dim_head, num_heads, 2 * dim_head * num_heads, dropout=dropout, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
         self.backbone = Transmorpher2d(block, num_blocks, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
         self.tasks = None
         # TODO adapt to non-simultaneous multi task training (all the heads will be present in model, but not all targets in one input)

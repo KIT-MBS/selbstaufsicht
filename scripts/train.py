@@ -35,6 +35,7 @@ def main():
     parser.add_argument('--batch-size', default=16, type=int, help="Batch size (local in case of multi-gpu training)")
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=200, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
+    parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
@@ -148,6 +149,7 @@ def main():
         alphabet_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
+        dropout=args.dropout,
         emb_grad_freq_scale=not args.disable_emb_grad_freq_scale,
         h_params=args
     )
