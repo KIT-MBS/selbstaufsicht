@@ -158,9 +158,9 @@ def main():
     train_ds, val_ds = ds.split_train_val(validation_size, random=not args.disable_random_split)
     del ds
 
-    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
+    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(train_ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
                           worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
-    valid_dl = DataLoader(valid_ds, batch_size=args.batch_size, shuffle=False, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
+    valid_dl = DataLoader(valid_ds, batch_size=args.batch_size, shuffle=False, collate_fn=MSACollator(valid_ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
                           worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
     
     # TODO should pass padding token index here
