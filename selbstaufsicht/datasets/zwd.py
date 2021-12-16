@@ -1,21 +1,28 @@
 import os
 import subprocess as sp
+from typing import Callable
 
-from torch.utils.data import Dataset
+import torch
 
 from Bio import AlignIO
 
+from .shrinked_force_permutations import ShrinkedForcePermutationsDataset
+from ..utils import rna2index
 
-class zwd(Dataset):
-    def __init__(self, root):
+
+class ZwdDataset(ShrinkedForcePermutationsDataset):
+    def __init__(self, root: str , transform: Callable = None):
         self.root = root
-        if not os.path.isfile(root + '/zwd/not-for-Rfam'):
-            sp.call(['git', 'clone', 'https://bitbucket.org/zashaw/zashaweinbergdata.git', f'{root}/zwd/'])
-        self.sample_files = []
+        self.transform = transform
+        self.token_mapping = rna2index
+        self.samples = []
+        
+        if not os.path.isfile(root + '/not-for-Rfam'):
+            sp.call(['git', 'clone', 'https://bitbucket.org/zashaw/zashaweinbergdata.git', f'{root}/'])
 
         withdrawn = set()
-        with open(root + '/zwd/CHANGES.txt') as f:
-            for line in f:
+        with open(root + '/CHANGES.txt') as rf:
+            for line in rf:
                 line = line.split()
                 if line != '':
                     modified_file = line[1]
@@ -23,17 +30,10 @@ class zwd(Dataset):
                     if 'withdrawn' in modification:
                         withdrawn.add(modified_file)
 
-        with open(root + '/zwd/not-for-Rfam') as f:
-            for line in f:
+        with open(root + '/not-for-Rfam') as rf:
+            for line in rf:
                 line = line.strip()
                 if line != '' and line not in withdrawn:
-                    self.sample_files.append(line)
-
-    def __getitem__(self, i):
-        file_path = self.root + f'/zwd/{self.sample_files[i]}'
-        with open(file_path, 'rt', encoding='utf-8') as f:
-            sample = AlignIO.read(f, 'stockholm')
-        return sample
-
-    def __len__(self):
-        return(len(self.sample_files))
+                    file_path = self.root + f'/{line}'
+                    with open(file_path, 'rt', encoding='utf-8') as f:
+                        self.samples.append(AlignIO.read(f, 'stockholm'))

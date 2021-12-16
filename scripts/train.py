@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
     parser.add_argument("--disable-emb-grad-freq-scale", action='store_true', help="If set, this will scale gradients by the inverse of frequency of the words in the mini-batch")
     # Dataset
-    parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam, dummy")
+    parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam, zwd, dummy")
     parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. Non-positive numbers refer to using all data.")
     parser.add_argument('--xfam-version', default='14.6', type=str, help="Xfam dataset version")
     parser.add_argument('--xfam-mode', default='seed', type=str, help="Xfam dataset mode: seed, full, or enhanced")
@@ -126,6 +126,9 @@ def main():
     if dataset_name == 'xfam':
         dataset_path = os.path.join(root, 'Xfam')
         ds = datasets.XfamDataset(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
+    elif dataset_name == 'zwd':
+        dataset_path = os.path.join(root, 'zwd')
+        ds = datasets.ZwdDataset(dataset_path, transform=transform)
     elif dataset_name == 'dummy':
         ds = datasets.DummyDataset(transform=transform)
     else:
