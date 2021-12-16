@@ -172,7 +172,7 @@ def main():
         task_losses=task_losses,
         task_loss_weights=task_loss_weights,
         metrics=metrics,
-        alphabet_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
+        alphabet_size=len(train_ds.token_mapping), padding_token=train_ds.token_mapping['PADDING_TOKEN'],
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,
