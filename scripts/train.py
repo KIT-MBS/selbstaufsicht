@@ -160,7 +160,7 @@ def main():
 
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(train_ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
                           worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
-    valid_dl = DataLoader(valid_ds, batch_size=args.batch_size, shuffle=False, collate_fn=MSACollator(valid_ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
+    val_dl = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=MSACollator(val_ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
                           worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
     
     # TODO should pass padding token index here
@@ -189,7 +189,7 @@ def main():
                       enable_progress_bar=not args.disable_progress_bar,
                       log_every_n_steps=min(args.log_every, num_data_samples),
                       logger=tb_logger)
-    trainer.fit(model, train_dl, valid_dl)
+    trainer.fit(model, train_dl, val_dl)
 
 
 if __name__ == '__main__':
