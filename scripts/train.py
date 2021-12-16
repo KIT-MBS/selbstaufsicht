@@ -155,7 +155,7 @@ def main():
             validation_size = int(args.validation_size * num_data_samples)
         else:
             raise ValueError("Validation dataset size needs to be either in range 0...1 or an integer!")
-    train_ds, val_ds = ds.split(validation_size, random=not args.disable_random_split)
+    train_ds, val_ds = ds.split_train_val(validation_size, random=not args.disable_random_split)
     del ds
 
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
