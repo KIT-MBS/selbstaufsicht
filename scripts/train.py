@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.plugins import DDPPlugin
+from pytorch_lightning.plugins import DDPPlugin, DeepSpeedPlugin
 
 from selbstaufsicht.utils import data_loader_worker_init
 from selbstaufsicht import models
@@ -37,6 +37,8 @@ def main():
     parser.add_argument('--learning-rate-warmup', default=200, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
+    parser.add_argument('--dp-strategy', default='ddp', type=str, help="Data-parallelism strategy: ddp, zero-2, or zero-3. Note that DeepSpeed ZeRO requires precision=16.")
+    parser.add_argument('--dp-zero-bucket-size', default=5e8, type=int, help="Allocated bucket size for DeepSpeed ZeRO DP strategy.")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
@@ -99,8 +101,15 @@ def main():
     data_loader_rng.manual_seed(args.rng_seed)
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
+    use_fused_adam = False
     if num_gpus * args.num_nodes > 1:
-        dp_strategy = DDPPlugin(find_unused_parameters=False)
+        if args.dp_strategy == 'ddp':
+            dp_strategy = DDPPlugin(find_unused_parameters=False)
+        elif args.dp_strategy == 'zero-2':
+            dp_strategy = DeepSpeedPlugin(stage=2, allgather_bucket_size=args.dp_zero_bucket_size, reduce_bucket_size=args.dp_zero_bucket_size)
+        elif args.dp_strategy == 'zero-3':
+            dp_strategy = DeepSpeedPlugin(stage=3, allgather_bucket_size=args.dp_zero_bucket_size, reduce_bucket_size=args.dp_zero_bucket_size)
+            use_fused_adam = True
     else:
         dp_strategy = None
 
@@ -150,7 +159,8 @@ def main():
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,
         emb_grad_freq_scale=not args.disable_emb_grad_freq_scale,
-        h_params=args
+        h_params=args,
+        use_fused_adam=use_fused_adam
     )
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,
