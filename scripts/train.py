@@ -107,9 +107,15 @@ def main():
             dp_strategy = DDPPlugin(find_unused_parameters=False)
         elif args.dp_strategy == 'zero-2':
             dp_strategy = DeepSpeedPlugin(stage=2, allgather_bucket_size=args.dp_zero_bucket_size, reduce_bucket_size=args.dp_zero_bucket_size)
+            if args.precision != 16:
+                raise ValueError("DeepSpeed ZeRO Stage 2 requires precision=16!")
         elif args.dp_strategy == 'zero-3':
             dp_strategy = DeepSpeedPlugin(stage=3, allgather_bucket_size=args.dp_zero_bucket_size, reduce_bucket_size=args.dp_zero_bucket_size)
             use_fused_adam = True
+            if args.precision != 16:
+                raise ValueError("DeepSpeed ZeRO Stage 3 requires precision=16!")
+        else:
+            raise ValueError("Unknown DP strategy: %s" % args.dp_strategy)
     else:
         dp_strategy = None
 
