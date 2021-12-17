@@ -98,9 +98,8 @@ def main():
     data_loader_rng = torch.Generator()
     data_loader_rng.manual_seed(args.rng_seed)
 
-    use_gpu = abs(args.num_gpus) > 0
-
-    if abs(args.num_gpus) * args.num_nodes > 1:
+    num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
+    if num_gpus * args.num_nodes > 1:
         dp_strategy = DDPPlugin(find_unused_parameters=False)
     else:
         dp_strategy = None
@@ -136,7 +135,7 @@ def main():
     ds.jigsaw_force_permutations = args.jigsaw_force_permutations
 
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
-                    worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=use_gpu)
+                    worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=num_gpus>0)
     # TODO should pass padding token index here
     model = models.self_supervised.MSAModel(
         args.num_blocks,
@@ -156,7 +155,7 @@ def main():
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,
                       gpus=args.num_gpus,
-                      auto_select_gpus=use_gpu,
+                      auto_select_gpus=num_gpus>0,
                       num_nodes=args.num_nodes,
                       precision=args.precision,
                       strategy=dp_strategy,
