@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Training Script')
     # Architecture
     parser.add_argument('--num-blocks', default=6, type=int, help="Number of consecutive Transmorpher blocks")
-    parser.add_argument('--feature-dim', default=768, type=int, help="Size of the feature dimension")
+    parser.add_argument('--feature-dim-head', default=64, type=int, help="Size of the feature dimension per Transmorpher head")
     parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
     parser.add_argument("--disable-emb-grad-freq-scale", action='store_true', help="If set, this will scale gradients by the inverse of frequency of the words in the mini-batch")
     # Dataset
@@ -77,9 +77,6 @@ def main():
     dt_now = datetime.now()
     log_run_name = dt_now.strftime(args.log_run_name)
 
-    d_head = args.feature_dim // args.num_heads
-    assert d_head * args.num_heads == args.feature_dim
-
     tasks = []
     task_loss_weights = {}
     if args.task_inpainting:
@@ -106,7 +103,7 @@ def main():
 
     # TODO should take token mapping?
     transform, task_heads, task_losses, metrics = get_tasks(tasks,
-                                                            args.feature_dim,
+                                                            args.feature_dim_head * args.num_heads,
                                                             subsample_depth=args.subsampling_depth,
                                                             subsample_mode=args.subsampling_mode,
                                                             crop_size=args.cropping_size,
@@ -140,7 +137,7 @@ def main():
     model = models.self_supervised.MSAModel(
         args.num_blocks,
         args.num_heads,
-        d_head,
+        args.feature_dim_head,
         task_heads=task_heads,
         task_losses=task_losses,
         task_loss_weights=task_loss_weights,
