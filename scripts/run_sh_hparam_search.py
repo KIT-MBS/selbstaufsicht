@@ -2,9 +2,9 @@ import glob
 import os
 import subprocess
 
-# Starts bash scripts for grid-search-based hyperparameter optimization.
+# Starts bash scripts for random-search-based hyperparameter optimization.
 
-run_file_prefix = 'run_grid'
+run_file_prefix = 'run_hparam_search'
 rel_working_dir = 'profile/selbstaufsicht/scripts/'
 home = os.environ['HOME']
 
