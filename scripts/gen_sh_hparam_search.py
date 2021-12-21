@@ -136,7 +136,7 @@ def create_script():
             "\n"]
 
     # DEFINE RUN COMMAND WITH CONSTANT PARAMETERS
-    command_segments += ["srun python train.py "]
+    command_segments += ["srun python train.py --disable-emb-grad-freq-scale --disable-progress-bar "]
     for arg_key, arg_val in vars(args).items():
         if arg_key in constant_parameters:
             if type(arg_val) is float:
