@@ -34,3 +34,5 @@ class ZwdDataset(ShrinkedForcePermutationsDataset):
                     file_path = self.root + f'/{line}'
                     with open(file_path, 'rt', encoding='utf-8') as f:
                         self.samples.append(AlignIO.read(f, 'stockholm'))
+        
+        self._init_num_data_samples()

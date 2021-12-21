@@ -9,7 +9,7 @@ class ShrinkedForcePermutationsDataset(torch.utils.data.Dataset):
     Dataset that supports dataset shrinking and forced jigsaw permutations by MSA duplications.
     """
 
-    def __init__(self, num_data_samples=0, jigsaw_force_permutations=0, samples=[], transform=None):
+    def __init__(self, num_data_samples=-1, jigsaw_force_permutations=0, samples=[], transform=None):
         self.num_data_samples = num_data_samples
         self.jigsaw_force_permutations = jigsaw_force_permutations
         self.samples = samples
@@ -36,6 +36,10 @@ class ShrinkedForcePermutationsDataset(torch.utils.data.Dataset):
             return min(len(self.samples), self.num_data_samples) * self.jigsaw_force_permutations
         else:
             return min(len(self.samples), self.num_data_samples)
+        
+    def _init_num_data_samples(self):
+        if self.num_data_samples < 0:
+            self.num_data_samples = len(self.samples)
 
     def split_train_val(self, validation_size: int, random: bool = True) -> Tuple['ShrinkedForcePermutationsDataset', 'ShrinkedForcePermutationsDataset']:
         """

@@ -73,3 +73,5 @@ class XfamDataset(ShrinkedForcePermutationsDataset):
                             self.samples[i] = AlignIO.read(f, 'stockholm')
                     except ValueError:
                         print(fam_id)
+        
+        self._init_num_data_samples()

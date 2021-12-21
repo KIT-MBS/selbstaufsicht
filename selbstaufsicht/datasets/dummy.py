@@ -31,3 +31,5 @@ class DummyDataset(ShrinkedForcePermutationsDataset):
                             SeqRecord(Seq("AAAA--------CA.A"), id='drei'),
                         ]),
                         ]
+        self._init_num_data_samples()
+        
