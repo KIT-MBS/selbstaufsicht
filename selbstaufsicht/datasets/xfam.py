@@ -3,16 +3,11 @@ import gzip
 from typing import Callable
 
 from tqdm import tqdm
-import torch
 
 from Bio import AlignIO
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-from Bio.Align import MultipleSeqAlignment
 
 from .shrinked_force_permutations import ShrinkedForcePermutationsDataset
 from ._utils import get_family_ids, _download
-from ..utils import rna2index
 
 splits = ['train', 'val', 'test']
 polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
@@ -31,8 +26,9 @@ class XfamDataset(ShrinkedForcePermutationsDataset):
             version: str = '9.1',
             polymer: str = 'rna',
             transform: Callable = None,
+            exclude_ids: set = set(),
             download: bool = False) -> None:
-        super().__init__()
+        super().__init__(transform=transform)
         if split not in splits:
             raise ValueError(f"split has to be in {splits}")
         if mode not in modes:
@@ -45,8 +41,7 @@ class XfamDataset(ShrinkedForcePermutationsDataset):
         self.version = version
         self.root = root
         self.base_folder = db
-        self.transform = transform
-        self.token_mapping = rna2index
+        self.exclude_ids = exclude_ids
 
         if mode == 'full' and float(version) >= 12:
             raise ValueError('Starting with Rfam version 12.0 full alignments are no longer generated fully automatically.')
@@ -63,10 +58,13 @@ class XfamDataset(ShrinkedForcePermutationsDataset):
         self.fam_ids = get_family_ids(path)
         with gzip.open(path, 'rt', encoding='latin1') as f:
             self.samples = [a for a in AlignIO.parse(f, 'stockholm')]
+        self.samples = [a for (i, a) in enumerate(self.samples) if self.fam_ids[i] not in self.exclude_ids]
 
         if self.mode == 'enhanced':
             print('load extended msas')
             for i, fam_id in enumerate(tqdm(self.fam_ids)):
+                if fam_id in self.exclude_ids:
+                    continue
                 full_msa_path = os.path.join(self.root, self.base_folder, version, 'full', split, f'{fam_id}.sto')
                 if os.path.isfile(full_msa_path):
 
@@ -75,3 +73,5 @@ class XfamDataset(ShrinkedForcePermutationsDataset):
                             self.samples[i] = AlignIO.read(f, 'stockholm')
                     except ValueError:
                         print(fam_id)
+        
+        self._init_num_data_samples()

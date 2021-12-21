@@ -15,7 +15,7 @@ from pytorch_lightning.plugins import DDPPlugin
 from selbstaufsicht.utils import data_loader_worker_init
 from selbstaufsicht import models
 from selbstaufsicht import datasets
-from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, MSACollator
+from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downstream_transforms, MSACollator
 
 
 def main():
@@ -33,12 +33,14 @@ def main():
     # Training process
     parser.add_argument('--num-epochs', default=200, type=int, help="Number of training epochs")
     parser.add_argument('--batch-size', default=16, type=int, help="Batch size (local in case of multi-gpu training)")
+    parser.add_argument('--validation-size', default=100, type=float, help="Either relative (if in range 0...1) or absolute (if integer) size of the validation dataset split")
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=200, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
+    parser.add_argument('--disable-random-split', action='store_true', help="disables the random dataset split")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
     # Data parallelism
     parser.add_argument('--num-gpus', default=-1, type=int, help="Number of GPUs per node. -1 refers to using all available GPUs. 0 refers to using the CPU.")
@@ -119,16 +121,21 @@ def main():
     dataset_name = args.dataset.lower()
     # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 
+    downstream_transform = get_downstream_transforms(subsample_depth=args.subsampling_depth, jigsaw_partitions=args.jigsaw_partitions)
+    downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
+    test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
+    exclude_ids = downstream_ds.fam_ids + test_ds.fam_ids
+
     if dataset_name == 'xfam':
         dataset_path = os.path.join(root, 'Xfam')
-        ds = datasets.XfamDataset(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
+        ds = datasets.XfamDataset(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version, exclude_ids=exclude_ids)
     elif dataset_name == 'zwd':
         dataset_path = os.path.join(root, 'zwd')
         ds = datasets.ZwdDataset(dataset_path, transform=transform)
     elif dataset_name == 'combined':
         xfam_path = os.path.join(root, 'Xfam')
         zwd_path = os.path.join(root, 'zwd')
-        xfam_ds = datasets.XfamDataset(xfam_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
+        xfam_ds = datasets.XfamDataset(xfam_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version, exclude_ids=exclude_ids)
         zwd_ds = datasets.ZwdDataset(zwd_path, transform=transform)
         ds = datasets.CombinedDataset(xfam_ds, zwd_ds)
         del xfam_ds
@@ -142,8 +149,32 @@ def main():
     ds.num_data_samples = num_data_samples
     ds.jigsaw_force_permutations = args.jigsaw_force_permutations
 
-    dl = DataLoader(ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
-                    worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=num_gpus>0)
+    if args.validation_size.is_integer():
+        validation_size = args.validation_size
+    else:
+        if 0 <= args.validation_size <= 1:
+            validation_size = int(args.validation_size * num_data_samples)
+        else:
+            raise ValueError("Validation dataset size needs to be either in range 0...1 or an integer!")
+    train_ds, val_ds = ds.split_train_val(validation_size, random=not args.disable_random_split)
+    del ds
+
+    train_dl = DataLoader(train_ds,
+                          batch_size=args.batch_size,
+                          shuffle=not args.disable_shuffle,
+                          collate_fn=MSACollator(train_ds.token_mapping['PADDING_TOKEN']),
+                          num_workers=args.num_workers,
+                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
+                          generator=data_loader_rng, pin_memory=num_gpus > 0)
+    val_dl = DataLoader(val_ds,
+                        batch_size=args.batch_size,
+                        shuffle=False,
+                        collate_fn=MSACollator(val_ds.token_mapping['PADDING_TOKEN']),
+                        num_workers=args.num_workers,
+                        worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
+                        generator=data_loader_rng,
+                        pin_memory=num_gpus > 0)
+
     # TODO should pass padding token index here
     model = models.self_supervised.MSAModel(
         args.num_blocks,
@@ -153,7 +184,7 @@ def main():
         task_losses=task_losses,
         task_loss_weights=task_loss_weights,
         metrics=metrics,
-        alphabet_size=len(ds.token_mapping), padding_token=ds.token_mapping['PADDING_TOKEN'],
+        alphabet_size=len(train_ds.token_mapping), padding_token=train_ds.token_mapping['PADDING_TOKEN'],
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,
@@ -163,14 +194,14 @@ def main():
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,
                       gpus=args.num_gpus,
-                      auto_select_gpus=num_gpus>0,
+                      auto_select_gpus=num_gpus > 0,
                       num_nodes=args.num_nodes,
                       precision=args.precision,
                       strategy=dp_strategy,
                       enable_progress_bar=not args.disable_progress_bar,
                       log_every_n_steps=min(args.log_every, num_data_samples),
                       logger=tb_logger)
-    trainer.fit(model, dl)
+    trainer.fit(model, train_dl, val_dl)
 
 
 if __name__ == '__main__':

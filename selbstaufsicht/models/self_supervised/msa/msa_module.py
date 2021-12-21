@@ -116,6 +116,44 @@ class MSAModel(pl.LightningModule):
         # TODO extract attention maps
         latent = self.backbone(x, padding_mask, self.need_attn)
         return latent
+    
+    def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
+        """
+        Performs a single training or validation step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
+        whose latent representation output is then passed through the upstream task related head models.
+        Eventually, using task specific loss function and further metrics, the obtained prediction results are evaluated against the corresponding label data.
+
+        Args:
+            batch_data (Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]): Input data, Label data.
+            batch_idx (int): Batch number.
+
+        Returns:
+            torch.Tensor: Summed loss across all upstream tasks
+        """
+
+        x, y = batch_data
+        mode = "training" if self.training else "validation"
+
+        latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+        if 'contrastive' in self.tasks:
+            if x['msa'].size(0) == 1:
+                print('WARN: contrastive task is not really going to work with batch_size==1')
+            y['contrastive'] = self.task_heads['contrastive'](self(x['contrastive'], x.get('padding_mask_contrastive', None), x.get('aux_features_contrastive', None)), x)
+
+        preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
+        lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
+        for task in self.tasks:
+            for m in self.metrics[task]:
+                mvalue = self.metrics[task][m](preds[task], y[task])
+                self.log(f'{task}_{mode}_{m}', mvalue, on_step=self.training, on_epoch=True)
+        # TODO weights
+        loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
+        for task in self.tasks:
+            self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
+
+        self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
+        if self.training:
+            return loss
 
     def training_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
         """
@@ -131,27 +169,20 @@ class MSAModel(pl.LightningModule):
             torch.Tensor: Summed loss across all upstream tasks
         """
 
-        x, y = batch_data
+        return self._step(batch_data, batch_idx)
+    
+    def validation_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> None:
+        """
+        Performs a single validation step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
+        whose latent representation output is then passed through the upstream task related head models.
+        Eventually, using task specific loss function and further metrics, the obtained prediction results are evaluated against the corresponding label data.
 
-        latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
-        if 'contrastive' in self.tasks:
-            if x['msa'].size(0) == 1:
-                print('WARN: contrastive task is not really going to work with batch_size==1')
-            y['contrastive'] = self.task_heads['contrastive'](self(x['contrastive'], x.get('padding_mask_contrastive', None), x.get('aux_features_contrastive', None)), x)
+        Args:
+            batch_data (Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]): Input data, Label data.
+            batch_idx (int): Batch number.
+        """
 
-        preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
-        lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
-        for task in self.tasks:
-            for m in self.metrics[task]:
-                mvalue = self.metrics[task][m](preds[task], y[task])
-                self.log(f'{task} {m}: ', mvalue, on_step=True, on_epoch=True)
-        # TODO weights
-        loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
-        for task in self.tasks:
-            self.log(f'{task} loss', lossvals[task], on_step=True, on_epoch=True)
-
-        self.log('training loss', loss, on_step=True, on_epoch=True)
-        return loss
+        self._step(batch_data, batch_idx)
 
     def configure_optimizers(self) -> Dict[str, Any]:
         """
