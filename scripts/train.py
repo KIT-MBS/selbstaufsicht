@@ -124,9 +124,9 @@ def main():
     dataset_name = args.dataset.lower()
     # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 
-    downstream_transform, contact_transform = get_downstream_transforms()
-    downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform, target_transform=contact_transform)
-    test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform, target_transform=contact_transform)
+    downstream_transform = get_downstream_transforms(subsample_depth=args.subsampling_depth, jigsaw_partitions=args.jigsaw_partitions)
+    downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
+    test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
     exclude_ids = downstream_ds.fam_ids + test_ds.fam_ids
 
     if dataset_name == 'xfam':
