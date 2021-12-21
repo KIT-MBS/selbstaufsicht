@@ -34,12 +34,12 @@ class ShrinkedForcePermutationsDataset(torch.utils.data.Dataset):
     def __len__(self):
         if self.num_data_samples < 0:
             raise ValueError("Attribute \"num_data_samples\" has not been initialized!")
-        
+
         if self.jigsaw_force_permutations:
             return min(len(self.samples), self.num_data_samples) * self.jigsaw_force_permutations
         else:
             return min(len(self.samples), self.num_data_samples)
-        
+
     def _init_num_data_samples(self):
         if self.num_data_samples < 0:
             self.num_data_samples = len(self.samples)
