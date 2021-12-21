@@ -34,7 +34,6 @@ parser.add_argument('--num-epochs', default=10000, type=int, help="Number of tra
 parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu training)")
 parser.add_argument('--learning-rate-warmup', default=400, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
 parser.add_argument('--precision', default=16, type=int, help="Precision used for computations")
-parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
 parser.add_argument('--dp-strategy', default='zero-2', type=str, help="Data-parallelism strategy: ddp, zero-2, or zero-3. Note that DeepSpeed ZeRO requires precision=16.")
 parser.add_argument('--dp-zero-bucket-size', default=500000000, type=int, help="Allocated bucket size for DeepSpeed ZeRO DP strategy.")
 parser.add_argument('--num-workers', default=16, type=int, help="Number of data loader worker processes")
@@ -66,6 +65,8 @@ parser.add_argument('--jigsaw-partitions-min', default=3, type=int, help="Minimu
 parser.add_argument('--jigsaw-partitions-max', default=5, type=int, help="Maximum number of partitions in the jigsaw task")
 parser.add_argument('--contrastive-temperature-min', default=90, type=float, help="Minimum SimCLR temperature in the contrastive task")
 parser.add_argument('--contrastive-temperature-max', default=110, type=float, help="Maximum SimCLR temperature in the contrastive task")
+parser.add_argument('--rng-seed-min', default=0, type=int, help="Minimum RNG seed")
+parser.add_argument('--rng-seed-max', default=4294967295, type=int, help="Maximum RNG seed")
 args = parser.parse_args()
 
 # DEFINE CONSTANT PARAMETERS
@@ -77,7 +78,6 @@ constant_parameters = ['dataset',
                        'batch_size',
                        'learning_rate_warmup',
                        'precision',
-                       'rng_seed',
                        'dp_strategy',
                        'dp_zero_bucket_size',
                        'num_workers',
@@ -103,6 +103,7 @@ task_range = ['inpainting', 'jigsaw', 'inpainting+jigsaw', 'inpainting+jigsaw+co
 inpainting_masking_type_range = args.inpainting_masking_types.split(',')
 jigsaw_partitions_range = VarRange(args.jigsaw_partitions_min, args.jigsaw_partitions_max, int)
 contrastive_temperature_range = VarRange(args.contrastive_temperature_min, args.contrastive_temperature_max, float)
+rng_seed_range = VarRange(args.rng_seed_min, args.rng_seed_max, int)
 ranges = {'--num-blocks ': num_blocks_range, 
         '--feature-dim-head ': feature_dim_head_range, 
         '--num-heads ': num_heads_range, 
@@ -111,7 +112,8 @@ ranges = {'--num-blocks ': num_blocks_range,
         '--task-': task_range, 
         '--inpainting-masking-type ': inpainting_masking_type_range, 
         '--jigsaw-partitions ': jigsaw_partitions_range, 
-        '--contrastive-temperature ': contrastive_temperature_range}
+        '--contrastive-temperature ': contrastive_temperature_range,
+        '--rng-seed ': rng_seed_range}
 
 
 def create_script():
@@ -167,7 +169,7 @@ def create_script():
         val_split = str(rand_val).split('+')
         for val in val_split:
             command_segments.append("%s%s " % (arg_name, val))
-    log_run_name = "t_%s__nb_%d__dh_%d__nh_%d__lr_%.6f__dr_%.1f__inp_%s__jig_%d__con_%.1f" % (variables['--task-'],
+    log_run_name = "t_%s__nb_%d__dh_%d__nh_%d__lr_%.6f__dr_%.1f__inp_%s__jig_%d__con_%.1f__rng_%d" % (variables['--task-'],
                                                                                             variables['--num-blocks '],
                                                                                             variables['--feature-dim-head '],
                                                                                             variables['--num-heads '],
@@ -175,7 +177,8 @@ def create_script():
                                                                                             variables['--dropout '],
                                                                                             variables['--inpainting-masking-type '],
                                                                                             variables['--jigsaw-partitions '],
-                                                                                            variables['--contrastive-temperature '])
+                                                                                            variables['--contrastive-temperature '],
+                                                                                            variables['--rng-seed '])
     log_run_name = log_run_name.replace('.', '-')
     command_segments.append("--log-run-name %s " % log_run_name)
     jigsaw_permutations = min(math.factorial(variables['--jigsaw-partitions ']), args.jigsaw_permutations_max)
