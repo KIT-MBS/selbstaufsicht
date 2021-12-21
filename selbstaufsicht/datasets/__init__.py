@@ -1,3 +1,4 @@
-from .xfam import Xfam
-from .zwd import zwd
-from .xfam import Dummy
+from .xfam import XfamDataset
+from .zwd import ZwdDataset
+from .dummy import DummyDataset
+from .combined import CombinedDataset

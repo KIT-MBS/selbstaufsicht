@@ -22,11 +22,11 @@ def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Training Script')
     # Architecture
     parser.add_argument('--num-blocks', default=6, type=int, help="Number of consecutive Transmorpher blocks")
-    parser.add_argument('--feature-dim', default=768, type=int, help="Size of the feature dimension")
+    parser.add_argument('--feature-dim-head', default=64, type=int, help="Size of the feature dimension per Transmorpher head")
     parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
     parser.add_argument("--disable-emb-grad-freq-scale", action='store_true', help="If set, this will scale gradients by the inverse of frequency of the words in the mini-batch")
     # Dataset
-    parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam, dummy")
+    parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam, zwd, combined, dummy")
     parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. Non-positive numbers refer to using all data.")
     parser.add_argument('--xfam-version', default='14.6', type=str, help="Xfam dataset version")
     parser.add_argument('--xfam-mode', default='seed', type=str, help="Xfam dataset mode: seed, full, or enhanced")
@@ -79,9 +79,6 @@ def main():
     dt_now = datetime.now()
     log_run_name = dt_now.strftime(args.log_run_name)
 
-    d_head = args.feature_dim // args.num_heads
-    assert d_head * args.num_heads == args.feature_dim
-
     tasks = []
     task_loss_weights = {}
     if args.task_inpainting:
@@ -121,7 +118,7 @@ def main():
 
     # TODO should take token mapping?
     transform, task_heads, task_losses, metrics = get_tasks(tasks,
-                                                            args.feature_dim,
+                                                            args.feature_dim_head * args.num_heads,
                                                             subsample_depth=args.subsampling_depth,
                                                             subsample_mode=args.subsampling_mode,
                                                             crop_size=args.cropping_size,
@@ -139,9 +136,20 @@ def main():
 
     if dataset_name == 'xfam':
         dataset_path = os.path.join(root, 'Xfam')
-        ds = datasets.Xfam(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
+        ds = datasets.XfamDataset(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
+    elif dataset_name == 'zwd':
+        dataset_path = os.path.join(root, 'zwd')
+        ds = datasets.ZwdDataset(dataset_path, transform=transform)
+    elif dataset_name == 'combined':
+        xfam_path = os.path.join(root, 'Xfam')
+        zwd_path = os.path.join(root, 'zwd')
+        xfam_ds = datasets.XfamDataset(xfam_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
+        zwd_ds = datasets.ZwdDataset(zwd_path, transform=transform)
+        ds = datasets.CombinedDataset(xfam_ds, zwd_ds)
+        del xfam_ds
+        del zwd_ds
     elif dataset_name == 'dummy':
-        ds = datasets.Dummy(transform=transform)
+        ds = datasets.DummyDataset(transform=transform)
     else:
         raise ValueError("Unknown dataset: %s" % args.dataset)
 
@@ -155,7 +163,7 @@ def main():
     model = models.self_supervised.MSAModel(
         args.num_blocks,
         args.num_heads,
-        d_head,
+        args.feature_dim_head,
         task_heads=task_heads,
         task_losses=task_losses,
         task_loss_weights=task_loss_weights,

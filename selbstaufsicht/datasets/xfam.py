@@ -10,6 +10,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
+from .shrinked_force_permutations import ShrinkedForcePermutationsDataset
 from ._utils import get_family_ids, _download
 from ..utils import rna2index
 
@@ -18,38 +19,7 @@ polymers = {'rna': 'Rfam', 'protein': 'Pfam'}
 modes = ['seed', 'enhanced', 'full']
 
 
-class ShrinkedForceJigsawDataset(torch.utils.data.Dataset):
-    """
-    Dataset that supports dataset shrinking and forced jigsaw permutations by MSA duplications.
-    """
-
-    def __init__(self):
-        self.num_data_samples = 0
-        self.jigsaw_force_permutations = 0
-
-    def __getitem__(self, idx):
-        if self.transform is not None:
-            if self.jigsaw_force_permutations:
-                # data-sample-major order (batches of data samples, which are labeled with several permutations)
-                real_sample_idx = idx // self.jigsaw_force_permutations
-                permutation_idx = idx % self.jigsaw_force_permutations
-                sample = self.samples[real_sample_idx]
-                num_seq = len(sample)
-                labels = {'jigsaw': torch.full((num_seq,), permutation_idx, dtype=torch.int64)}
-            else:
-                sample = self.samples[idx]
-                labels = {}
-            return self.transform({'msa': sample}, labels)
-        return self.samples[idx]
-
-    def __len__(self):
-        if self.jigsaw_force_permutations:
-            return min(len(self.samples), self.num_data_samples) * self.jigsaw_force_permutations
-        else:
-            return min(len(self.samples), self.num_data_samples)
-
-
-class Xfam(ShrinkedForceJigsawDataset):
+class XfamDataset(ShrinkedForcePermutationsDataset):
     """
     Dataset for self-supervised learning based on the xfam family of biological sequence databases.
     """
@@ -105,31 +75,3 @@ class Xfam(ShrinkedForceJigsawDataset):
                             self.samples[i] = AlignIO.read(f, 'stockholm')
                     except ValueError:
                         print(fam_id)
-
-
-class Dummy(ShrinkedForceJigsawDataset):
-    def __init__(self, transform=None):
-        super().__init__()
-        self.token_mapping = rna2index
-        self.transform = transform
-        self.samples = [MultipleSeqAlignment([
-                        SeqRecord(Seq("AAAACCCC"), id='eins'),
-                        SeqRecord(Seq("AAAACCCC"), id='zwei'),
-                        SeqRecord(Seq("AAAACCCC"), id='drei'),
-                        ]),
-                        MultipleSeqAlignment([
-                            SeqRecord(Seq("AAAAAAAC"), id='eins'),
-                            SeqRecord(Seq("AAAAAAAU"), id='zwei'),
-                            SeqRecord(Seq("AAAAAAAG"), id='drei'),
-                        ]),
-                        MultipleSeqAlignment([
-                            SeqRecord(Seq("AAAAAAAC"), id='eins'),
-                            SeqRecord(Seq("--AAAA--"), id='zwei'),
-                            SeqRecord(Seq("---AAAA-"), id='drei'),
-                        ]),
-                        MultipleSeqAlignment([
-                            SeqRecord(Seq("AAAA--------CAUA"), id='eins'),
-                            SeqRecord(Seq("AAAA--------CAGA"), id='zwei'),
-                            SeqRecord(Seq("AAAA--------CA.A"), id='drei'),
-                        ]),
-                        ]
