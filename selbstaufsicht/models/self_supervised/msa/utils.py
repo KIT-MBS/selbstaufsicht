@@ -8,6 +8,7 @@ from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
+from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
 from selbstaufsicht.modules import NT_Xent_Loss, Accuracy
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
@@ -111,6 +112,26 @@ def get_tasks(tasks: List[str],
         metrics['contrastive'] = ModuleDict({})
 
     return transform, task_heads, task_losses, metrics
+
+
+def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, threshold: float = 4.):
+    # TODO better subsampling
+    transformslist = [
+        MSASubsampling(subsample_depth, mode='uniform'),
+        MSATokenize(rna2index)]
+    if jigsaw_partitions > 0:
+        transformslist.append(
+            RandomMSAShuffling(
+                delimiter_token=rna2index['DELIMITER_TOKEN'],
+                num_partitions=jigsaw_partitions,
+                num_classes=1)
+        )
+    transformslist.append(ExplicitPositionalEncoding())
+    transformslist.append(DistanceFromChain())
+    transformslist.append(ContactFromDistance(threshold))
+    downstream_transform = transforms.SelfSupervisedCompose(transformslist)
+
+    return downstream_transform
 
 
 class MSACollator():
