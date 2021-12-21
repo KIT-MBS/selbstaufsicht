@@ -2,7 +2,6 @@ from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 import torch
 from Bio.Align import MultipleSeqAlignment
-from Bio import PDB
 import math
 import random
 
@@ -34,9 +33,9 @@ class MSATokenize():
             Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Tokenized MSA [E, L]; y: Upstream task labels.
         """
 
-        x['msa'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['msa']], dtype=torch.long)
+        x['msa'] = torch.tensor([[self.mapping[letter] for letter in sequence.upper()] for sequence in x['msa']], dtype=torch.long)
         if 'contrastive' in x:
-            x['contrastive'] = torch.tensor([[self.mapping[letter] for letter in sequence] for sequence in x['contrastive']], dtype=torch.long)
+            x['contrastive'] = torch.tensor([[self.mapping[letter] for letter in sequence.upper()] for sequence in x['contrastive']], dtype=torch.long)
 
         if 'START_TOKEN' in self.mapping:
             prefix = torch.full((x['msa'].size(0), 1), self.mapping['START_TOKEN'], dtype=torch.int)
@@ -299,7 +298,7 @@ class ExplicitPositionalEncoding():
 
 class DistanceFromChain():
 
-    def __call__(self, structure: PDB.Structure) -> torch.Tensor:
+    def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
         """
         Takes a biopython structure containing a single chain and returns a distance map.
         Args:
@@ -307,6 +306,7 @@ class DistanceFromChain():
         Returns:
             torch.Tensor [L', L'] residue distance map
         """
+        structure = y['structure']
         # TODO missing residue check?
         assert len(structure) == 1
         assert len(structure[0]) == 1
@@ -323,7 +323,8 @@ class DistanceFromChain():
                 distances[i, j] = mindist(res1, res2)
 
         distances = distances + distances.t()
-        return distances
+        y['distances'] = distances
+        return x, y
 
 
 class ContactFromDistance():
@@ -333,8 +334,9 @@ class ContactFromDistance():
         """
         self.threshold = threshold
 
-    def __call__(self, distance_map) -> torch.Tensor:
-        return distance_map < self.threshold
+    def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
+        y['distances'] = y['distances'] < self.threshold
+        return x, y
 
 
 # TODO maybe remove possible shortcut of e.g.

@@ -16,10 +16,9 @@ class CoCoNetDataset(Dataset):
     train the downstream 'unsupervised' contact prediction and the train dataset for
     testing
     """
-    def __init__(self, root, split, transform=None, target_transform=None, download=True):
+    def __init__(self, root, split, transform=None, download=True):
         self.root = pathlib.Path(root)
         self.transform = transform
-        self.target_transform = target_transform
         if download:
             if not os.path.isfile(root + '/coconet/README.md'):
                 sp.call(['git', 'clone', 'https://github.com/KIT-MBS/coconet.git', f'{root}/coconet/'])
@@ -50,10 +49,8 @@ class CoCoNetDataset(Dataset):
     def __getitem__(self, i):
         x = self.msas[i]
         y = self.pdbs[i]
-        if self.transform:
-            x = self.transform(x)
-        if self.target_transform:
-            y = self.target_transform(y)
+        if self.transform is not None:
+            return self.transform({'msa': x}, {'structure': y})
 
         return x, y
 
