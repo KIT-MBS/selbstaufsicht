@@ -2,6 +2,7 @@ from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 import torch
 from Bio.Align import MultipleSeqAlignment
+from Bio import PDB
 import math
 import random
 
@@ -294,6 +295,46 @@ class ExplicitPositionalEncoding():
                 raise
 
         return x, y
+
+
+class DistanceFromChain():
+
+    def __call__(self, structure: PDB.Structure) -> torch.Tensor:
+        """
+        Takes a biopython structure containing a single chain and returns a distance map.
+        Args:
+            structure (Bio.PDB.Structure): Molecular structure to generate distance map from.
+        Returns:
+            torch.Tensor [L', L'] residue distance map
+        """
+        # TODO missing residue check?
+        assert len(structure) == 1
+        assert len(structure[0]) == 1
+
+        def mindist(r1, r2):
+            distances = torch.tensor([[a1 - a2 for a2 in r2] for a1 in r1])
+            return torch.min(distances)
+
+        chain = structure[0].get_list()[0]
+        distances = torch.zeros((len(chain), len(chain)))
+        for i, res1 in enumerate(chain.get_list()):
+            for j in range(i + 1, len(chain)):
+                res2 = chain.get_list()[j]
+                distances[i, j] = mindist(res1, res2)
+
+        distances = distances + distances.t()
+        return distances
+
+
+class ContactFromDistance():
+    def __init__(self, threshold: float = 4.):
+        """
+        Thresholds used in CoCoNet paper were 4. and 10. Angstrom
+        """
+        self.threshold = threshold
+
+    def __call__(self, distance_map) -> torch.Tensor:
+        return distance_map < self.threshold
 
 
 # TODO maybe remove possible shortcut of e.g.
@@ -672,9 +713,9 @@ def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool = 
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
-    
+
     if contrastive:
-        return msa[nseqs:2*nseqs]
+        return msa[nseqs:2 * nseqs]
     else:
         return msa[:nseqs]
 
@@ -705,7 +746,7 @@ def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, O
 
 def _crop_random_dependent(msa: MultipleSeqAlignment, length: int, contrastive: bool = False) -> MultipleSeqAlignment:
     """
-    Crops each sequence of the given lettered MSA randomly to the predefined length. 
+    Crops each sequence of the given lettered MSA randomly to the predefined length.
     Cropping start is the same for all sequences.
 
     Args:
@@ -716,14 +757,14 @@ def _crop_random_dependent(msa: MultipleSeqAlignment, length: int, contrastive: 
     Returns:
         MultipleSeqAlignment: Cropped, lettered MSA.
     """
-    
+
     start = torch.randint(msa.get_alignment_length() - length, (1,)).item()
-    return msa[:, start : start + length]
+    return msa[:, start: start + length]
 
 
 def _crop_random_independent(msa: MultipleSeqAlignment, length: int, contrastive: bool = False) -> MultipleSeqAlignment:
     """
-    Crops each sequence of the given lettered MSA randomly to the predefined length. 
+    Crops each sequence of the given lettered MSA randomly to the predefined length.
     Cropping start is randomly sampled for all sequences.
 
     Args:
@@ -734,12 +775,12 @@ def _crop_random_independent(msa: MultipleSeqAlignment, length: int, contrastive
     Returns:
         MultipleSeqAlignment: Cropped, lettered MSA.
     """
-    
+
     starts = torch.randint(msa.get_alignment_length() - length, (len(msa),))
     cropped_msa = MultipleSeqAlignment([])
     for idx in range(len(msa)):
         start = starts[idx].item()
-        cropped_msa.append(msa[idx, start : start + length])
+        cropped_msa.append(msa[idx, start: start + length])
     return cropped_msa
 
 
