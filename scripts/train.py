@@ -15,7 +15,7 @@ from pytorch_lightning.plugins import DDPPlugin
 from selbstaufsicht.utils import data_loader_worker_init
 from selbstaufsicht import models
 from selbstaufsicht import datasets
-from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, MSACollator
+from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downstream_transforms, MSACollator
 
 
 def main():
@@ -124,16 +124,21 @@ def main():
     dataset_name = args.dataset.lower()
     # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 
+    downstream_transform, contact_transform = get_downstream_transforms()
+    downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform, target_transform=contact_transform)
+    test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform, target_transform=contact_transform)
+    exclude_ids = downstream_ds.fam_ids + test_ds.fam_ids
+
     if dataset_name == 'xfam':
         dataset_path = os.path.join(root, 'Xfam')
-        ds = datasets.XfamDataset(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
+        ds = datasets.XfamDataset(dataset_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version, exclude_ids=exclude_ids)
     elif dataset_name == 'zwd':
         dataset_path = os.path.join(root, 'zwd')
         ds = datasets.ZwdDataset(dataset_path, transform=transform)
     elif dataset_name == 'combined':
         xfam_path = os.path.join(root, 'Xfam')
         zwd_path = os.path.join(root, 'zwd')
-        xfam_ds = datasets.XfamDataset(xfam_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version)
+        xfam_ds = datasets.XfamDataset(xfam_path, download=True, transform=transform, mode=args.xfam_mode, version=args.xfam_version, exclude_ids=exclude_ids)
         zwd_ds = datasets.ZwdDataset(zwd_path, transform=transform)
         ds = datasets.CombinedDataset(xfam_ds, zwd_ds)
         del xfam_ds
@@ -146,7 +151,7 @@ def main():
     num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds.samples)
     ds.num_data_samples = num_data_samples
     ds.jigsaw_force_permutations = args.jigsaw_force_permutations
-    
+
     if args.validation_size.is_integer():
         validation_size = args.validation_size
     else:
@@ -157,11 +162,22 @@ def main():
     train_ds, val_ds = ds.split_train_val(validation_size, random=not args.disable_random_split)
     del ds
 
-    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=not args.disable_shuffle, collate_fn=MSACollator(train_ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
-                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=num_gpus>0)
-    val_dl = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=MSACollator(val_ds.token_mapping['PADDING_TOKEN']), num_workers=args.num_workers,
-                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed), generator=data_loader_rng, pin_memory=num_gpus>0)
-    
+    train_dl = DataLoader(train_ds,
+                          batch_size=args.batch_size,
+                          shuffle=not args.disable_shuffle,
+                          collate_fn=MSACollator(train_ds.token_mapping['PADDING_TOKEN']),
+                          num_workers=args.num_workers,
+                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
+                          generator=data_loader_rng, pin_memory=num_gpus > 0)
+    val_dl = DataLoader(val_ds,
+                        batch_size=args.batch_size,
+                        shuffle=False,
+                        collate_fn=MSACollator(val_ds.token_mapping['PADDING_TOKEN']),
+                        num_workers=args.num_workers,
+                        worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
+                        generator=data_loader_rng,
+                        pin_memory=num_gpus > 0)
+
     # TODO should pass padding token index here
     model = models.self_supervised.MSAModel(
         args.num_blocks,
@@ -181,7 +197,7 @@ def main():
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,
                       gpus=args.num_gpus,
-                      auto_select_gpus=num_gpus>0,
+                      auto_select_gpus=num_gpus > 0,
                       num_nodes=args.num_nodes,
                       precision=args.precision,
                       strategy=dp_strategy,
