@@ -17,7 +17,7 @@ parser.add_argument('--file-prefix', default='run_hparam_search', type=str, help
 # BASH SCRIPT PARAMETERS
 parser.add_argument('--ntasks', default=1, type=int, help="Number of tasks")
 parser.add_argument('--nodes', default=1, type=int, help="Number of used nodes")
-parser.add_argument('--cpus-per-task', default=8, type=int, help="Number of CPUs per task")
+parser.add_argument('--cpus-per-task', default=16, type=int, help="Number of CPUs per task")
 parser.add_argument('--mem', default=501600, type=int, help="Total CPU memory in MB")
 parser.add_argument('--num-gpus', default=4, type=int, help="Number of used GPUs")
 parser.add_argument('--time', default='2-00:00:00', type=str, help="Walltime (max 2d)")
@@ -30,14 +30,14 @@ parser.add_argument('--dataset', default='combined', type=str, help="Used datase
 parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. Non-positive numbers refer to using all data.")
 parser.add_argument('--xfam-version', default='14.6', type=str, help="Xfam dataset version")
 parser.add_argument('--xfam-mode', default='seed', type=str, help="Xfam dataset mode: seed, full, or enhanced")
-parser.add_argument('--num-epochs', default=2000, type=int, help="Number of training epochs")
+parser.add_argument('--num-epochs', default=10000, type=int, help="Number of training epochs")
 parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu training)")
 parser.add_argument('--learning-rate-warmup', default=400, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
 parser.add_argument('--precision', default=16, type=int, help="Precision used for computations")
 parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
 parser.add_argument('--dp-strategy', default='zero-2', type=str, help="Data-parallelism strategy: ddp, zero-2, or zero-3. Note that DeepSpeed ZeRO requires precision=16.")
 parser.add_argument('--dp-zero-bucket-size', default=500000000, type=int, help="Allocated bucket size for DeepSpeed ZeRO DP strategy.")
-parser.add_argument('--num-workers', default=4, type=int, help="Number of data loader worker processes")
+parser.add_argument('--num-workers', default=16, type=int, help="Number of data loader worker processes")
 parser.add_argument('--subsampling-depth', default=100, type=int, help="Number of subsampled sequences")
 parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
 parser.add_argument('--cropping-size', default=400, type=int, help="Maximum uncropped sequence length")
@@ -133,6 +133,8 @@ def create_script():
             "#SBATCH --gres=gpu:%d\n" % args.num_gpus,
             "\n"
             "module load devel/cuda/11.1\n",
+            "source ../../profile-venv/bin/activate\n",
+            "echo $OMP_NUM_THREADS\n",
             "\n"]
 
     # DEFINE RUN COMMAND WITH CONSTANT PARAMETERS
