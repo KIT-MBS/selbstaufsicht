@@ -29,10 +29,10 @@ class CoCoNetDataset(Dataset):
         msa_index_filename = 'CCNListOfMSAFiles.txt'
 
         with open(pathlib.Path(self.root / 'coconet' / split_dir / msa_index_filename), 'rt') as f:
-            fam_ids = [line.strip() for line in f]
+            self.fam_ids = [line.strip() for line in f]
 
         self.msas = []
-        for fam_id in fam_ids:
+        for fam_id in self.fam_ids:
             with open(self.root / 'coconet' / split_dir / 'MSA' / (fam_id + '.faclean')) as f:
                 msa = AlignIO.read(f, 'fasta')
                 self.msas.append(msa)
