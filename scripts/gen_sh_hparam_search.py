@@ -34,10 +34,10 @@ parser.add_argument('--num-epochs', default=10000, type=int, help="Number of tra
 parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu training)")
 parser.add_argument('--learning-rate-warmup', default=400, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
 parser.add_argument('--precision', default=16, type=int, help="Precision used for computations")
-parser.add_argument('--dp-strategy', default='zero-2', type=str, help="Data-parallelism strategy: ddp, zero-2, or zero-3. Note that DeepSpeed ZeRO requires precision=16.")
+parser.add_argument('--dp-strategy', default='ddp', type=str, help="Data-parallelism strategy: ddp, zero-2, or zero-3. Note that DeepSpeed ZeRO requires precision=16.")
 parser.add_argument('--dp-zero-bucket-size', default=500000000, type=int, help="Allocated bucket size for DeepSpeed ZeRO DP strategy.")
 parser.add_argument('--num-workers', default=16, type=int, help="Number of data loader worker processes")
-parser.add_argument('--subsampling-depth', default=100, type=int, help="Number of subsampled sequences")
+parser.add_argument('--subsampling-depth', default=50, type=int, help="Number of subsampled sequences")
 parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
 parser.add_argument('--cropping-size', default=400, type=int, help="Maximum uncropped sequence length")
 parser.add_argument('--cropping-mode', default='random-dependent', type=str, help="Cropping mode: random-dependent, random-independent, fixed")
@@ -135,7 +135,7 @@ def create_script():
             "#SBATCH --gres=gpu:%d\n" % args.num_gpus,
             "\n"
             "module load devel/cuda/11.1\n",
-            "source ../../profile-venv/bin/activate\n",
+            "source ../../runvenv/bin/activate\n",
             "echo $OMP_NUM_THREADS\n",
             "\n"]
 
@@ -180,12 +180,13 @@ def create_script():
                                                                                             variables['--contrastive-temperature '],
                                                                                             variables['--rng-seed '])
     log_run_name = log_run_name.replace('.', '-')
-    command_segments.append("--log-run-name %s " % log_run_name)
+    command_segments.append("--log-run-name %s_$SLURM_JOB_ID " % log_run_name)
     jigsaw_permutations = min(math.factorial(variables['--jigsaw-partitions ']), args.jigsaw_permutations_max)
     command_segments.append("--jigsaw-permutations %d" % jigsaw_permutations)
 
     # WRITE LINES TO DISK
     command = "".join(command_segments)
+    lines.append(f"\necho {log_run_name}\n")
     lines.append(command)
 
     sh_filename = '%s__%s.sh' % (args.file_prefix, log_run_name)

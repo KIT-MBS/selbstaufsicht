@@ -164,7 +164,7 @@ def main():
     ds.num_data_samples = num_data_samples
     ds.jigsaw_force_permutations = args.jigsaw_force_permutations
 
-    if args.validation_size.is_integer():
+    if type(args.validation_size) == int:
         validation_size = args.validation_size
     else:
         if 0 <= args.validation_size <= 1:

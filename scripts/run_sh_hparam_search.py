@@ -6,10 +6,7 @@ import subprocess
 
 run_file_prefix = 'run_hparam_search'
 rel_working_dir = 'profile/selbstaufsicht/scripts/'
-home = os.environ['HOME']
-
-abs_working_dir = os.path.join(home, rel_working_dir)
 
 for filename in glob.glob("%s*" % run_file_prefix):
     command = "sbatch %s" % filename
-    subprocess.run(command, cwd=abs_working_dir, shell=True)
+    subprocess.run(command, shell=True)
