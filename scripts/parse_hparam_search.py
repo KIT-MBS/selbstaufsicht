@@ -79,7 +79,7 @@ def convert_tb_data(root_dir, sort_by='step', df_names=[]):
             out.append(convert_tfevent(file_full_path))
 
     # Concatenate (and sort) all partial individual dataframes
-    if len(out) == 0:
+    if len(out) == 0 or all([df.empty for df in out]):
         return {}
     all_df = pd.concat(out)[columns_order]
     all_df = {k: v for k, v in all_df.groupby('name')}
