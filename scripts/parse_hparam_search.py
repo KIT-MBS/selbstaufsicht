@@ -79,6 +79,8 @@ def convert_tb_data(root_dir, sort_by='step', df_names=[]):
             out.append(convert_tfevent(file_full_path))
 
     # Concatenate (and sort) all partial individual dataframes
+    if len(out) == 0:
+        return {}
     all_df = pd.concat(out)[columns_order]
     all_df = {k: v for k, v in all_df.groupby('name')}
     if sort_by is not None:
@@ -150,6 +152,10 @@ def parse():
             data[df_name].append(hparam.copy())
         
         all_df = convert_tb_data(filename, df_names=df_names)
+        if len(all_df) == 0:
+            for df_name in data.keys():
+                data[df_name][-1]['value'] = 0.
+            continue
         for name, df in all_df.items():
             first_row, last_row = df.iloc[0], df.iloc[-1]
             walltime = last_row['wall_time'] - first_row['wall_time']
