@@ -4,8 +4,8 @@ import os
 import math
 import pandas as pd
 import pickle
-#from tensorflow.core.util import event_pb2
-#from tensorflow.data import TFRecordDataset
+from tensorflow.core.util import event_pb2
+from tensorflow.data import TFRecordDataset
 
 # Parsing script for random-search-based hyperparameter optimization.
 
