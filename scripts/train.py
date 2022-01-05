@@ -206,6 +206,7 @@ def main():
         dropout=args.dropout,
         emb_grad_freq_scale=not args.disable_emb_grad_freq_scale,
         h_params=args,
+        checkpointing=not args.disable_checkpointing,
         use_fused_adam=use_fused_adam
     )
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
