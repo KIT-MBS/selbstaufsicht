@@ -238,7 +238,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         self.dropout2 = nn.Dropout(p=dropout)
         
     def row_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, 
-                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]::
+                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Performs row attention.
 
@@ -268,7 +268,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         return row_out
     
     def col_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, 
-                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]::
+                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Performs column attention.
 
