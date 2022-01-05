@@ -40,6 +40,7 @@ def main():
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--dp-strategy', default='ddp', type=str, help="Data-parallelism strategy: ddp, zero-2, or zero-3. Note that DeepSpeed ZeRO requires precision=16.")
     parser.add_argument('--dp-zero-bucket-size', default=5e8, type=int, help="Allocated bucket size for DeepSpeed ZeRO DP strategy.")
+    parser.add_argument('--disable-checkpointing', action='store_true', help="Disables checkpointing, which decreases memory pressure, but increases the computational load.")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--disable-random-split', action='store_true', help="disables the random dataset split")

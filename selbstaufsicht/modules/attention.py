@@ -3,6 +3,7 @@ from typing import List, Tuple, Type, Union
 
 import torch
 from torch import nn
+from torch.utils import checkpoint
 
 # TODO make c and d consistent
 # TODO make E and H and L and W consistent
@@ -34,7 +35,8 @@ class MultiHeadSelfAttention2d(nn.Module):
 
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, need_attn_maps: bool = True, 
+                checkpointing: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Performs self-attention on 2D data.
 
@@ -42,10 +44,13 @@ class MultiHeadSelfAttention2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
 
         Returns:
             Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Output data [B, E, L, D]; attention maps [B, H, E*L, E*L] (optional).
         """
+        
+        # TODO: Implement checkpointing
 
         B, E, L, D = x.size()
         assert D == self.embed_dim
@@ -120,7 +125,8 @@ class AxialSelfAttention2d(nn.Module):
     def forward(self,
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
-                need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+                need_attn_maps: bool = True,
+                checkpointing: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
         """
         Performs axial self-attention on 2D data.
 
@@ -128,12 +134,15 @@ class AxialSelfAttention2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
 
         Returns:
             Union[torch.Tensor,
                 Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: Output batch_data [B, E, L, D];
                 row attention maps [B, H, E, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
         """
+        
+        # TODO: Implement checkpointing
 
         B, E, L, D = x.size()
         assert D == self.embed_dim
@@ -227,11 +236,71 @@ class TiedAxialSelfAttention2d(nn.Module):
 
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
+        
+    def row_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, 
+                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]::
+        """
+        Performs row attention.
+
+        Args:
+            q (torch.Tensor): Query tensor [B, E, L, H, DH].
+            k (torch.Tensor): Key tensor [B, E, L, H, DH].
+            v (torch.Tensor): Value tensor [B, E, L, H, DH].
+            attn_mask (torch.Tensor): Attention mask for padded elements [B, H, E, L].
+            need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+
+        Returns:
+            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Output data [B, E, L, D]; row attention maps [B, H, L, L] (optional).
+        """
+        
+        B, E, L, _, _ = q.size()
+        row_attn_maps = torch.einsum('bsihc, bsjhc->bhij', q, k)  # [B, H, L, L]
+        if attn_mask is not None:
+            row_attn_mask = attn_mask.sum(-2).view(B, self.num_heads, 1, L).expand(-1, -1, L, -1)  # [B, H, L, L]
+            row_attn_maps += row_attn_mask
+        row_attn_maps = row_attn_maps.view(B, self.num_heads, 1, L, L)
+        row_attn_maps = row_attn_maps.softmax(dim=-1)  # [B, H, 1, L, L]
+        row_attn_maps = self.dropout1(row_attn_maps)
+        row_out = torch.einsum('bhsij, bsjhd->bsihd', row_attn_maps, v)
+        row_out = row_out.reshape(B, E, L, self.embed_dim)
+        if need_attn_maps:
+            return row_out, row_attn_maps
+        return row_out
+    
+    def col_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, 
+                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]::
+        """
+        Performs column attention.
+
+        Args:
+            q (torch.Tensor): Query tensor [B, E, L, H, DH].
+            k (torch.Tensor): Key tensor [B, E, L, H, DH].
+            v (torch.Tensor): Value tensor [B, E, L, H, DH].
+            attn_mask (torch.Tensor): Attention mask for padded elements [B, H, E, L].
+            need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+
+        Returns:
+            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Output data [B, E, L, D]; column attention maps [B, H, L, L] (optional).
+        """
+        
+        B, E, L, _, _ = q.size()
+        col_attn_maps = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, E, E, L]
+        if attn_mask is not None:
+            col_attn_mask = attn_mask.view(B, self.num_heads, 1, E, L).expand(-1, -1, E, -1, -1)
+            col_attn_maps += col_attn_mask
+        col_attn_maps = col_attn_maps.softmax(dim=-2)
+        col_attn_maps = self.dropout2(col_attn_maps)
+        col_out = torch.einsum('bhijl, bjlhd->bilhd', col_attn_maps, v)  # [B, E, L, H, DH]
+        col_out = col_out.reshape(B, E, L, self.embed_dim)
+        if need_attn_maps:
+            return col_out, col_attn_maps
+        return col_out
 
     def forward(self,
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
-                need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+                need_attn_maps: bool = True,
+                checkpointing: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
         """
         Performs tied axial self-attention on 2D data.
 
@@ -239,6 +308,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
 
         Returns:
             Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
@@ -263,40 +333,39 @@ class TiedAxialSelfAttention2d(nn.Module):
 
         q = q * (self.dim_head * E) ** -0.5
         # NOTE row attn
-        row_attn = torch.einsum('bsihc, bsjhc->bhij', q, k)  # [B, H, L, L]
-        if attn_mask is not None:
-            row_attn_mask = attn_mask.sum(-2).view(B, self.num_heads, 1, L).expand(-1, -1, L, -1)  # [B, H, L, L]
-            row_attn += row_attn_mask
-        row_attn = row_attn.view(B, self.num_heads, 1, L, L)
-        row_attn = row_attn.softmax(dim=-1)  # [B, H, 1, L, L]
-        row_attn = self.dropout1(row_attn)
-        row_out = torch.einsum('bhsij, bsjhd->bsihd', row_attn, v)
-        row_out = row_out.reshape(B, E, L, D)
+        if need_attn_maps and checkpointing:
+            row_out, row_attn_maps = checkpoint.checkpoint(self.row_attn, q, k, v, attn_mask, need_attn_maps)
+        elif need_attn_maps and not checkpointing:
+            row_out, row_attn_maps = self.row_attn(q, k, v, attn_mask, need_attn_maps)
+        elif not need_attn_maps and checkpointing:
+            row_out = checkpoint.checkpoint(self.row_attn, q, k, v, attn_mask, need_attn_maps)
+        else:
+            row_out = self.row_attn(q, k, v, attn_mask, need_attn_maps)
 
         out = x + row_out
         out = self.norm1(out)
 
         q, k, v = self.in_col_projection(out).chunk(3, dim=-1)  # [B, E, L, D]
-        q = q.view(B, E, L, self.num_heads, self.dim_head)  # [B, H, DH, E, L]
+        q = q.view(B, E, L, self.num_heads, self.dim_head)  # [B, E, L, H, DH]
         k = k.view(B, E, L, self.num_heads, self.dim_head)
         v = v.view(B, E, L, self.num_heads, self.dim_head)
 
         q = q * self.dim_head ** -0.5
         # NOTE col attn
-        col_attn = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, E, E, L]
-        if attn_mask is not None:
-            col_attn_mask = attn_mask.view(B, self.num_heads, 1, E, L).expand(-1, -1, E, -1, -1)
-            col_attn += col_attn_mask
-        col_attn = col_attn.softmax(dim=-2)
-        col_attn = self.dropout2(col_attn)
-        col_out = torch.einsum('bhijl, bjlhd->bilhd', col_attn, v)  # [B, E, L, H, DH]
-        col_out = col_out.reshape(B, E, L, D)
+        if need_attn_maps and checkpointing:
+            col_out, col_attn_maps = checkpoint.checkpoint(self.col_attn, q, k, v, attn_mask, need_attn_maps)
+        elif need_attn_maps and not checkpointing:
+            col_out, col_attn_maps = self.col_attn(q, k, v, attn_mask, need_attn_maps)
+        elif not need_attn_maps and checkpointing:
+            col_out = checkpoint.checkpoint(self.col_attn, q, k, v, attn_mask, need_attn_maps)
+        else:
+            col_out = self.col_attn(q, k, v, attn_mask, need_attn_maps)
 
         out = out + col_out
         out = self.norm2(out)
 
         if need_attn_maps:
-            return out, (row_attn, col_attn)
+            return out, (row_attn_maps, col_attn_maps)
         return out
 
 
@@ -321,7 +390,8 @@ class Transmorpher2d(nn.Module):
     def forward(self,
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
-                need_attn_maps: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
+                need_attn_maps: bool = False,
+                checkpointing: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
         """
         Passes input data through the self-attention based backbone, resulting in a latent representation.
 
@@ -329,6 +399,7 @@ class Transmorpher2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to False.
+            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
 
         Returns:
             Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
@@ -339,14 +410,14 @@ class Transmorpher2d(nn.Module):
         if need_attn_maps:
             attns = []
             for block in self.blocks:
-                out, a = block(out, padding_mask=padding_mask, need_attn_maps=need_attn_maps)
+                out, a = block(out, padding_mask=padding_mask, need_attn_maps=need_attn_maps, checkpointing=checkpointing)
                 attns.append(a)
             if self.norm is not None:
                 out = self.norm(out)
             return out, attns
 
         for block in self.blocks:
-            out = block(out, padding_mask=padding_mask, need_attn_maps=need_attn_maps)
+            out = block(out, padding_mask=padding_mask, need_attn_maps=need_attn_maps, checkpointing=checkpointing)
         if self.norm is not None:
             out = self.norm(out)
 
@@ -398,7 +469,8 @@ class TransmorpherBlock2d(nn.Module):
     def forward(self,
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
-                need_attn_maps: bool = False) -> Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+                need_attn_maps: bool = False,
+                checkpointing: bool = False) -> Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
         """
         Passes input data through the self-attention based block, resulting in a latent representation.
 
@@ -406,12 +478,13 @@ class TransmorpherBlock2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to False.
+            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
 
         Returns:
             Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: Output data [B, E, L, D]; attention maps (optional).
         """
 
-        out = self.attn(x, padding_mask=padding_mask, need_attn_maps=need_attn_maps)
+        out = self.attn(x, padding_mask=padding_mask, need_attn_maps=need_attn_maps, checkpointing=checkpointing)
         if need_attn_maps:
             out, attn = out
         # TODO what's the last layer of an attention block? should it be a nonlinearity

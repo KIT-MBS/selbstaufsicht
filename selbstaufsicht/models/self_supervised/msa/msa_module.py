@@ -36,6 +36,7 @@ class MSAModel(pl.LightningModule):
             task_loss_weights: Dict[str, float] = None,
             metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
+            checkpointing: bool = False,
             use_fused_adam: bool = False,
             device: Union[str, torch.device] = None,
             dtype: torch.dtype = None) -> None:
@@ -63,6 +64,7 @@ class MSAModel(pl.LightningModule):
             task_loss_weights (Dict[str, float], optional): per task loss weights. Defaults to None.
             metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
+            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
             use_fused_adam (bool, optional): Whether to use optimized FusedAdam implementation or not. Defaults to False.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
@@ -99,6 +101,7 @@ class MSAModel(pl.LightningModule):
         if need_attn:
             raise NotImplementedError('Extracting attention maps not yet implemented')
         self.need_attn = need_attn
+        self.checkpointing = checkpointing
         self.use_fused_adam = use_fused_adam
         self.save_hyperparameters(h_params)
 
@@ -118,7 +121,7 @@ class MSAModel(pl.LightningModule):
         # NOTE feature dim = -1
         x = self.embedding(x) + self.positional_embedding(aux_features)
         # TODO extract attention maps
-        latent = self.backbone(x, padding_mask, self.need_attn)
+        latent = self.backbone(x, padding_mask, self.need_attn, self.checkpointing)
         return latent
     
     def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
