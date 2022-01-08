@@ -1,9 +1,13 @@
 import copy
-from typing import List, Tuple, Type, Union
+from contextlib import ExitStack
+from typing import Any, List, Tuple, Type, Union
 
 import torch
 from torch import nn
+from torch.autograd import Function
 from torch.utils import checkpoint
+
+import selbstaufsicht.modules.differentiable_functions as df
 
 # TODO make c and d consistent
 # TODO make E and H and L and W consistent
@@ -35,8 +39,8 @@ class MultiHeadSelfAttention2d(nn.Module):
 
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, need_attn_maps: bool = True, 
-                checkpointing: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, need_attn_maps: bool = True,
+                num_attn_chunks: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Performs self-attention on 2D data.
 
@@ -44,13 +48,13 @@ class MultiHeadSelfAttention2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
-            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
+            num_attn_chunks (int, optional): Number of chunks in attention computation. Defaults to 0.
 
         Returns:
             Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Output data [B, E, L, D]; attention maps [B, H, E*L, E*L] (optional).
         """
         
-        # TODO: Implement checkpointing
+        # TODO: Implement attn chunking
 
         B, E, L, D = x.size()
         assert D == self.embed_dim
@@ -126,7 +130,7 @@ class AxialSelfAttention2d(nn.Module):
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
                 need_attn_maps: bool = True,
-                checkpointing: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+                num_attn_chunks: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
         """
         Performs axial self-attention on 2D data.
 
@@ -134,7 +138,7 @@ class AxialSelfAttention2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
-            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
+            num_attn_chunks (int, optional): Number of chunks in attention computation. Defaults to 0.
 
         Returns:
             Union[torch.Tensor,
@@ -142,7 +146,7 @@ class AxialSelfAttention2d(nn.Module):
                 row attention maps [B, H, E, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
         """
         
-        # TODO: Implement checkpointing
+        # TODO: Implement attn chunking
 
         B, E, L, D = x.size()
         assert D == self.embed_dim
@@ -237,6 +241,9 @@ class TiedAxialSelfAttention2d(nn.Module):
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
         
+        self.dropout2_chunking = df.Dropout(p=dropout)
+        self.softmax_chunking = df.Softmax()
+    
     def row_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, 
                  need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
@@ -261,8 +268,8 @@ class TiedAxialSelfAttention2d(nn.Module):
         row_attn_maps = row_attn_maps.view(B, self.num_heads, 1, L, L)
         row_attn_maps = row_attn_maps.softmax(dim=-1)  # [B, H, 1, L, L]
         row_attn_maps = self.dropout1(row_attn_maps)
-        row_out = torch.einsum('bhsij, bsjhd->bsihd', row_attn_maps, v)
-        row_out = row_out.reshape(B, E, L, self.embed_dim)
+        row_out = torch.einsum('bhsij, bsjhc->bsihc', row_attn_maps, v)  # [B, E, L, H, DH]
+        row_out = row_out.reshape(B, E, L, self.embed_dim)  # [B, E, L, D]
         if need_attn_maps:
             return row_out, row_attn_maps
         return row_out
@@ -290,17 +297,156 @@ class TiedAxialSelfAttention2d(nn.Module):
             col_attn_maps += col_attn_mask
         col_attn_maps = col_attn_maps.softmax(dim=-2)
         col_attn_maps = self.dropout2(col_attn_maps)
-        col_out = torch.einsum('bhijl, bjlhd->bilhd', col_attn_maps, v)  # [B, E, L, H, DH]
-        col_out = col_out.reshape(B, E, L, self.embed_dim)
+        col_out = torch.einsum('bhijl, bjlhc->bilhc', col_attn_maps, v)  # [B, E, L, H, DH]
+        col_out = col_out.reshape(B, E, L, self.embed_dim)  # [B, E, L, D]
         if need_attn_maps:
             return col_out, col_attn_maps
         return col_out
+    
+    class ColAttnChunked(Function):
+        """Implements a chunked version of tied axial column attention."""
+        
+        @staticmethod
+        def chunk_col_attn(q_chunked: torch.Tensor, k: torch.Tensor, attn_mask: torch.Tensor, dropout: df.DifferentiableModule, 
+                           softmax: df.DifferentiableModule, no_backward: bool = False) -> torch.Tensor:
+            """
+            Computes a chunk of the column attention maps.
+
+            Args:
+                q_chunked (torch.Tensor): Chunked query tensor [B, EC, L, H, DH].
+                k (torch.Tensor): Key tensor [B, E, L, H, DH].
+                attn_mask (torch.Tensor): Attention mask for padded elements [B, H, E, L].
+                dropout (df.DifferentiableModule): Manually differentible dropout module.
+                softmax (df.DifferentiableModule): Manually differentible softmax module.
+                no_backward (bool, optional): Whether computational context should not be cached for a subsequent backward pass. Defaults to False.
+
+            Returns:
+                torch.Tensor: Chunked column attention maps [B, H, EC, E, L].
+            """
+            
+            B, EC, L, H, _ = q_chunked.size()
+            _, E, _, _, _ = k.size()
+            grad_mode = torch.is_grad_enabled()
+            torch.set_grad_enabled(not no_backward)
+            col_attn_maps = torch.einsum('bilhc, bjlhc->bhijl', q_chunked, k)  # [B, H, EC, E, L]
+            if attn_mask is not None:
+                col_attn_mask = attn_mask.view(B, H, 1, E, L).expand(-1, -1, EC, -1, -1)
+                col_attn_maps += col_attn_mask
+            col_attn_maps = softmax(col_attn_maps, dim=-2, no_backward=no_backward)
+            col_attn_maps = dropout(col_attn_maps, no_backward=no_backward)
+            torch.set_grad_enabled(grad_mode)
+            return col_attn_maps
+        
+        @staticmethod
+        def forward(ctx: Any, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, dropout: df.DifferentiableModule, 
+                    softmax: df.DifferentiableModule, num_chunks: int = 1) -> torch.Tensor:
+            """
+            Performs forward pass of the chunked tied axial column attention.
+
+            Args:
+                ctx (Any): Computational context.
+                q (torch.Tensor): Query tensor [B, E, L, H, DH].
+                k (torch.Tensor): Key tensor [B, E, L, H, DH].
+                v (torch.Tensor): Value tensor [B, E, L, H, DH].
+                attn_mask (torch.Tensor): Attention mask for padded elements [B, H, E, L].
+                dropout (df.DifferentiableModule): Manually differentible dropout module.
+                softmax (df.DifferentiableModule): Manually differentible softmax module.
+                num_chunks (int, optional): Number of chunks. Defaults to 1.
+
+            Returns:
+                torch.Tensor: Output data [B, E, L, D].
+            """
+            
+            assert num_chunks > 0
+            ctx.save_for_backward(q, k, v, attn_mask)
+            
+            B, E, L, H, DH = q.size()
+            E_chunked = E // num_chunks
+            E_rest = E % num_chunks
+            if E_rest > 0:
+                num_chunks += 1
+            ctx.dropout = dropout
+            ctx.softmax = softmax
+            ctx.B = B
+            ctx.E = E
+            ctx.L = L
+            ctx.H = H
+            ctx.DH = DH
+            ctx.num_chunks = num_chunks
+            ctx.E_chunked = E_chunked
+            
+            # preserve rng states, cf. https://pytorch.org/docs/stable/_modules/torch/utils/checkpoint.html
+            ctx.fwd_cpu_state = torch.get_rng_state()
+            ctx.had_autocast_in_fwd = torch.is_autocast_enabled()
+            ctx.had_cuda_in_fwd = False
+            if torch.cuda._initialized:
+                ctx.had_cuda_in_fwd = True
+                # q, k, v, attn_mask are intended to be on the same device, so only check q
+                ctx.fwd_gpu_devices, ctx.fwd_gpu_states = checkpoint.get_device_states(q)
+            
+            col_out = torch.empty((B, E, L, H, DH), device=q.device)
+            # create chunks over evolutionary query dim, which is not reduced afterwards
+            for idx in range(num_chunks):
+                chunk_slice = (slice(None,), slice(idx*E_chunked, (idx+1)*E_chunked), slice(None,), slice(None,), slice(None,))
+                col_attn_maps_chunk = TiedAxialSelfAttention2d.ColAttnChunked.chunk_col_attn(q[chunk_slice], k, attn_mask, dropout, 
+                                                                                             softmax, no_backward=True)  # [B, H, EC, E, L]
+                col_out[chunk_slice] = torch.einsum('bhijl, bjlhc->bilhc', col_attn_maps_chunk, v)  # [B, EC, L, H, DH]
+            col_out = col_out.reshape(B, E, L, H*DH)  # [B, E, L, D]
+            
+            return col_out
+
+        @staticmethod
+        def backward(ctx: Any, grad_out: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, None, None, None, None]:
+            """
+            Performs backward pass of the chunked tied axial column attention.
+
+            Args:
+                ctx (Any): Computational context.
+                grad_out (torch.Tensor): Incoming derivative w.r.t. the output.
+
+            Returns:
+                Tuple[torch.Tensor, torch.Tensor, torch.Tensor, None, None, None, None]: Derivatives w.r.t. the queries, keys, and values; 
+                dummy arguments, required by the autograd engine.
+            """
+            
+            q, k, v, attn_mask = ctx.saved_tensors
+            grad_out_v = grad_out.reshape(ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH)  # [B, EC, L, H, DH]
+            
+            q_grad = torch.empty((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), device=q.device)
+            k_grad = torch.zeros((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), device=k.device)
+            v_grad = torch.zeros((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), device=v.device)
+            # create chunks over evolutionary query dim, which was not reduced in the forward pass
+            for idx in range(ctx.num_chunks):
+                chunk_slice = (slice(None,), slice(idx*ctx.E_chunked, (idx+1)*ctx.E_chunked), slice(None,), slice(None,), slice(None,))
+                # since attention maps were not cached due to checkpointing, they have to be re-computed
+                # preserve rng states, cf. https://pytorch.org/docs/stable/_modules/torch/utils/checkpoint.html
+                rng_devices = []
+                if ctx.had_cuda_in_fwd:
+                    rng_devices = ctx.fwd_gpu_devices
+                with torch.random.fork_rng(devices=rng_devices):
+                    torch.set_rng_state(ctx.fwd_cpu_state)
+                    if ctx.had_cuda_in_fwd:
+                        checkpoint.set_device_states(ctx.fwd_gpu_devices, ctx.fwd_gpu_states)
+                    detached_inputs = checkpoint.detach_variable((q, k, v))
+                    with ExitStack() as stack:
+                        if ctx.had_cuda_in_fwd:
+                            stack.enter_context(torch.cuda.amp.autocast(ctx.had_autocast_in_fwd))
+                        col_attn_maps_chunk = TiedAxialSelfAttention2d.ColAttnChunked.chunk_col_attn(q[chunk_slice], k, attn_mask, ctx.dropout, 
+                                                                                                     ctx.softmax)  # [B, H, EC, E, L]
+                    a_grad = torch.einsum('bilhc,bjlhc->bhijl', grad_out_v[chunk_slice], v)  # [B, H, EC, E, L]
+                    a_grad = ctx.dropout.backward(a_grad)
+                    a_grad = ctx.softmax.backward(a_grad)
+                    q_grad[chunk_slice] = torch.einsum('bhijl,bjlhc->bilhc', a_grad, k)  # [B, EC, L, H, DH]
+                    k_grad += torch.einsum('bhijl,bilhc->bjlhc', a_grad, q[chunk_slice])  # [B, E, L, H, DH]
+                    v_grad += torch.einsum('bilhc,bhijl->bjlhc', grad_out_v[chunk_slice], col_attn_maps_chunk)  # [B, E, L, H, DH]
+                
+            return q_grad, k_grad, v_grad, None, None, None, None
 
     def forward(self,
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
                 need_attn_maps: bool = True,
-                checkpointing: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+                num_attn_chunks: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
         """
         Performs tied axial self-attention on 2D data.
 
@@ -308,7 +454,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
-            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
+            num_attn_chunks (int, optional): Number of chunks in attention computation. Defaults to 0.
 
         Returns:
             Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
@@ -333,12 +479,8 @@ class TiedAxialSelfAttention2d(nn.Module):
 
         q = q * (self.dim_head * E) ** -0.5
         # NOTE row attn
-        if need_attn_maps and checkpointing:
-            row_out, row_attn_maps = checkpoint.checkpoint(self.row_attn, q, k, v, attn_mask, need_attn_maps)
-        elif need_attn_maps and not checkpointing:
+        if need_attn_maps:
             row_out, row_attn_maps = self.row_attn(q, k, v, attn_mask, need_attn_maps)
-        elif not need_attn_maps and checkpointing:
-            row_out = checkpoint.checkpoint(self.row_attn, q, k, v, attn_mask, need_attn_maps)
         else:
             row_out = self.row_attn(q, k, v, attn_mask, need_attn_maps)
 
@@ -352,14 +494,17 @@ class TiedAxialSelfAttention2d(nn.Module):
 
         q = q * self.dim_head ** -0.5
         # NOTE col attn
-        if need_attn_maps and checkpointing:
-            col_out, col_attn_maps = checkpoint.checkpoint(self.col_attn, q, k, v, attn_mask, need_attn_maps)
-        elif need_attn_maps and not checkpointing:
-            col_out, col_attn_maps = self.col_attn(q, k, v, attn_mask, need_attn_maps)
-        elif not need_attn_maps and checkpointing:
-            col_out = checkpoint.checkpoint(self.col_attn, q, k, v, attn_mask, need_attn_maps)
+        if num_attn_chunks > 0:
+            col_out = ColAttnChunked.apply(q, k, v, attn_mask, self.dropout2_chunking, self.softmax_chunking, num_attn_chunks)
+            if need_attn_maps:
+                # TODO: not feasible, what to do here?
+                col_attn_maps = None
         else:
-            col_out = self.col_attn(q, k, v, attn_mask, need_attn_maps)
+            if need_attn_maps:
+                col_out, col_attn_maps = self.col_attn(q, k, v, attn_mask, need_attn_maps)
+            else:
+                col_out = self.col_attn(q, k, v, attn_mask, need_attn_maps)
+            
 
         out = out + col_out
         out = self.norm2(out)
@@ -391,7 +536,7 @@ class Transmorpher2d(nn.Module):
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
                 need_attn_maps: bool = False,
-                checkpointing: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
+                num_attn_chunks: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
         """
         Passes input data through the self-attention based backbone, resulting in a latent representation.
 
@@ -399,7 +544,7 @@ class Transmorpher2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to False.
-            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
+            num_attn_chunks (int, optional): Number of chunks in attention computation. Defaults to 0.
 
         Returns:
             Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
@@ -410,14 +555,14 @@ class Transmorpher2d(nn.Module):
         if need_attn_maps:
             attns = []
             for block in self.blocks:
-                out, a = block(out, padding_mask=padding_mask, need_attn_maps=need_attn_maps, checkpointing=checkpointing)
+                out, a = block(out, padding_mask=padding_mask, need_attn_maps=need_attn_maps, num_attn_chunks=num_attn_chunks)
                 attns.append(a)
             if self.norm is not None:
                 out = self.norm(out)
             return out, attns
 
         for block in self.blocks:
-            out = block(out, padding_mask=padding_mask, need_attn_maps=need_attn_maps, checkpointing=checkpointing)
+            out = block(out, padding_mask=padding_mask, need_attn_maps=need_attn_maps, num_attn_chunks=num_attn_chunks)
         if self.norm is not None:
             out = self.norm(out)
 
@@ -470,7 +615,7 @@ class TransmorpherBlock2d(nn.Module):
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
                 need_attn_maps: bool = False,
-                checkpointing: bool = False) -> Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+                num_attn_chunks: int = 0) -> Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
         """
         Passes input data through the self-attention based block, resulting in a latent representation.
 
@@ -478,13 +623,13 @@ class TransmorpherBlock2d(nn.Module):
             x (torch.Tensor): Input data [B, E, L, D].
             padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to False.
-            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
+            num_attn_chunks (int, optional): Number of chunks in attention computation. Defaults to 0.
 
         Returns:
             Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: Output data [B, E, L, D]; attention maps (optional).
         """
 
-        out = self.attn(x, padding_mask=padding_mask, need_attn_maps=need_attn_maps, checkpointing=checkpointing)
+        out = self.attn(x, padding_mask=padding_mask, need_attn_maps=need_attn_maps, num_attn_chunks=num_attn_chunks)
         if need_attn_maps:
             out, attn = out
         # TODO what's the last layer of an attention block? should it be a nonlinearity

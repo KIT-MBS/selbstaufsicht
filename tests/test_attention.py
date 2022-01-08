@@ -3,6 +3,7 @@ from torch.nn.functional import multi_head_attention_forward
 import torch.testing as testing
 
 from selbstaufsicht.modules import AxialSelfAttention2d, MultiHeadSelfAttention2d, TiedAxialSelfAttention2d, Transmorpher2d, TransmorpherBlock2d
+import selbstaufsicht.modules.differentiable_functions as df
 
 
 def test_MultiHeadAttention2d():
@@ -255,6 +256,52 @@ def test_padding_mask_TiedAxialAttention2d():
     testing.assert_close(col_attn_pad, col_attn_pad_ref,
                          rtol=0, atol=0)
 
+
+def test_TiedAxialAttention2d_chunking():
+    B = 2
+    H = 3
+    DH = 4
+    E = 5
+    L = 6
+    p_dropout = 0.
+    
+    q = torch.randn(B, E, L, H, DH, requires_grad=True)
+    k = torch.randn(B, E, L, H, DH, requires_grad=True)
+    v = torch.randn(B, E, L, H, DH, requires_grad=True)
+    attn_mask = None
+    dropout = df.Dropout(p_dropout)
+    softmax = df.Softmax()
+    num_attn_chunks = 2
+    
+    regular_tied_attn = TiedAxialSelfAttention2d(H, DH, dropout=p_dropout)
+    
+    y_chunked = TiedAxialSelfAttention2d.ColAttnChunked.apply(q, k, v, attn_mask, dropout, softmax, num_attn_chunks)
+    loss = y_chunked.sum()
+    loss.backward()
+    q_grad_chunked = q.grad.clone()
+    k_grad_chunked = k.grad.clone()
+    v_grad_chunked = v.grad.clone()
+    
+    # reset grad
+    q.grad.detach_()
+    k.grad.detach_()
+    v.grad.detach_()
+    q.grad.zero_()
+    k.grad.zero_()
+    v.grad.zero_()
+    
+    y_regular = regular_tied_attn.col_attn(q, k, v, attn_mask, False)
+    loss = y_regular.sum()
+    loss.backward()
+    q_grad_regular = q.grad.clone()
+    k_grad_regular = k.grad.clone()
+    v_grad_regular = v.grad.clone()
+    
+    testing.assert_close(y_chunked, y_regular)
+    testing.assert_close(q_grad_chunked, q_grad_regular)
+    testing.assert_close(k_grad_chunked, k_grad_regular)
+    testing.assert_close(v_grad_chunked, v_grad_regular)
+    
 
 # NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
 def test_Transmorpher():

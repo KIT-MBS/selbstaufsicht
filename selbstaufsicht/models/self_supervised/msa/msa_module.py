@@ -3,7 +3,6 @@ from typing import Any, Dict, Tuple, Union
 import torch
 from torch import nn
 
-from deepspeed.ops.adam import FusedAdam
 import pytorch_lightning as pl
 
 from selbstaufsicht.modules import Transmorpher2d, TransmorpherBlock2d
@@ -36,8 +35,7 @@ class MSAModel(pl.LightningModule):
             task_loss_weights: Dict[str, float] = None,
             metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
-            checkpointing: bool = False,
-            use_fused_adam: bool = False,
+            num_attn_chunks: int = 0,
             device: Union[str, torch.device] = None,
             dtype: torch.dtype = None) -> None:
         """
@@ -64,8 +62,7 @@ class MSAModel(pl.LightningModule):
             task_loss_weights (Dict[str, float], optional): per task loss weights. Defaults to None.
             metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
-            checkpointing (bool, optional): Whether checkpointing is used to decrease memory pressure, increasing the computational load. Defaults to False.
-            use_fused_adam (bool, optional): Whether to use optimized FusedAdam implementation or not. Defaults to False.
+            num_attn_chunks (int, optional): Number of chunks in attention computation. Defaults to 0.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
 
@@ -101,8 +98,7 @@ class MSAModel(pl.LightningModule):
         if need_attn:
             raise NotImplementedError('Extracting attention maps not yet implemented')
         self.need_attn = need_attn
-        self.checkpointing = checkpointing
-        self.use_fused_adam = use_fused_adam
+        self.num_attn_chunks = num_attn_chunks
         self.save_hyperparameters(h_params)
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
@@ -121,7 +117,7 @@ class MSAModel(pl.LightningModule):
         # NOTE feature dim = -1
         x = self.embedding(x) + self.positional_embedding(aux_features)
         # TODO extract attention maps
-        latent = self.backbone(x, padding_mask, self.need_attn, self.checkpointing)
+        latent = self.backbone(x, padding_mask, self.need_attn, self.num_attn_chunks)
         return latent
     
     def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
@@ -199,10 +195,7 @@ class MSAModel(pl.LightningModule):
             Dict[str, Any]: Optimization algorithm, lr scheduler.
         """
 
-        if self.use_fused_adam:
-            optimizer = FusedAdam(self.parameters(), lr=self.lr)
-        else:
-            optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
 
         class inverse_square_root_rule():
             def __init__(self, warmup: int) -> None:
