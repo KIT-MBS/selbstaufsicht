@@ -62,8 +62,8 @@ def test_dropout_f():
     y.sum().backward()
     x_grad = x.grad.clone()
     grad_ratio_zero = (x_grad == 0).sum().item() / x_grad.numel()
-    grad_ratio_one = (x_grad == 2).sum().item() / x_grad.numel()
-    assert grad_ratio_one + grad_ratio_zero == 1
+    grad_ratio_two = (x_grad == 2).sum().item() / x_grad.numel()
+    assert grad_ratio_two + grad_ratio_zero == 1
     testing.assert_close(ratio, ratio_expected, atol=1e-3, rtol=1e-2)
     testing.assert_close(grad_ratio_zero, ratio_expected, atol=1e-3, rtol=1e-2)
-    testing.assert_close(grad_ratio_one, ratio_expected, atol=1e-3, rtol=1e-2)
+    testing.assert_close(grad_ratio_two, ratio_expected, atol=1e-3, rtol=1e-2)
