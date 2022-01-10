@@ -5,6 +5,7 @@ from typing import Any, List, Tuple, Type, Union
 import torch
 from torch import nn
 from torch.autograd import Function
+from torch.cuda.amp import custom_fwd, custom_bwd
 from torch.utils import checkpoint
 
 from . import differentiable_functions as df
@@ -338,6 +339,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             return col_attn_maps
         
         @staticmethod
+        @custom_fwd
         def forward(ctx: Any, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, dropout: df.DifferentiableModule, 
                     softmax: df.DifferentiableModule, num_chunks: int = 1) -> torch.Tensor:
             """
@@ -374,10 +376,10 @@ class TiedAxialSelfAttention2d(nn.Module):
             ctx.DH = DH
             ctx.num_chunks = num_chunks
             ctx.E_chunked = E_chunked
+            ctx.E_rest = E_rest
             
             # preserve rng states, cf. https://pytorch.org/docs/stable/_modules/torch/utils/checkpoint.html
             ctx.fwd_cpu_state = torch.get_rng_state()
-            ctx.had_autocast_in_fwd = torch.is_autocast_enabled()
             ctx.had_cuda_in_fwd = False
             if torch.cuda._initialized:
                 ctx.had_cuda_in_fwd = True
@@ -396,6 +398,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             return col_out
 
         @staticmethod
+        @custom_bwd
         def backward(ctx: Any, grad_out: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, None, None, None, None]:
             """
             Performs backward pass of the chunked tied axial column attention.
@@ -410,35 +413,77 @@ class TiedAxialSelfAttention2d(nn.Module):
             """
             
             q, k, v, attn_mask = ctx.saved_tensors
-            grad_out_v = grad_out.reshape(ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH)  # [B, EC, L, H, DH]
             
             q_grad = torch.empty((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), device=q.device)
             k_grad = torch.zeros((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), device=k.device)
             v_grad = torch.zeros((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), device=v.device)
-            # create chunks over evolutionary query dim, which was not reduced in the forward pass
-            for idx in range(ctx.num_chunks):
-                chunk_slice = (slice(None,), slice(idx*ctx.E_chunked, (idx+1)*ctx.E_chunked), slice(None,), slice(None,), slice(None,))
-                # since attention maps were not cached due to checkpointing, they have to be re-computed
-                # preserve rng states, cf. https://pytorch.org/docs/stable/_modules/torch/utils/checkpoint.html
-                rng_devices = []
+            
+            # preserve rng states, cf. https://pytorch.org/docs/stable/_modules/torch/utils/checkpoint.html
+            rng_devices = []
+            if ctx.had_cuda_in_fwd:
+                rng_devices = ctx.fwd_gpu_devices
+            with torch.random.fork_rng(devices=rng_devices):
+                torch.set_rng_state(ctx.fwd_cpu_state)
                 if ctx.had_cuda_in_fwd:
-                    rng_devices = ctx.fwd_gpu_devices
-                with torch.random.fork_rng(devices=rng_devices):
-                    torch.set_rng_state(ctx.fwd_cpu_state)
-                    if ctx.had_cuda_in_fwd:
-                        checkpoint.set_device_states(ctx.fwd_gpu_devices, ctx.fwd_gpu_states)
-                    detached_inputs = checkpoint.detach_variable((q, k, v))
-                    with ExitStack() as stack:
-                        if ctx.had_cuda_in_fwd:
-                            stack.enter_context(torch.cuda.amp.autocast(ctx.had_autocast_in_fwd))
-                        col_attn_maps_chunk = TiedAxialSelfAttention2d.ColAttnChunked.chunk_col_attn(q[chunk_slice], k, attn_mask, ctx.dropout, 
-                                                                                                     ctx.softmax)  # [B, H, EC, E, L]
-                    a_grad = torch.einsum('bilhc,bjlhc->bhijl', grad_out_v[chunk_slice], v)  # [B, H, EC, E, L]
-                    a_grad = ctx.dropout.backward(a_grad)
-                    a_grad = ctx.softmax.backward(a_grad)
-                    q_grad[chunk_slice] = torch.einsum('bhijl,bjlhc->bilhc', a_grad, k)  # [B, EC, L, H, DH]
-                    k_grad += torch.einsum('bhijl,bilhc->bjlhc', a_grad, q[chunk_slice])  # [B, E, L, H, DH]
-                    v_grad += torch.einsum('bilhc,bhijl->bjlhc', grad_out_v[chunk_slice], col_attn_maps_chunk)  # [B, E, L, H, DH]
+                    checkpoint.set_device_states(ctx.fwd_gpu_devices, ctx.fwd_gpu_states)
+                q, k, v = checkpoint.detach_variable((q, k, v))
+                v = v.permute(0, 2, 3, 4, 1)                                                # [B, L, H, DH, E]
+                v = v.reshape(ctx.B * ctx.L * ctx.H, ctx.DH, ctx.E)                         # [B*L*H, DH, E]
+                
+                # create chunks over evolutionary query dim, which was not reduced in the 
+                # forward pass
+                for idx in range(ctx.num_chunks):
+                    if idx == ctx.num_chunks - 1 and ctx.E_rest > 0:
+                        EC = ctx.E_rest
+                    else:
+                        EC = ctx.E_chunked
+                    
+                    chunk_slice = (slice(None,), slice(idx*ctx.E_chunked, (idx+1)*ctx.E_chunked), slice(None,), 
+                                   slice(None,), slice(None,))
+                    # since attention maps were not cached, they have to be re-computed
+                    a = TiedAxialSelfAttention2d.ColAttnChunked.chunk_col_attn(q[chunk_slice], 
+                                                                               k, attn_mask, 
+                                                                               ctx.dropout, 
+                                                                               ctx.softmax) # [B, H, EC, E, L]
+                    
+                    # compute a_grad
+                    temp = grad_out[chunk_slice[:-1]]                                       # [B, EC, L, D]
+                    temp = temp.reshape(ctx.B, EC, ctx.L, ctx.H, ctx.DH)                    # [B, EC, L, H, DH]
+                    temp = temp.permute(0, 2, 3, 1, 4)                                      # [B, L, H, EC, DH]
+                    temp = temp.reshape(ctx.B * ctx.L * ctx.H, EC, ctx.DH)                  # [B*L*H, EC, DH]
+                    a_grad = temp @ v                                                       # [B*H*L, EC, E]
+                    a_grad = a_grad.reshape(ctx.B, ctx.L, ctx.H, EC, ctx.E)                 # [B, L, H, EC, E]
+                    a_grad = a_grad.permute(0, 2, 3, 4, 1)                                  # [B, H, EC, E, L]
+                    a_grad = ctx.dropout.backward(a_grad)                                   # [B, H, EC, E, L]
+                    a_grad = ctx.softmax.backward(a_grad)                                   # [B, H, EC, E, L]
+                    
+                    # compute v_grad
+                    temp = temp.permute(0, 2, 1)                                            # [B*L*H, DH, EC]
+                    a = a.permute(0, 4, 1, 2, 3)                                            # [B, L, H, EC, E]
+                    a = a.reshape(ctx.B * ctx.L * ctx.H, EC, ctx.E)                         # [B*L*H, EC, E]
+                    temp = temp @ a                                                         # [B*L*H, DH, E]
+                    temp = temp.reshape(ctx.B, ctx.L, ctx.H, ctx.DH, ctx.E)                 # [B, L, H, DH, E]
+                    temp = temp.permute(0, 4, 1, 2, 3)                                      # [B, E, L, H, DH]
+                    v_grad += temp
+                    
+                    # compute q_grad
+                    a_grad = a_grad.permute(0, 4, 1, 2, 3)                                  # [B, L, H, EC, E]
+                    a_grad = a_grad.reshape(ctx.B * ctx.L * ctx.H, EC, ctx.E)               # [B*L*H, EC, E]
+                    temp = k.permute(0, 2, 3, 1, 4)                                         # [B, L, H, E, DH]
+                    temp = temp.reshape(ctx.B * ctx.L * ctx.H, ctx.E, ctx.DH)               # [B*L*H, E, DH]
+                    temp = a_grad @ temp                                                    # [B*L*H, EC, DH]
+                    temp = temp.reshape(ctx.B, ctx.L, ctx.H, EC, ctx.DH)                    # [B, L, H, EC, DH]
+                    temp = temp.permute(0, 3, 1, 2, 4)                                      # [B, EC, L, H, DH]
+                    q_grad[chunk_slice] = temp
+                    
+                    # compute k_grad 
+                    a_grad = a_grad.permute(0, 2, 1)                                        # [B*L*H, E, EC]
+                    temp = q[chunk_slice].permute(0, 2, 3, 1, 4)                            # [B, L, H, EC, DH]
+                    temp = temp.reshape(ctx.B * ctx.L * ctx.H, EC, ctx.DH)                  # [B*L*H, EC, DH]
+                    temp = a_grad @ temp                                                    # [B*L*H, E, DH]
+                    temp = temp.reshape(ctx.B, ctx.L, ctx.H, ctx.E, ctx.DH)                 # [B, L, H, E, DH]
+                    temp = temp.permute(0, 3, 1, 2, 4)                                      # [B, E, L, H, DH]
+                    k_grad += temp
                 
             return q_grad, k_grad, v_grad, None, None, None, None
 

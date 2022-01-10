@@ -3,12 +3,14 @@ import inspect
 import torch
 from torch.nn import Module
 from torch.autograd import Function, gradcheck
+from torch.cuda.amp import custom_fwd, custom_bwd
 from typing import Any, Tuple
 
 class SoftmaxF(Function):
     """Implements a manually differentiable version of softmax."""
     
     @staticmethod
+    @custom_fwd
     def forward(ctx: Any, x: torch.Tensor, dim: int, training: bool = True) -> Tuple[torch.Tensor, Any]:
         """
         Performs forward pass of the softmax function.
@@ -30,6 +32,7 @@ class SoftmaxF(Function):
         return y, ctx
             
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, grad_y: torch.Tensor, grad_ctx: None) -> Tuple[torch.Tensor, None, None]:
         """
         Performs backward pass of the softmax function.
@@ -53,12 +56,14 @@ class SoftmaxF(Function):
         v = v.reshape(num_el, dim_size)
         
         # compute derivative of softmax w.r.t. its input
-        sm_grad = torch.einsum('ij,jk->ijk', v, torch.eye(dim_size, device=v.device)) - torch.einsum('ij,ik->ijk', v, v)
+        # sm_grad = torch.einsum('ij,jk->ijk', v, torch.eye(dim_size, device=v.device)) - torch.einsum('ij,ik->ijk', v, v)
+        sm_grad = v[:, :, None] * torch.eye(dim_size, device=v.device)[None, :, :] - v[:, :, None] @ v[:, None, :]
         
         # apply permutation and reshaping to the incoming derivative as well to multiply it with the softmax derivative
         v = grad_y.permute(*permutation)
         v = v.reshape(num_el, dim_size)
-        sm_grad = torch.einsum('ijk, ij->ik', sm_grad, v)
+        # sm_grad = torch.einsum('ijk, ij->ik', sm_grad, v)
+        sm_grad = (v[:, None, :] @ sm_grad).squeeze()
         
         # invert permutation and reshaping
         inv_permutation = tuple(range(ctx.dim)) + (ctx.y.ndim - 1,) + tuple(range(ctx.dim, ctx.y.ndim - 1))
@@ -71,6 +76,7 @@ class DropoutF(Function):
     """Implements a manually differentiable version of dropout."""
     
     @staticmethod
+    @custom_fwd
     def forward(ctx: Any, x: torch.Tensor, p: float, training: bool = True) -> Tuple[torch.Tensor, Any]:
         """
         Performs forward pass of the dropout function.
@@ -100,6 +106,7 @@ class DropoutF(Function):
         return y, ctx
         
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, grad_y: torch.Tensor, grad_ctx: None) -> Tuple[torch.Tensor, None, None]:
         """
         Performs backward pass of the dropout function.
