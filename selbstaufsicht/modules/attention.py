@@ -7,7 +7,7 @@ from torch import nn
 from torch.autograd import Function
 from torch.utils import checkpoint
 
-import selbstaufsicht.modules.differentiable_functions as df
+from . import differentiable_functions as df
 
 # TODO make c and d consistent
 # TODO make E and H and L and W consistent
