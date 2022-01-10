@@ -495,7 +495,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         q = q * self.dim_head ** -0.5
         # NOTE col attn
         if num_attn_chunks > 0:
-            col_out = ColAttnChunked.apply(q, k, v, attn_mask, self.dropout2_chunking, self.softmax_chunking, num_attn_chunks)
+            col_out = self.ColAttnChunked.apply(q, k, v, attn_mask, self.dropout2_chunking, self.softmax_chunking, num_attn_chunks)
             if need_attn_maps:
                 # TODO: not feasible, what to do here?
                 col_attn_maps = None
