@@ -53,7 +53,7 @@ class SoftmaxF(Function):
         v = v.reshape(num_el, dim_size)
         
         # compute derivative of softmax w.r.t. its input
-        sm_grad = torch.einsum('ij,jk->ijk', v, torch.eye(dim_size)) - torch.einsum('ij,ik->ijk', v, v)
+        sm_grad = torch.einsum('ij,jk->ijk', v, torch.eye(dim_size, device=v.device)) - torch.einsum('ij,ik->ijk', v, v)
         
         # apply permutation and reshaping to the incoming derivative as well to multiply it with the softmax derivative
         v = grad_y.permute(*permutation)
@@ -88,13 +88,13 @@ class DropoutF(Function):
         assert 0 <= p <= 1
         if training:
             if p == 0:
-                mask = torch.ones_like(x)
+                mask = torch.ones_like(x, device=x.device)
             elif p == 1:
-                mask = torch.zeros_like(x)
+                mask = torch.zeros_like(x, device=x.device)
             else:
-                mask = torch.full_like(x, 1-p).bernoulli() * (1.0 / (1 - p))
+                mask = torch.full_like(x, 1-p, device=x.device).bernoulli() * (1.0 / (1 - p))
         else:
-            mask = torch.ones_like(x)
+            mask = torch.ones_like(x, device=x.device)
         ctx.mask = mask
         y = mask * x
         return y, ctx
