@@ -98,7 +98,7 @@ class DropoutF(Function):
             elif p == 1:
                 mask = torch.zeros_like(x, dtype=mask_dtype, device=x.device)
             else:
-                mask = torch.full_like(x, 1-p, dtype=mask_dtype, device=x.device).bernoulli() * (1.0 / (1 - p))
+                mask = torch.full_like(x, 1-p, device=x.device).bernoulli().to(mask_dtype) * (1.0 / (1 - p))
         else:
             mask = torch.ones_like(x, dtype=mask_dtype, device=x.device)
         ctx.mask = mask
