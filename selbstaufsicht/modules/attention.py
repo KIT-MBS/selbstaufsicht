@@ -329,7 +329,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             B, EC, L, H, _ = q_chunked.size()
             _, E, _, _, _ = k.size()
             grad_mode = torch.is_grad_enabled()
-            torch.set_grad_enabled(not no_backward)
+            torch.set_grad_enabled(grad_mode and not no_backward)
             col_attn_maps = torch.einsum('bilhc, bjlhc->bhijl', q_chunked, k)  # [B, H, EC, E, L]
             if attn_mask is not None:
                 col_attn_mask = attn_mask.view(B, H, 1, E, L).expand(-1, -1, EC, -1, -1)
@@ -386,6 +386,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             ctx.had_cuda_in_fwd = False
             if torch.cuda._initialized:
                 ctx.had_cuda_in_fwd = True
+                ctx.had_autocast_in_fwd = torch.is_autocast_enabled()
                 # q, k, v, attn_mask are intended to be on the same device, so only check q
                 ctx.fwd_gpu_devices, ctx.fwd_gpu_states = checkpoint.get_device_states(q)
             
@@ -417,9 +418,10 @@ class TiedAxialSelfAttention2d(nn.Module):
             
             q, k, v, attn_mask = ctx.saved_tensors
             
-            q_grad = torch.empty((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), device=q.device)
-            k_grad = torch.zeros((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), device=k.device)
-            v_grad = torch.zeros((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), device=v.device)
+            grad_dtype = torch.float16 if ctx.had_autocast_in_fwd else torch.float32
+            q_grad = torch.empty((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), dtype=grad_dtype, device=q.device)
+            k_grad = torch.zeros((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), dtype=grad_dtype, device=k.device)
+            v_grad = torch.zeros((ctx.B, ctx.E, ctx.L, ctx.H, ctx.DH), dtype=grad_dtype, device=v.device)
             
             # preserve rng states, cf. https://pytorch.org/docs/stable/_modules/torch/utils/checkpoint.html
             rng_devices = []
