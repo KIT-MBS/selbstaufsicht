@@ -366,7 +366,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             B, E, L, H, DH = q.size()
             E_chunked = min(E, chunk_size)
             num_chunks = E // E_chunked
-            E_rest = E % num_chunks
+            E_rest = E % E_chunked
             if E_rest > 0:
                 num_chunks += 1
             
@@ -380,7 +380,6 @@ class TiedAxialSelfAttention2d(nn.Module):
             ctx.num_chunks = num_chunks
             ctx.E_chunked = E_chunked
             ctx.E_rest = E_rest
-            print("E_rest fwd", E_rest)
             
             # preserve rng states, cf. https://pytorch.org/docs/stable/_modules/torch/utils/checkpoint.html
             ctx.fwd_cpu_state = torch.get_rng_state()
@@ -437,7 +436,6 @@ class TiedAxialSelfAttention2d(nn.Module):
                 # create chunks over evolutionary query dim, which was not reduced in the 
                 # forward pass
                 for idx in range(ctx.num_chunks):
-                    print("%d == %d - 1 and %d > 0" % (idx, ctx.num_chunks, ctx.E_rest))
                     if idx == ctx.num_chunks - 1 and ctx.E_rest > 0:
                         EC = ctx.E_rest
                     else:
@@ -452,7 +450,6 @@ class TiedAxialSelfAttention2d(nn.Module):
                                                                                ctx.softmax) # [B, H, EC, E, L]
                     
                     # compute a_grad
-                    print("Shape", idx, grad_out.shape, grad_out[chunk_slice[:-1]].shape)
                     temp = grad_out[chunk_slice[:-1]]                                       # [B, EC, L, D]
                     temp = temp.reshape(ctx.B, EC, ctx.L, ctx.H, ctx.DH)                    # [B, EC, L, H, DH]
                     temp = temp.permute(0, 2, 3, 1, 4)                                      # [B, L, H, EC, DH]
@@ -490,8 +487,7 @@ class TiedAxialSelfAttention2d(nn.Module):
                     temp = temp.reshape(ctx.B, ctx.L, ctx.H, ctx.E, ctx.DH)                 # [B, L, H, E, DH]
                     temp = temp.permute(0, 3, 1, 2, 4)                                      # [B, E, L, H, DH]
                     k_grad += temp
-            
-            print("\n")
+
             return q_grad, k_grad, v_grad, None, None, None, None
 
     def forward(self,
