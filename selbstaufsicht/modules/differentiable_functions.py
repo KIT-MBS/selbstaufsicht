@@ -74,7 +74,7 @@ class DropoutF(Function):
     
     @staticmethod
     @custom_fwd
-    def forward(ctx: Any, x: torch.Tensor, p: float, training: bool = True) -> Tuple[torch.Tensor, Any]:
+    def forward(ctx: Any, x: torch.Tensor, p: float, autocast: bool = False, training: bool = True) -> Tuple[torch.Tensor, Any]:
         """
         Performs forward pass of the dropout function.
 
@@ -89,15 +89,18 @@ class DropoutF(Function):
         """
         
         assert 0 <= p <= 1
+        
+        mask_dtype = torch.float16 if autocast else torch.float32
+        
         if training:
             if p == 0:
-                mask = torch.ones_like(x, device=x.device)
+                mask = torch.ones_like(x, dtype=mask_dtype, device=x.device)
             elif p == 1:
-                mask = torch.zeros_like(x, device=x.device)
+                mask = torch.zeros_like(x, dtype=mask_dtype, device=x.device)
             else:
-                mask = torch.full_like(x, 1-p, device=x.device).bernoulli() * (1.0 / (1 - p))
+                mask = torch.full_like(x, 1-p, dtype=mask_dtype, device=x.device).bernoulli() * (1.0 / (1 - p))
         else:
-            mask = torch.ones_like(x, device=x.device)
+            mask = torch.ones_like(x, dtype=mask_dtype, device=x.device)
         ctx.mask = mask
         y = mask * x
         return y, ctx
@@ -235,8 +238,8 @@ class Dropout(DifferentiableModule):
         Args:
             p (int): Dropout probability.
         """
-        
-        super().__init__(DropoutF, p=p)
+        autocast = torch.is_autocast_enabled()
+        super().__init__(DropoutF, p=p, autocast=autocast)
 
 
 class Softmax(DifferentiableModule):

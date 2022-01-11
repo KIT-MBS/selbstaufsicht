@@ -384,6 +384,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             # preserve rng states, cf. https://pytorch.org/docs/stable/_modules/torch/utils/checkpoint.html
             ctx.fwd_cpu_state = torch.get_rng_state()
             ctx.had_cuda_in_fwd = False
+            ctx.had_autocast_in_fwd = False
             if torch.cuda._initialized:
                 ctx.had_cuda_in_fwd = True
                 ctx.had_autocast_in_fwd = torch.is_autocast_enabled()
