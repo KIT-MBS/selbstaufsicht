@@ -310,7 +310,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         
         @staticmethod
         def chunk_col_attn(q_chunked: torch.Tensor, k: torch.Tensor, attn_mask: torch.Tensor, dropout: df.DifferentiableModule, 
-                           softmax: df.DifferentiableModule, no_backward: bool = False) -> torch.Tensor:
+                           softmax: df.DifferentiableModule, autocast: bool = False, no_backward: bool = False) -> torch.Tensor:
             """
             Computes a chunk of the column attention maps.
 
@@ -320,6 +320,7 @@ class TiedAxialSelfAttention2d(nn.Module):
                 attn_mask (torch.Tensor): Attention mask for padded elements [B, H, E, L].
                 dropout (df.DifferentiableModule): Manually differentible dropout module.
                 softmax (df.DifferentiableModule): Manually differentible softmax module.
+                autocast (bool, optional): Whether autocast is active. Defaults to False.
                 no_backward (bool, optional): Whether computational context should not be cached for a subsequent backward pass. Defaults to False.
 
             Returns:
@@ -335,7 +336,7 @@ class TiedAxialSelfAttention2d(nn.Module):
                 col_attn_mask = attn_mask.view(B, H, 1, E, L).expand(-1, -1, EC, -1, -1)
                 col_attn_maps += col_attn_mask
             col_attn_maps = softmax(col_attn_maps, dim=-2, no_backward=no_backward)
-            col_attn_maps = dropout(col_attn_maps, no_backward=no_backward)
+            col_attn_maps = dropout(col_attn_maps, autocast=autocast, no_backward=no_backward)
             torch.set_grad_enabled(grad_mode)
             return col_attn_maps
         
@@ -396,8 +397,10 @@ class TiedAxialSelfAttention2d(nn.Module):
             for idx in range(num_chunks):
                 chunk_slice = (slice(None,), slice(idx*E_chunked, (idx+1)*E_chunked), slice(None,), slice(None,), slice(None,))
                 col_attn_maps_chunk = TiedAxialSelfAttention2d.ColAttnChunked.chunk_col_attn(q[chunk_slice], k, attn_mask, dropout, 
-                                                                                             softmax, no_backward=True)  # [B, H, EC, E, L]
+                                                                                             softmax, autocast=ctx.had_autocast_in_fwd,
+                                                                                             no_backward=True)  # [B, H, EC, E, L]
                 col_out[chunk_slice] = torch.einsum('bhijl, bjlhc->bilhc', col_attn_maps_chunk, v)  # [B, EC, L, H, DH]
+                del col_attn_maps_chunk
             col_out = col_out.reshape(B, E, L, H*DH)  # [B, E, L, D]
             
             return col_out
@@ -450,7 +453,8 @@ class TiedAxialSelfAttention2d(nn.Module):
                     a = TiedAxialSelfAttention2d.ColAttnChunked.chunk_col_attn(q[chunk_slice], 
                                                                                k, attn_mask, 
                                                                                ctx.dropout, 
-                                                                               ctx.softmax) # [B, H, EC, E, L]
+                                                                               ctx.softmax,
+                                                                               autocast=ctx.had_autocast_in_fwd)  # [B, H, EC, E, L]
                     
                     # compute a_grad
                     temp = grad_out[chunk_slice[:-1]]                                       # [B, EC, L, D]
@@ -490,6 +494,10 @@ class TiedAxialSelfAttention2d(nn.Module):
                     temp = temp.reshape(ctx.B, ctx.L, ctx.H, ctx.E, ctx.DH)                 # [B, L, H, E, DH]
                     temp = temp.permute(0, 3, 1, 2, 4)                                      # [B, E, L, H, DH]
                     k_grad += temp
+
+                    del a
+                    del a_grad
+                    del temp
 
             return q_grad, k_grad, v_grad, None, None, None, None
 

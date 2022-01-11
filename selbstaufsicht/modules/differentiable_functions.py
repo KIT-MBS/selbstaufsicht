@@ -89,16 +89,15 @@ class DropoutF(Function):
         """
         
         assert 0 <= p <= 1
-        
         mask_dtype = torch.float16 if autocast else torch.float32
-        
+
         if training:
             if p == 0:
                 mask = torch.ones_like(x, dtype=mask_dtype, device=x.device)
             elif p == 1:
                 mask = torch.zeros_like(x, dtype=mask_dtype, device=x.device)
             else:
-                mask = torch.full_like(x, 1-p, device=x.device).bernoulli().to(mask_dtype) * (1.0 / (1 - p))
+                mask = (torch.rand_like(x, dtype=mask_dtype, device=x.device) > p).to(mask_dtype) * (1.0 / (1 - p))
         else:
             mask = torch.ones_like(x, dtype=mask_dtype, device=x.device)
         ctx.mask = mask
@@ -238,8 +237,8 @@ class Dropout(DifferentiableModule):
         Args:
             p (int): Dropout probability.
         """
-        autocast = torch.is_autocast_enabled()
-        super().__init__(DropoutF, p=p, autocast=autocast)
+        
+        super().__init__(DropoutF, p=p)
 
 
 class Softmax(DifferentiableModule):
