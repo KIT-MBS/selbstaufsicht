@@ -271,11 +271,11 @@ def test_TiedAxialAttention2d_chunking():
     attn_mask = None
     dropout = df.Dropout(p_dropout)
     softmax = df.Softmax()
-    num_attn_chunks = 2
+    attn_chunk_size = 2
     
     regular_tied_attn = TiedAxialSelfAttention2d(H, DH, dropout=p_dropout)
     
-    y_chunked = TiedAxialSelfAttention2d.ColAttnChunked.apply(q, k, v, attn_mask, dropout, softmax, num_attn_chunks)
+    y_chunked = TiedAxialSelfAttention2d.ColAttnChunked.apply(q, k, v, attn_mask, dropout, softmax, attn_chunk_size)
     loss = y_chunked.sum()
     loss.backward()
     q_grad_chunked = q.grad.clone()

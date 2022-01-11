@@ -38,7 +38,7 @@ def main():
     parser.add_argument('--learning-rate-warmup', default=200, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
-    parser.add_argument('--num-attn-chunks', default=0, type=int, help="Number of chunks in attention computation. Chunking causes sequential computation, which increases training time, but decreases memory pressure. Numbers below one activate the non-chunking implementation.")
+    parser.add_argument('--attn-chunk-size', default=0, type=int, help="Chunk size in attention computation. Chunking causes sequential computation, which increases training time, but decreases memory pressure. Sizes below one activate the non-chunking implementation.")
     parser.add_argument('--dp-strategy', default='ddp', type=str, help="Data-parallelism strategy: ddp, zero-2, or zero-3. Note that DeepSpeed ZeRO requires precision=16.")
     parser.add_argument('--dp-zero-bucket-size', default=5e8, type=int, help="Allocated bucket size for DeepSpeed ZeRO DP strategy.")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
@@ -204,7 +204,7 @@ def main():
         dropout=args.dropout,
         emb_grad_freq_scale=not args.disable_emb_grad_freq_scale,
         h_params=args,
-        num_attn_chunks=args.num_attn_chunks
+        attn_chunk_size=args.attn_chunk_size
     )
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,

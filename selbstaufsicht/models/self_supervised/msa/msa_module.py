@@ -35,7 +35,7 @@ class MSAModel(pl.LightningModule):
             task_loss_weights: Dict[str, float] = None,
             metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
-            num_attn_chunks: int = 0,
+            attn_chunk_size: int = 0,
             device: Union[str, torch.device] = None,
             dtype: torch.dtype = None) -> None:
         """
@@ -62,7 +62,7 @@ class MSAModel(pl.LightningModule):
             task_loss_weights (Dict[str, float], optional): per task loss weights. Defaults to None.
             metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
-            num_attn_chunks (int, optional): Number of chunks in attention computation. Defaults to 0.
+            attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
 
@@ -98,7 +98,7 @@ class MSAModel(pl.LightningModule):
         if need_attn:
             raise NotImplementedError('Extracting attention maps not yet implemented')
         self.need_attn = need_attn
-        self.num_attn_chunks = num_attn_chunks
+        self.attn_chunk_size = attn_chunk_size
         self.save_hyperparameters(h_params)
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
@@ -117,7 +117,7 @@ class MSAModel(pl.LightningModule):
         # NOTE feature dim = -1
         x = self.embedding(x) + self.positional_embedding(aux_features)
         # TODO extract attention maps
-        latent = self.backbone(x, padding_mask, self.need_attn, self.num_attn_chunks)
+        latent = self.backbone(x, padding_mask, self.need_attn, self.attn_chunk_size)
         return latent
     
     def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
