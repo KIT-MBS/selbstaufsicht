@@ -363,10 +363,15 @@ class TiedAxialSelfAttention2d(nn.Module):
             ctx.save_for_backward(q, k, v, attn_mask)
             
             B, E, L, H, DH = q.size()
-            E_chunked = E // num_chunks
-            E_rest = E % num_chunks
-            if E_rest > 0:
-                num_chunks += 1
+            if E <= num_chunks:
+                E_chunked = E
+                E_rest = 0
+                num_chunks = 1
+            else:
+                E_chunked = E // num_chunks
+                E_rest = E % num_chunks
+                if E_rest > 0:
+                    num_chunks += 1
             ctx.dropout = dropout
             ctx.softmax = softmax
             ctx.B = B
