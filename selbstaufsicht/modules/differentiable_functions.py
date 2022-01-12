@@ -240,7 +240,7 @@ class DifferentiableModule(Module):
         grad_mode = torch.is_grad_enabled()
         torch.set_grad_enabled(False)
         grads = self._f.backward(self._ctx, *args, **kwargs)
-        torch.set_grad_enabled(False)
+        torch.set_grad_enabled(grad_mode)
         
         # empty the context cache
         for cached_data_name, cached_data in self._ctx.items():
