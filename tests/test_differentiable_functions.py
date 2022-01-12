@@ -7,13 +7,14 @@ import selbstaufsicht.modules.differentiable_functions as df
 
 def test_softmax_f():
     x = torch.randn(5, 5)
+    softmax = df.Softmax()
     
-    y, _ = df.SoftmaxF.apply(x, 0)
+    y = softmax(x, dim=0)
     y_expected = x.softmax(dim=0)
     testing.assert_close(y, y_expected)
     
     x = torch.randn(5, 5, requires_grad=True)
-    y, _ = df.SoftmaxF.apply(x, -1)
+    y = softmax(x, dim=-1)
     y.sum().backward()
     x_grad = x.grad.clone()
     
@@ -31,8 +32,9 @@ def test_softmax_f():
 
 def test_dropout_f():
     x = torch.randn(1000, 1000, requires_grad=True)
+    dropout = df.Dropout(p=0)
     
-    y, _ = df.DropoutF.apply(x, 0.)
+    y = dropout(x)
     y_expected = x
     y.sum().backward()
     x_grad = x.grad.clone()
@@ -44,7 +46,8 @@ def test_dropout_f():
     x.grad.detach_()
     x.grad.zero_()
     
-    y, _ = df.DropoutF.apply(x, 1.)
+    dropout = df.Dropout(p=1)
+    y = dropout(x)
     y_expected = torch.zeros_like(x)
     y.sum().backward()
     x_grad = x.grad.clone()
@@ -57,7 +60,8 @@ def test_dropout_f():
     x.grad.zero_()
     
     ratio_expected = 0.5
-    y, _ = df.DropoutF.apply(x, ratio_expected)
+    dropout = df.Dropout(p=ratio_expected)
+    y = dropout(x)
     ratio = torch.count_nonzero(y).item() / y.numel()
     y.sum().backward()
     x_grad = x.grad.clone()

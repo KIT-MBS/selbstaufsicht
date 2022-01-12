@@ -1,58 +1,98 @@
-from functools import partial
 import inspect
 import torch
 from torch.nn import Module
-from torch.autograd import Function, gradcheck
-from torch.cuda.amp import custom_fwd, custom_bwd
-from typing import Any, Tuple
+from typing import Any, Dict, Tuple
 
-class SoftmaxF(Function):
+
+class DifferentiableFunction():
+    """Base class for manually differentiable functions."""
+    
+    @staticmethod
+    def forward(ctx: Dict[str, Any], *args: Any, **kwargs: Any) -> Any:
+        """
+        Abstract method for the forward pass.
+
+        Args:
+            ctx (Dict[str, Any]): Computational context.
+            *args (Any): Input data and parameters for the differentiable function.
+            **kwargs (Any): Keyworded parameters for the differentiable function.
+
+        Raises:
+            NotImplementedError: Abstract method.
+
+        Returns:
+            Any: Output data
+        """
+        
+        raise NotImplementedError
+    
+    @staticmethod
+    def backward(ctx: Dict[str, Any], *args: Any, **kwargs: Any) -> Any:
+        """
+        Abstract method for the backward pass.
+
+        Args:
+            ctx (Dict[str, Any]): Computational context.
+            *args (Any): Incoming derivatives for the differentiable function.
+            **kwargs (Any): Incoming keyworded derivatives for the differentiable function.
+
+        Raises:
+            NotImplementedError: Abstract method.
+
+        Returns:
+            Any: Derivatives w.r.t. the input data.
+        """
+        
+        raise NotImplementedError
+
+class SoftmaxF(DifferentiableFunction):
     """Implements a manually differentiable version of softmax."""
     
     @staticmethod
-    @custom_fwd
-    def forward(ctx: Any, x: torch.Tensor, dim: int, training: bool = True) -> Tuple[torch.Tensor, Any]:
+    def forward(ctx: Dict[str, Any], x: torch.Tensor, dim: int, training: bool = True) -> torch.Tensor:
         """
         Performs forward pass of the softmax function.
 
         Args:
-            ctx: Computational context.
+            ctx (Dict[str, Any]): Computational context.
             x (torch.Tensor): Input data.
             dim (int): Dimension over which softmax is performed.
             training (bool, optional): Whether training mode is active. Defaults to True.
 
         Returns:
-            Tuple[torch.Tensor, Any]: Softmax output; computational context.
+            torch.Tensor: Softmax output.
         """
         
         assert -x.ndim <= dim < x.ndim
         y = x.softmax(dim=dim)
-        ctx.dim = dim if dim >= 0 else x.ndim + dim
-        ctx.y = y
-        return y, ctx
+        ctx['dim'] = dim if dim >= 0 else x.ndim + dim
+        ctx['y'] = y
+        return y
             
     @staticmethod
-    @custom_bwd
-    def backward(ctx: Any, grad_y: torch.Tensor, grad_ctx: None) -> Tuple[torch.Tensor, None, None]:
+    def backward(ctx: Dict[str, Any], grad_y: torch.Tensor) -> torch.Tensor:
         """
         Performs backward pass of the softmax function.
 
         Args:
-            ctx (Any): Computational context.
+            ctx (Dict[str, Any]): Computational context.
             grad_y (torch.Tensor): Incoming derivative w.r.t. the softmax output. 
-            grad_ctx (None): Dummy argument, required by the autograd engine.
 
         Returns:
-            Tuple[torch.Tensor, None, None]: Derivative w.r.t. the input data; dummy arguments, 
-            required by the autograd engine.
+            torch.Tensor: Derivative w.r.t. the input data.
         """
         
-        # move selected dim to the end, contract all remaining dims in the preceding dim
-        permutation = tuple(range(ctx.dim)) + tuple(range(ctx.dim + 1, ctx.y.ndim)) + (ctx.dim,)
-        dim_size = ctx.y.size(ctx.dim)
-        num_el = ctx.y.numel() // dim_size
+        dim = ctx['dim']
+        y = ctx['y']
+        ctx['y'] = None
         
-        y = ctx.y.permute(*permutation)
+        # move selected dim to the end, contract all remaining dims in the preceding dim
+        permutation = tuple(range(dim)) + tuple(range(dim + 1, y.ndim)) + (dim,)
+        inv_permutation = tuple(range(dim)) + (y.ndim - 1,) + tuple(range(dim, y.ndim - 1))
+        dim_size = y.size(dim)
+        num_el = y.numel() // dim_size
+        
+        y = y.permute(*permutation)
         permutation_shape = y.size()
         y = y.reshape(num_el, dim_size)
         
@@ -63,29 +103,28 @@ class SoftmaxF(Function):
         grad_sm.squeeze_()
         
         # invert permutation and reshaping
-        inv_permutation = tuple(range(ctx.dim)) + (ctx.y.ndim - 1,) + tuple(range(ctx.dim, ctx.y.ndim - 1))
         grad_sm = grad_sm.reshape(*permutation_shape)
         grad_sm = grad_sm.permute(*inv_permutation)
-        return grad_sm, None, None
+        return grad_sm
 
 
-class DropoutF(Function):
+class DropoutF(DifferentiableFunction):
     """Implements a manually differentiable version of dropout."""
     
     @staticmethod
-    @custom_fwd
-    def forward(ctx: Any, x: torch.Tensor, p: float, autocast: bool = False, training: bool = True) -> Tuple[torch.Tensor, Any]:
+    def forward(ctx: Dict[str, Any], x: torch.Tensor, p: float, autocast: bool = False, training: bool = True) -> torch.Tensor:
         """
         Performs forward pass of the dropout function.
 
         Args:
-            ctx (Any): Computational context.
+            ctx (Dict[str, Any]): Computational context.
             x (torch.Tensor): Input data.
             p (float): Dropout probability.
+            autocast (bool, optional): Whether autocast is activate. Defaults to False.
             training (bool, optional): Whether training mode is active. Defaults to True.
 
         Returns:
-            Tuple[torch.Tensor, Any]: Dropout output; computational context.
+            torch.Tensor: Dropout output.
         """
         
         assert 0 <= p <= 1
@@ -100,131 +139,114 @@ class DropoutF(Function):
                 mask = (torch.rand_like(x, dtype=mask_dtype, device=x.device) > p).to(mask_dtype) * (1.0 / (1 - p))
         else:
             mask = torch.ones_like(x, dtype=mask_dtype, device=x.device)
-        ctx.mask = mask
-        y = mask * x
-        return y, ctx
+        
+        ctx['mask'] = mask
+        return mask * x
         
     @staticmethod
-    @custom_bwd
-    def backward(ctx: Any, grad_y: torch.Tensor, grad_ctx: None) -> Tuple[torch.Tensor, None, None]:
+    def backward(ctx: Any, grad_y: torch.Tensor) -> torch.Tensor:
         """
         Performs backward pass of the dropout function.
 
         Args:
             ctx (Any): Computational context.
-            grad_y (torch.Tensor): Incoming derivative w.r.t. the dropout output. 
-            grad_ctx (None): Dummy argument, required by the autograd engine.
+            grad_y (torch.Tensor): Incoming derivative w.r.t. the dropout output.
 
         Returns:
-            Tuple[torch.Tensor, None, None]: Derivative w.r.t. the input data; dummy arguments, 
-            required by the autograd engine.
+            torch.Tensor: Derivative w.r.t. the input data.
         """
         
-        dr_grad = ctx.mask * grad_y
-        return dr_grad, None, None
+        return ctx['mask'] * grad_y
 
 
 class DifferentiableModule(Module):
     """
-    Super class of a pytorch module, which encapsulates an autograd function and whose backward pass 
+    Super class of a pytorch module, which encapsulates a differentiable function and whose backward pass 
     can be invoked manually.
     """
     
-    def __init__(self, f: Function, **params: Any) -> None:
+    def __init__(self, f: DifferentiableFunction, **params: Any) -> None:
         """
         Initializes the module.
 
         Args:
-            f (Function): Encapsulated autograd function.
-            params (Dict): Keyworded constant parameters for the autograd function.  
+            f (DifferentiableFunction): Encapsulated differentiable function.
+            **params (Any): Keyworded constant parameters for the differentiable function.  
         """
         
         super().__init__()
         f_signature = inspect.signature(f.forward).parameters
         self._f = f
-        self._args_dict = {arg_name: arg.default for arg_name, arg in f_signature.items() 
-                           if arg_name != 'ctx'}
-        self._num_necessary_args = len([arg_name for arg_name, arg_default in self._args_dict.items() 
-                                        if arg_default is inspect.Parameter.empty])
+        self._num_necessary_args = len([arg_name for arg_name, arg in f_signature.items() 
+                                        if arg.default is inspect.Parameter.empty and arg_name != 'ctx'])
         self._params = params
         self._ctx = None
     
     def forward(self, *args: Any, no_backward: bool = False, **kwargs: Any) -> Any:
         """
-        Performs forward pass of the encapsulated autograd function.
+        Performs forward pass of the encapsulated differentiable function.
 
         Args:
-            args (Any): Input data and parameters for the autograd function.
+            *args (Any): Input data and parameters for the differentiable function.
             no_backward (bool, optional): Whether computational context should not be cached for a subsequent 
             backward pass. Defaults to False.
-            kwargs (Dict): Keyworded parameters for the autograd function.
+            **kwargs (Any): Keyworded parameters for the differentiable function.
 
         Raises:
             TypeError: The number of passed arguments (including constant parameters) must the greater that or 
-            equal to the number of necessary (non-default) arguments of the invoked autograd function.
-            TypeError: The autograd function needs to specify at least one differentiable return value
+            equal to the number of necessary (non-default) arguments of the invoked differentiable function.
 
         Returns:
-            Any: Output of the autograd function
+            Any: Output of the differentiable function
         """
         
-        # merge args and kwargs, s.t. expected argument order is preserved
+        assert type(self._ctx) is dict
+        
         updated_params = {**self._params, **kwargs}
-        updated_args = []
-        arg_idx = 0
         if len(args) + len(updated_params) < self._num_necessary_args:
             raise TypeError("Number of passed arguments is too small!")
         updated_params['training'] = self.training
-        for arg_name, arg_default in self._args_dict.items():
-            if arg_name in updated_params:
-                updated_args.append(updated_params[arg_name])
-            else:
-                if arg_default is inspect.Parameter.empty:
-                    updated_args.append(args[arg_idx])
-                    arg_idx += 1
-                else:
-                    updated_args.append(arg_default)
         
-        # compute forward pass, cache the context for the backward pass
-        out = self._f.apply(*updated_args)
-        self._ctx = None if no_backward else out[-1]
-        out = out[:-1] 
-        if len(out) > 1:
-            return out
-        elif len(out) == 1:
-            return out[0]
-        else:
-            raise TypeError("No differentiable return value specified for the forward pass!")
+        # compute forward pass, activate grads and cache the context for the backward pass if intended
+        grad_mode = torch.is_grad_enabled()
+        torch.set_grad_enabled(grad_mode and not no_backward)
+        out = self._f.forward(self._ctx, *args, **updated_params)
+        torch.set_grad_enabled(grad_mode)
+        
+        return out
     
-    def backward(self, *args: Any) -> Any:
+    def backward(self, *args: Any, **kwargs: Any) -> Any:
         """
-        Performs backward pass of the encapsulated autograd function.
+        Performs backward pass of the encapsulated differentiable function.
 
         Args:
-            args (Any): Incoming derivatives for the backward pass of the autograd function.
+            *args (Any): Incoming derivatives for the backward pass of the differentiable function.
+            **kwargs (Any): Keyworded incoming derivatives for the differentiable function.
 
         Raises:
             TypeError: A computational context from a preceding forward pass is required.
-            TypeError: The autograd function needs to specify at least one returned derivative.
-
         Returns:
             Any: Derivatives w.r.t. the input data.
         """
         
-        if self._ctx is None:
-            raise TypeError("No context available. You need to run a forward pass beforehand!")
+        assert type(self._ctx) is dict
+        
+        for cached_data_name, cached_data in self._ctx.items():
+            if cached_data is None:
+                raise TypeError("Context for \"%s\" not available. You need to run a forward pass beforehand!" % cached_data_name)
         
         # compute derivatives using the cached context and incoming derivatives
-        grads = self._f.backward(self._ctx, *args, None)
+        # deactivate grads temporarily, since no second-order derivatives are to be computed
+        grad_mode = torch.is_grad_enabled()
+        torch.set_grad_enabled(False)
+        grads = self._f.backward(self._ctx, *args, **kwargs)
+        torch.set_grad_enabled(False)
+        
         # empty the context cache
-        self._ctx = None
-        out = tuple(grad for grad in grads if grad is not None)
-        if len(out) > 1:
-            return out
-        elif len(out) == 1:
-            return out[0]
-        else:
-            raise TypeError("No return value specified for the backward pass!")
+        for cached_data_name, cached_data in self._ctx.items():
+            self._ctx[cached_data_name] = None
+        
+        return grads
 
 
 class Dropout(DifferentiableModule):
@@ -239,6 +261,7 @@ class Dropout(DifferentiableModule):
         """
         
         super().__init__(DropoutF, p=p)
+        self._ctx = {'mask': None}
 
 
 class Softmax(DifferentiableModule):
@@ -248,3 +271,4 @@ class Softmax(DifferentiableModule):
         """Initializes the manually differentiable softmax module."""
         
         super().__init__(SoftmaxF)
+        self._ctx = {'dim': None, 'y': None}
