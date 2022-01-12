@@ -401,7 +401,8 @@ class TiedAxialSelfAttention2d(nn.Module):
                                                                                              no_backward=True)  # [B, H, EC, E, L]
                 col_out[chunk_slice] = torch.einsum('bhijl, bjlhc->bilhc', col_attn_maps_chunk, v)  # [B, EC, L, H, DH]
                 del col_attn_maps_chunk
-                torch.cuda.synchronize()
+                if torch.cuda._initialized:
+                    torch.cuda.synchronize()
             col_out = col_out.reshape(B, E, L, H*DH)  # [B, E, L, D]
             
             return col_out
@@ -499,7 +500,8 @@ class TiedAxialSelfAttention2d(nn.Module):
                     del a
                     del a_grad
                     del temp
-                    torch.cuda.synchronize()
+                    if torch.cuda._initialized:
+                        torch.cuda.synchronize()
 
             return q_grad, k_grad, v_grad, None, None, None, None
 
