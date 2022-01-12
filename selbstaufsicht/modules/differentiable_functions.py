@@ -245,6 +245,7 @@ class DifferentiableModule(Module):
         # empty the context cache
         for cached_data_name, cached_data in self._ctx.items():
             self._ctx[cached_data_name] = None
+        torch.cuda.synchronize()
         
         return grads
 

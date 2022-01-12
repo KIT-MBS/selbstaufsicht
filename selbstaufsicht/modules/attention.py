@@ -401,6 +401,7 @@ class TiedAxialSelfAttention2d(nn.Module):
                                                                                              no_backward=True)  # [B, H, EC, E, L]
                 col_out[chunk_slice] = torch.einsum('bhijl, bjlhc->bilhc', col_attn_maps_chunk, v)  # [B, EC, L, H, DH]
                 del col_attn_maps_chunk
+                torch.cuda.synchronize()
             col_out = col_out.reshape(B, E, L, H*DH)  # [B, E, L, D]
             
             return col_out
@@ -498,6 +499,7 @@ class TiedAxialSelfAttention2d(nn.Module):
                     del a
                     del a_grad
                     del temp
+                    torch.cuda.synchronize()
 
             return q_grad, k_grad, v_grad, None, None, None, None
 
@@ -538,11 +540,17 @@ class TiedAxialSelfAttention2d(nn.Module):
 
         q = q * (self.dim_head * E) ** -0.5
         # NOTE row attn
-        if need_attn_maps:
-            row_out, row_attn_maps = self.row_attn(q, k, v, attn_mask, need_attn_maps)
+        if attn_chunk_size > 0:
+            if need_attn_maps:
+                row_out, row_attn_maps = checkpoint.checkpoint(self.row_attn, q, k, v, attn_mask, need_attn_maps)
+            else:
+                row_out = checkpoint.checkpoint(self.row_attn, q, k, v, attn_mask, need_attn_maps)
         else:
-            row_out = self.row_attn(q, k, v, attn_mask, need_attn_maps)
-
+            if need_attn_maps:
+                row_out, row_attn_maps = self.row_attn(q, k, v, attn_mask, need_attn_maps)
+            else:
+                row_out = self.row_attn(q, k, v, attn_mask, need_attn_maps)
+        
         out = x + row_out
         out = self.norm1(out)
 
