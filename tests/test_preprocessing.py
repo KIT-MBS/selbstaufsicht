@@ -419,14 +419,15 @@ def test_compose(msa_sample):
 
 
 def test_distance_from_chain(bio_structure):
-    dfc = DistanceFromChain(1)
+    dfc = DistanceFromChain(2)
     x = None
     y = {'structure': bio_structure}
     x, y = dfc(x, y)
 
     distances_ref = torch.tensor([
-        [0., 1.],
-        [1., 0.],
+        [0., 1., 0.],
+        [1., 0., 1.],
+        [0., 1., 0.]
     ])
     
     testing.assert_close(y['distances'], distances_ref)
