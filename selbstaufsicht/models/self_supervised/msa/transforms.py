@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 import torch
+import numpy as np
 from Bio.Align import MultipleSeqAlignment
 import math
 import random
@@ -294,46 +295,26 @@ class ExplicitPositionalEncoding():
                 raise
 
         return x, y
-
-
-class DistanceFromChain():
-
-    def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
-        """
-        Takes a biopython structure containing a single chain and returns a distance map.
-        Args:
-            structure (Bio.PDB.Structure): Molecular structure to generate distance map from.
-        Returns:
-            torch.Tensor [L', L'] residue distance map
-        """
-        structure = y['structure']
-        # TODO missing residue check?
-        assert len(structure) == 1
-        assert len(structure[0]) == 1
-
-        def mindist(r1, r2):
-            distances = torch.tensor([[a1 - a2 for a2 in r2] for a1 in r1])
-            return torch.min(distances)
-
-        chain = structure[0].get_list()[0]
-        distances = torch.zeros((len(chain), len(chain)))
-        for i, res1 in enumerate(chain.get_list()):
-            for j in range(i + 1, len(chain)):
-                res2 = chain.get_list()[j]
-                distances[i, j] = mindist(res1, res2)
-
-        distances = distances + distances.t()
-        y['distances'] = distances
-        return x, y
     
 
-class DistanceFromChain_vec():
+class DistanceFromChain():
+    def __init__(self, chunk_size: int = 600):
+        """
+        Initializes distance-from-chain computation.
+
+        Args:
+            chunk_size (int, optional): Chunk size in residuum dimension. Defaults to 600.
+        """
+        
+        self.chunk_size = chunk_size
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
         """
         Takes a biopython structure containing a single chain and returns a distance map.
+        
         Args:
             structure (Bio.PDB.Structure): Molecular structure to generate distance map from.
+            
         Returns:
             torch.Tensor [L', L'] residue distance map
         """
@@ -342,33 +323,41 @@ class DistanceFromChain_vec():
         assert len(structure) == 1
         assert len(structure[0]) == 1
 
-        def min_dist(r1, r2):
-            r1_t = torch.tensor(r1).expand(-1, r2_t.shape[0], 3)
-            r2_t = torch.tensor(r2).expand(-1, r1_t.shape[0], 3).permute(1, 0, 2)
-            
-            distances = torch.linalg.vector_norm(r1_t - r2_t, dim=-1)
-            return torch.min(distances)
+        # TODO Match various GPUs, depending on DataLoaderID
+        if torch.cuda.is_available():
+            device = 'cuda'
+        else:
+            device = 'cpu'
 
         chain = structure[0].get_list()[0]
         atom_coords = [[a.get_coord() for a in r] for r in chain]
-        nums_atoms = [len(atom_chords_r) for atom_chords_r in atom_chords]
-        max_num_atoms = max(nums_atoms)
+        nums_atoms = [len(atom_coords_r) for atom_coords_r in atom_coords]
+        num_atoms_max = max(nums_atoms)
         num_residues = len(atom_coords)
-        atom_coords_t = torch.full((num_residues, max_num_atoms, 3), torch.inf)  # [R, A, 3]
+        num_chunks = int(math.ceil(num_residues / self.chunk_size))
+        chunking_remainder = num_residues % self.chunk_size
+        
+        distances = torch.zeros((num_residues, num_residues), device=device)
+        atom_coords_t = torch.full((num_residues, num_atoms_max, 3), torch.inf, device=device)  # [R, A, 3]
         for idx in range(num_residues):
-            atom_chords_rt = torch.tensor(atom_coords[idx])
-            atom_coords_t[idx, :nums_atoms[idx], :] = atom_chords_rt
-        
-        # shift to gpu if possible
-        if torch.cuda.is_available():
-            atom_coords_t = atom_coords_t.cuda()
-        
-        atom_coords_t1 = atom_coords_t.view(num_residues, 1, max_num_atoms, 1, 3).expand(num_residues, num_residues, max_num_atoms, max_num_atoms, 3)  # [R, R, A, A, 3]
-        atom_coords_t2 = atom_coords_t1.permute(1, 0, 3, 2, 4)  # [R, R, A, A, 3]
-        distances = torch.linalg.vector_norm(atom_coords_t1 - atom_coords_t2, dim=-1)  # [R, R, A, A]
-        distances = torch.amin(distances, dim=(-1, -2))  # [R, R]
-        distances = distances.cpu()
-        
+            atom_coords_rt = torch.tensor(np.array(atom_coords[idx]), device=device)
+            atom_coords_t[idx, :nums_atoms[idx], :] = atom_coords_rt
+
+        for idx in range(num_chunks):
+            residues_slice_start = idx * self.chunk_size
+            residues_slice_end = (idx + 1) * self.chunk_size
+            if idx == num_chunks - 1 and chunking_remainder > 0:
+                residues_slice_end += chunking_remainder
+            residues_slice = slice(residues_slice_start, residues_slice_end)
+            
+            atom_coords_t1 = atom_coords_t[residues_slice, :, :].view(-1, 1, num_atoms_max, 1, 3).expand(-1, num_residues, num_atoms_max, num_atoms_max, 3)  # [RC, R, A, A, 3]
+            atom_coords_t2 = atom_coords_t.view(1, num_residues, 1, num_atoms_max, 3).expand(atom_coords_t1.shape[0], num_residues, num_atoms_max, num_atoms_max, 3)  # [RC, R, A, A, 3]
+
+            distances_chunk = torch.linalg.vector_norm(atom_coords_t1 - atom_coords_t2, dim=-1)  # [RC, R, A, A]
+            distances_chunk = torch.nan_to_num(distances_chunk, nan=torch.inf)
+            distances_chunk = torch.amin(distances_chunk, dim=(-1, -2))  # [RC, R]
+            distances[residues_slice, :] = distances_chunk
+
         y['distances'] = distances
         return x, y
 
