@@ -340,7 +340,6 @@ class DistanceFromChain():
         num_atoms_max = max(nums_atoms)
         num_residues = len(atom_coords)
         num_chunks = int(math.ceil(num_residues / self.chunk_size))
-        chunking_remainder = num_residues % self.chunk_size
         
         distances = torch.zeros((num_residues, num_residues), device=device)
         atom_coords_t = torch.full((num_residues, num_atoms_max, 3), torch.inf, device=device)  # [R, A, 3]
@@ -349,11 +348,7 @@ class DistanceFromChain():
             atom_coords_t[idx, :nums_atoms[idx], :] = atom_coords_rt
 
         for idx in range(num_chunks):
-            residues_slice_start = idx * self.chunk_size
-            residues_slice_end = (idx + 1) * self.chunk_size
-            if idx == num_chunks - 1 and chunking_remainder > 0:
-                residues_slice_end += chunking_remainder
-            residues_slice = slice(residues_slice_start, residues_slice_end)
+            residues_slice = slice(idx * self.chunk_size, (idx + 1) * self.chunk_size)
             
             atom_coords_t1 = atom_coords_t[residues_slice, :, :].view(-1, 1, num_atoms_max, 1, 3).expand(-1, num_residues, num_atoms_max, num_atoms_max, 3)  # [RC, R, A, A, 3]
             atom_coords_t2 = atom_coords_t.view(1, num_residues, 1, num_atoms_max, 3).expand(atom_coords_t1.shape[0], num_residues, num_atoms_max, num_atoms_max, 3)  # [RC, R, A, A, 3]
