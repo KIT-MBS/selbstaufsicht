@@ -11,6 +11,7 @@ from selbstaufsicht.transforms import SelfSupervisedCompose
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
+from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
 
@@ -416,6 +417,20 @@ def test_compose(msa_sample):
 
     testing.assert_close(sample['msa'], msa_ref, rtol=0, atol=0)
 
+
+def test_distance_from_chain(bio_structure):
+    dfc = DistanceFromChain(1)
+    x = None
+    y = {'structure': bio_structure}
+    x, y = dfc(x, y)
+
+    distances_ref = torch.tensor([
+        [0., 1.],
+        [1., 0.],
+    ])
+    
+    testing.assert_close(y['distances'], distances_ref)
+    
 
 if __name__ == '__main__':
     pass
