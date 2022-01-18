@@ -323,9 +323,14 @@ class DistanceFromChain():
         assert len(structure) == 1
         assert len(structure[0]) == 1
 
-        # TODO Match various GPUs, depending on DataLoaderID
         if torch.cuda.is_available():
-            device = 'cuda'
+            worker_info = torch.utils.data.get_worker_info()
+            if worker_info is None:
+                device = 'cuda'
+            else:
+                # only as many data loaders as GPUs are allowed
+                assert worker_info.num_workers <= torch.cuda.device_count()
+                device = 'cuda:%d' % worker_info.id
         else:
             device = 'cpu'
 
