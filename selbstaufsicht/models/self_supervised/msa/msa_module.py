@@ -144,6 +144,10 @@ class MSAModel(pl.LightningModule):
                 print('WARN: contrastive task is not really going to work with batch_size==1')
             y['contrastive'] = self.task_heads['contrastive'](self(x['contrastive'], x.get('padding_mask_contrastive', None), x.get('aux_features_contrastive', None)), x)
 
+        # TODO: Dirty hack
+        if 'jigsaw' in self.tasks and not y['jigsaw'].is_cuda:
+            y['jigsaw'] = y['jigsaw'].to(self.device)
+                    
         preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
