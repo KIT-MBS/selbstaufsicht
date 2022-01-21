@@ -138,7 +138,7 @@ class RandomMSAShuffling():
                  delimiter_token: int = None,
                  num_partitions: int = None,
                  num_classes: int = None,
-                 euclid_emb: bool = False,
+                 euclid_emb: torch.Tensor = None,
                  contrastive: bool = False):
         """
         Initializes random MSA shuffling.
@@ -151,7 +151,7 @@ class RandomMSAShuffling():
             delimiter_token (int, optional): Special token that is used to separate shuffled partitions from each other. Defaults to None.
             num_partitions (int, optional): Number of shuffled partitions per sequence. Needs to be specified, if \"permutations\" is unspecified. Defaults to None.
             num_classes (int, optional): Number of allowed permutations. Needs to be specified, if \"permutations\" is unspecified. Defaults to None.
-            euclid_emb (bool, optional): Whether the Euclidean embedding of the discrete permutation metric is used. Defaults to False.
+            euclid_emb (torch.Tensor, optional): Euclidean embedding of the discrete permutation metric. Defaults to None.
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
         Raises:
@@ -162,26 +162,24 @@ class RandomMSAShuffling():
             raise ValueError("Permutations have to be given explicitely or parameters to generate them.")
 
         if permutations is None:
-            perm_indices = list(range(1, math.factorial(num_partitions)))
-            random.shuffle(perm_indices)
+            self.perm_indices = list(range(1, math.factorial(num_partitions)))
+            random.shuffle(self.perm_indices)
             # NOTE always include 'no transformation'
-            perm_indices.insert(0, 0)
-            self.permutations = torch.stack([lehmer_encode(i, num_partitions) for i in perm_indices[:num_classes]]).unsqueeze(0)
+            self.perm_indices.insert(0, 0)
+            self.permutations = torch.stack([lehmer_encode(i, num_partitions) for i in self.perm_indices[:num_classes]]).unsqueeze(0)
+            self.perm_indices = torch.tensor(self.perm_indices)
         else:
             # NOTE attribute permutations is expected to have shape [num_classes, num_partitions]
             # NOTE add singleton dim for later expansion to num_seq dim
+            self.perm_indices = None
             self.permutations = permutations.unsqueeze(0)
         self.num_partitions = max(self.permutations[0, 0])
         self.num_classes = len(self.permutations[0])
         self.minleader = minleader
         self.mintrailer = mintrailer
         self.delimiter_token = delimiter_token
-        self.euclid_emb = None
+        self.euclid_emb = euclid_emb
         self.contrastive = contrastive
-        
-        if euclid_emb:
-            d0 = perm_gram_matrix(self.permutations)
-            self.euclid_emb = embed_finite_metric_space(d0)
 
     def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """
@@ -210,7 +208,10 @@ class RandomMSAShuffling():
         if self.euclid_emb is None:
             y['jigsaw'] = perm_sampling
         else:
-            y['jigsaw'] = self.euclid_emb[perm_sampling, :]
+            if self.perm_indices is None:
+                # TODO: Implement inverse lehmer code to solve?
+                raise TypeError("Fixed permutations and euclidean embedding are not compatible!")
+            y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :]
 
         if self.contrastive:
             contrastive_perm_sampling = torch.randint(0, self.num_classes, (num_seq,))

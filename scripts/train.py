@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 from functools import partial
+import math
 import numpy as np
 import os
 import random
@@ -12,7 +13,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.plugins import DDPPlugin, DeepSpeedPlugin
 
-from selbstaufsicht.utils import data_loader_worker_init
+from selbstaufsicht.utils import data_loader_worker_init, lehmer_encode
 from selbstaufsicht import models
 from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downstream_transforms, MSACollator
@@ -118,6 +119,30 @@ def main():
             raise ValueError("Unknown DP strategy: %s" % args.dp_strategy)
     else:
         dp_strategy = None
+        
+    if args.jigsaw_euclid_emb:
+        # for num_partitions > 5, the euclidean embedding becomes highly inefficient
+        if args.jigsaw_partitions > 5:
+            raise ValueError("Euclidean embedding is too inefficient for num_partitions=%d!" % args.jigsaw_partitions)
+        
+        # check if embedding is available on disk
+        emb_filename = 'jigsaw_euclid_emb_%d.pt' % args.jigsaw_partitions
+        if os.path.isfile(emb_filename):
+            # load embedding from disk
+            jigsaw_euclid_emb = torch.load(emb_filename)
+        else:
+            # compute embedding only on one GPU, then shutdown
+            rank = os.environ['NODE_RANK']
+            world_size = os.environ['WORLD_SIZE']
+            if rank == 0:
+                perm_indices = list(range(0, math.factorial(args.jigsaw_partitions)))
+                perms = torch.stack([lehmer_encode(i, args.jigsaw_partitions) for i in perm_indices])
+                d0 = perm_gram_matrix(perms)
+                emb = embed_finite_metric_space(d0)
+                torch.save(emb, emb_filename)
+                print("Embedding computed and saved. Please restart the script.")
+            print("Process %d/%d shutdown." % (rank, world_size))
+            exit(0)
 
     # TODO should take token mapping?
     transform, task_heads, task_losses, metrics = get_tasks(tasks,
@@ -131,7 +156,7 @@ def main():
                                                             jigsaw_partitions=args.jigsaw_partitions,
                                                             jigsaw_classes=args.jigsaw_permutations,
                                                             jigsaw_linear=not args.jigsaw_nonlinear,
-                                                            jigsaw_euclid_emb=args.jigsaw_euclid_emb,
+                                                            jigsaw_euclid_emb=jigsaw_euclid_emb,
                                                             simclr_temperature=args.contrastive_temperature)
 
     root = os.environ['DATA_PATH']

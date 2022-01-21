@@ -27,7 +27,7 @@ def get_tasks(tasks: List[str],
               jigsaw_classes: int = 4,
               jigsaw_padding_token: int = -1,
               jigsaw_linear: bool = True,
-              jigsaw_euclid_emb: bool = False,
+              jigsaw_euclid_emb: torch.Tensor = None,
               simclr_temperature: float = 100.,
               ) -> Tuple[transforms.SelfSupervisedCompose, Dict[str, Module], Dict[str, Module], Dict[str, ModuleDict]]:
     """
@@ -46,7 +46,7 @@ def get_tasks(tasks: List[str],
         jigsaw_classes (int, optional): Number of allowed permutations for jigsaw. Defaults to 4.
         jigsaw_padding_token (int, optional): Special token that indicates padded sequences in the jigsaw label. Defaults to -1.
         jigsaw_linear (bool, optional): if True linear head, otherwise two layer MLP. Defaults to True.
-        jigsaw_euclid_emb (bool, optional): Whether the Euclidean embedding of the discrete permutation metric is used. Defaults to False.
+        jigsaw_euclid_emb (bool, optional): Euclidean embedding of the discrete permutation metric. Defaults to None.
         simclr_temperature (float, optional): Distillation temperatur for the SimCLR loss of contrastive learning. Defaults to 100..
 
     Raises:
@@ -99,7 +99,7 @@ def get_tasks(tasks: List[str],
     if 'jigsaw' in tasks:
         head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear)
         task_heads['jigsaw'] = head
-        if jigsaw_euclid_emb:
+        if jigsaw_euclid_emb is not None:
             task_losses['jigsaw'] = EmbeddedJigsawLoss(ignore_value=jigsaw_padding_token)
         else:
             task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
