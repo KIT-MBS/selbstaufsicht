@@ -67,6 +67,8 @@ class JigsawHead(nn.Module):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(JigsawHead, self).__init__()
         self.euclid_emb = euclid_emb
+        if self.euclid_emb is not None:
+            self.euclid_emb = self.euclid_emb.to(device)
         if proj_linear:
             self.proj = nn.Linear(d, num_classes, **factory_kwargs)
         else:
