@@ -9,7 +9,7 @@ from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
-from selbstaufsicht.modules import NT_Xent_Loss, Accuracy
+from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawLoss
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
 # NOTE mask and padding tokens can not be reconstructed
@@ -27,6 +27,7 @@ def get_tasks(tasks: List[str],
               jigsaw_classes: int = 4,
               jigsaw_padding_token: int = -1,
               jigsaw_linear: bool = True,
+              jigsaw_euclid_emb: bool = False,
               simclr_temperature: float = 100.,
               ) -> Tuple[transforms.SelfSupervisedCompose, Dict[str, Module], Dict[str, Module], Dict[str, ModuleDict]]:
     """
@@ -45,6 +46,7 @@ def get_tasks(tasks: List[str],
         jigsaw_classes (int, optional): Number of allowed permutations for jigsaw. Defaults to 4.
         jigsaw_padding_token (int, optional): Special token that indicates padded sequences in the jigsaw label. Defaults to -1.
         jigsaw_linear (bool, optional): if True linear head, otherwise two layer MLP. Defaults to True.
+        jigsaw_euclid_emb (bool, optional): Whether the Euclidean embedding of the discrete permutation metric is used. Defaults to False.
         simclr_temperature (float, optional): Distillation temperatur for the SimCLR loss of contrastive learning. Defaults to 100..
 
     Raises:
@@ -74,6 +76,7 @@ def get_tasks(tasks: List[str],
                 delimiter_token=rna2index['DELIMITER_TOKEN'],
                 num_partitions=jigsaw_partitions,
                 num_classes=jigsaw_classes,
+                euclid_emb=jigsaw_euclid_emb,
                 contrastive=contrastive)
         )
     if 'inpainting' in tasks:
@@ -96,7 +99,10 @@ def get_tasks(tasks: List[str],
     if 'jigsaw' in tasks:
         head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear)
         task_heads['jigsaw'] = head
-        task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
+        if jigsaw_euclid_emb:
+            task_losses['jigsaw'] = EmbeddedJigsawLoss(ignore_value=jigsaw_padding_token)
+        else:
+            task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
         metrics['jigsaw'] = ModuleDict({'acc': Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)})
     if 'inpainting' in tasks:
         head = InpaintingHead(dim, len(rna2index) - 2)  # NOTE never predict mask token or padding token

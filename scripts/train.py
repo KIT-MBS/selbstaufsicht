@@ -67,6 +67,7 @@ def main():
                         where each duplicate is labeled with a different permutation in numerical order. Value 0 disables this mechanism."""
                         )
     parser.add_argument('--jigsaw-nonlinear', action='store_true', help="Uses a non-linear projection head for the jigsaw task.")
+    parser.add_argument('--jigsaw-euclid-emb', action='store_true', help="Uses an euclidean embedding of the discrete permutation metric for the jigsaw task.")
     parser.add_argument('--jigsaw-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
     parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
     parser.add_argument('--contrastive-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
@@ -130,6 +131,7 @@ def main():
                                                             jigsaw_partitions=args.jigsaw_partitions,
                                                             jigsaw_classes=args.jigsaw_permutations,
                                                             jigsaw_linear=not args.jigsaw_nonlinear,
+                                                            jigsaw_euclid_emb=args.jigsaw_euclid_emb,
                                                             simclr_temperature=args.contrastive_temperature)
 
     root = os.environ['DATA_PATH']

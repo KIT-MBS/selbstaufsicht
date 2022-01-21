@@ -5,7 +5,7 @@ from Bio.Align import MultipleSeqAlignment
 import math
 import random
 
-from selbstaufsicht.utils import lehmer_encode
+from selbstaufsicht.utils import lehmer_encode, perm_gram_matrix, embed_finite_metric_space
 
 # TODO task scheduling a la http://bmvc2018.org/contents/papers/0345.pdf
 
@@ -138,6 +138,7 @@ class RandomMSAShuffling():
                  delimiter_token: int = None,
                  num_partitions: int = None,
                  num_classes: int = None,
+                 euclid_emb: bool = False,
                  contrastive: bool = False):
         """
         Initializes random MSA shuffling.
@@ -150,6 +151,7 @@ class RandomMSAShuffling():
             delimiter_token (int, optional): Special token that is used to separate shuffled partitions from each other. Defaults to None.
             num_partitions (int, optional): Number of shuffled partitions per sequence. Needs to be specified, if \"permutations\" is unspecified. Defaults to None.
             num_classes (int, optional): Number of allowed permutations. Needs to be specified, if \"permutations\" is unspecified. Defaults to None.
+            euclid_emb (bool, optional): Whether the Euclidean embedding of the discrete permutation metric is used. Defaults to False.
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
         Raises:
@@ -174,7 +176,12 @@ class RandomMSAShuffling():
         self.minleader = minleader
         self.mintrailer = mintrailer
         self.delimiter_token = delimiter_token
+        self.euclid_emb = None
         self.contrastive = contrastive
+        
+        if euclid_emb:
+            d0 = perm_gram_matrix(self.permutations)
+            self.euclid_emb = embed_finite_metric_space(d0)
 
     def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """
@@ -191,22 +198,25 @@ class RandomMSAShuffling():
         num_seq = x['msa'].size(0)
         if 'jigsaw' in y:
             # TODO: ugly, only works for fixed subsampling mode
-            label = y['jigsaw'][:num_seq]
+            perm_sampling = y['jigsaw'][:num_seq]
         else:
-            label = torch.randint(0, self.num_classes, (num_seq,))
+            perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
         shuffled_msa = _jigsaw(x['msa'],
                                self.permutations.expand(num_seq, -1, -1)[range(num_seq),
-                               label], delimiter_token=self.delimiter_token,
+                               perm_sampling], delimiter_token=self.delimiter_token,
                                minleader=self.minleader,
                                mintrailer=self.mintrailer)
         x['msa'] = shuffled_msa
-        y['jigsaw'] = label
+        if self.euclid_emb is None:
+            y['jigsaw'] = perm_sampling
+        else:
+            y['jigsaw'] = self.euclid_emb[perm_sampling, :]
 
         if self.contrastive:
-            contrastive_perm = torch.randint(0, self.num_classes, (num_seq,))
+            contrastive_perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
             x['contrastive'] = _jigsaw(x['contrastive'],
                                        self.permutations.expand(num_seq, -1, -1)[range(num_seq),
-                                       contrastive_perm],
+                                       contrastive_perm_sampling],
                                        delimiter_token=self.delimiter_token,
                                        minleader=self.minleader,
                                        mintrailer=self.mintrailer)
