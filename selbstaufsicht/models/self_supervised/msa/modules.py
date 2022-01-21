@@ -47,7 +47,7 @@ class JigsawHead(nn.Module):
                  d: int,
                  num_classes: int,
                  proj_linear: bool = True,
-                 euclid_emb: bool = False,
+                 euclid_emb: torch.Tensor = None,
                  layer_norm_eps: float = 1e-5,
                  device: Union[str, torch.device] = None,
                  dtype: torch.dtype = None) -> None:
@@ -58,7 +58,7 @@ class JigsawHead(nn.Module):
             d (int): Embedding dimensionality.
             num_classes (int): Number of classes (number of allowed permutations)
             proj_linear (bool): if True uses a linear projection head, if False uses two layers with LayerNorm and ReLU, Defaults to True.
-            euclid_emb (bool): Whether an euclidean embedding of the discrete permutation metric is used. Defaults to False.
+            euclid_emb (torch.Tensor): Euclidean embedding of the discrete permutation metric. Defaults to None.
             layer_norm_eps (float, optional): Epsilon used by LayerNormalization. Defaults to 1e-5.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
@@ -92,7 +92,7 @@ class JigsawHead(nn.Module):
         # latent is of shape [B, E, L, D]
         latent = latent[:, :, 0, :]  # [B, E, D]
         if self.euclid_emb:
-            return self.proj(latent)  # [B, E, NClasses]
+            return self.euclid_emb[torch.argmax(self.proj(latent), dim=-1), :]  # [B, E, M]
         else:
             return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
 
