@@ -5,7 +5,7 @@ from Bio.Align import MultipleSeqAlignment
 import math
 import random
 
-from selbstaufsicht.utils import lehmer_encode, perm_gram_matrix, embed_finite_metric_space
+from selbstaufsicht.utils import lehmer_encode
 
 # TODO task scheduling a la http://bmvc2018.org/contents/papers/0345.pdf
 

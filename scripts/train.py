@@ -13,7 +13,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.plugins import DDPPlugin, DeepSpeedPlugin
 
-from selbstaufsicht.utils import data_loader_worker_init, lehmer_encode
+from selbstaufsicht.utils import data_loader_worker_init, lehmer_encode, perm_gram_matrix, embed_finite_metric_space
 from selbstaufsicht import models
 from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downstream_transforms, MSACollator
@@ -131,18 +131,17 @@ def main():
             # load embedding from disk
             jigsaw_euclid_emb = torch.load(emb_filename)
         else:
-            # compute embedding only on one GPU, then shutdown
-            rank = os.environ['NODE_RANK']
-            world_size = os.environ['WORLD_SIZE']
-            if rank == 0:
-                perm_indices = list(range(0, math.factorial(args.jigsaw_partitions)))
-                perms = torch.stack([lehmer_encode(i, args.jigsaw_partitions) for i in perm_indices])
-                d0 = perm_gram_matrix(perms)
-                emb = embed_finite_metric_space(d0)
-                torch.save(emb, emb_filename)
-                print("Embedding computed and saved. Please restart the script.")
-            print("Process %d/%d shutdown." % (rank, world_size))
+            if num_gpus > 0:
+                raise ValueError("To compute the euclidean embedding, please pass num_gpus=0.")
+            perm_indices = list(range(0, math.factorial(args.jigsaw_partitions)))
+            perms = torch.stack([lehmer_encode(i, args.jigsaw_partitions) for i in perm_indices])
+            d0 = perm_gram_matrix(perms)
+            emb = embed_finite_metric_space(d0)
+            torch.save(emb, emb_filename)
+            print("Embedding computed and saved. Please restart the script.")
             exit(0)
+    else:
+        jigsaw_euclid_emb = None
 
     # TODO should take token mapping?
     transform, task_heads, task_losses, metrics = get_tasks(tasks,
