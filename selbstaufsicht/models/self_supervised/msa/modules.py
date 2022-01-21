@@ -91,7 +91,7 @@ class JigsawHead(nn.Module):
 
         # latent is of shape [B, E, L, D]
         latent = latent[:, :, 0, :]  # [B, E, D]
-        if self.euclid_emb:
+        if self.euclid_emb is not None:
             return self.euclid_emb[torch.argmax(self.proj(latent), dim=-1), :]  # [B, E, M]
         else:
             return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
