@@ -149,8 +149,6 @@ class MSAModel(pl.LightningModule):
         if 'jigsaw' in self.tasks:
             if not y['jigsaw'].is_cuda:
                 y['jigsaw'] = y['jigsaw'].to(self.device)
-            if not preds['jigsaw'].is_cuda:
-                preds['jigsaw'] = preds['jigsaw'].to(self.device)
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
             for m in self.metrics[task]:

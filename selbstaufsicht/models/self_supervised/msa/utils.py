@@ -97,7 +97,9 @@ def get_tasks(tasks: List[str],
     task_heads = ModuleDict()
     task_losses = dict()
     if 'jigsaw' in tasks:
-        head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear, euclid_emb=jigsaw_euclid_emb)
+        if jigsaw_euclid_emb is not None:
+            jigsaw_classes = jigsaw_euclid_emb.shape[1]
+        head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear, euclid_emb=jigsaw_euclid_emb is not None)
         task_heads['jigsaw'] = head
         if jigsaw_euclid_emb is not None:
             task_losses['jigsaw'] = EmbeddedJigsawLoss(ignore_value=jigsaw_padding_token)
