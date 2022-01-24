@@ -145,10 +145,6 @@ class MSAModel(pl.LightningModule):
             y['contrastive'] = self.task_heads['contrastive'](self(x['contrastive'], x.get('padding_mask_contrastive', None), x.get('aux_features_contrastive', None)), x)
                     
         preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
-        # TODO: Dirty hack
-        if 'jigsaw' in self.tasks:
-            if not y['jigsaw'].is_cuda:
-                y['jigsaw'] = y['jigsaw'].to(self.device)
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
             for m in self.metrics[task]:
