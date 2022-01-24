@@ -9,7 +9,7 @@ from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
-from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawLoss
+from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
 # NOTE mask and padding tokens can not be reconstructed
@@ -99,15 +99,19 @@ def get_tasks(tasks: List[str],
     if 'jigsaw' in tasks:
         if jigsaw_euclid_emb is not None:
             jigsaw_classes = jigsaw_euclid_emb.shape[1]
+            acc_metric = EmbeddedJigsawAccuracy(jigsaw_euclid_emb, ignore_value=jigsaw_padding_token)
+            loss_fn = EmbeddedJigsawLoss(ignore_value=jigsaw_padding_token)
+        else:
+            acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
+            loss_fn = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
+
         head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear, euclid_emb=jigsaw_euclid_emb is not None)
         task_heads['jigsaw'] = head
-        if jigsaw_euclid_emb is not None:
-            task_losses['jigsaw'] = EmbeddedJigsawLoss(ignore_value=jigsaw_padding_token)
-        else:
-            task_losses['jigsaw'] = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
-        metrics['jigsaw'] = ModuleDict({'acc': Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token, preds_one_hot=jigsaw_euclid_emb is None)})
+        task_losses['jigsaw'] = loss_fn
+        metrics['jigsaw'] = ModuleDict({'acc': acc_metric})
     if 'inpainting' in tasks:
-        head = InpaintingHead(dim, len(rna2index) - 2)  # NOTE never predict mask token or padding token
+        # NOTE never predict mask token or padding token
+        head = InpaintingHead(dim, len(rna2index) - 2)
         task_heads['inpainting'] = head
 
         task_losses['inpainting'] = CrossEntropyLoss()

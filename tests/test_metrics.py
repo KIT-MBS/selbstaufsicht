@@ -2,7 +2,7 @@ import torch
 import torch.testing as testing
 import pytest
 
-from selbstaufsicht.modules import Accuracy, EmbeddedJigsawLoss
+from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss
 from selbstaufsicht.utils import lehmer_encode, perm_metric, perm_gram_matrix, embed_finite_metric_space
 
 
@@ -40,6 +40,44 @@ def test_accuracy():
         acc = accuracy_metric(preds, target)
     
     assert str(excinfo.value) == "Shapes must match except for \'class_dim\'!"
+    
+    
+def test_embedded_jigsaw_accuracy():
+    euclid_emb = torch.Tensor([[  0.0,  0.0,  0.0,  0.0],
+                               [  1.0,  1.0,  0.0,  0.0],
+                               [  0.0,  0.0,  1.0,  1.0],
+                               [  1.0,  1.0,  1.0,  1.0]])
+    
+    preds = torch.tensor([[[  1.0,  1.0,  1.0,  1.0],
+                           [  0.0,  0.0,  0.0,  0.0]], 
+                          [[  0.0,  0.0,  0.0,  0.0],
+                           [  1.0,  1.0,  1.0,  1.0]],
+                          [[  1.0,  1.0,  1.0,  1.0],
+                           [  0.0,  0.0,  0.0,  0.0]],
+                          [[ 42.0, 42.0, 42.0, 42.0],
+                           [ 42.0, 42.0, 42.0, 42.0]]])
+    target = torch.tensor([[[  1.0,  1.0,  0.0,  0.0],
+                            [  0.0,  0.0,  1.0,  1.0]], 
+                           [[  0.0,  0.0,  1.0,  1.0],
+                            [  1.0,  1.0,  0.0,  0.0]],
+                           [[  1.0,  1.0,  1.0,  1.0],
+                            [  0.0,  0.0,  0.0,  0.0]],
+                           [[ -1.0, -1.0, -1.0, -1.0],
+                            [ -1.0, -1.0, -1.0, -1.0]]])
+    
+    accuracy_metric = EmbeddedJigsawAccuracy(euclid_emb)
+    
+    acc = accuracy_metric(preds, target)
+    acc_ref = torch.tensor(2 / 6)
+    
+    testing.assert_close(acc, acc_ref, atol=1e-4, rtol=1e-3)
+    
+    # Error Case: Different shapes
+    preds = preds.repeat(2, 1, 1)
+    with pytest.raises(AssertionError) as excinfo:
+        acc = accuracy_metric(preds, target)
+    
+    assert str(excinfo.value) == "Shapes must match!"
     
     
 def test_embedded_jigsaw_loss():
