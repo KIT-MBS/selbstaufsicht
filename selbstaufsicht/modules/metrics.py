@@ -63,6 +63,7 @@ class EmbeddedJigsawAccuracy(Accuracy):
         
         super(EmbeddedJigsawAccuracy, self).__init__(ignore_index=ignore_value, preds_one_hot=False)
         self.euclid_emb = euclid_emb
+        self.euclid_emb_device_flag = False
         self.ignore_value = ignore_value
         
     def permutation_indices(self, x: torch.Tensor) -> torch.Tensor:
@@ -106,6 +107,11 @@ class EmbeddedJigsawAccuracy(Accuracy):
         """
         
         assert preds.shape == target.shape, "Shapes must match!"
+        
+        # necessary for pytorch lightning to push the tensor onto the correct cuda device
+        if not self.euclid_emb_device_flag:
+            self.euclid_emb = self.euclid_emb.type_as(preds)
+            self.euclid_emb_device_flag = True
         
         # invert embedding: get permutation indices
         preds_indices = self.permutation_indices(preds)

@@ -179,6 +179,7 @@ class RandomMSAShuffling():
         self.mintrailer = mintrailer
         self.delimiter_token = delimiter_token
         self.euclid_emb = euclid_emb
+        self.euclid_emb_device_flag = False
         self.contrastive = contrastive
 
     def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
@@ -211,9 +212,11 @@ class RandomMSAShuffling():
             if self.perm_indices is None:
                 # TODO: Implement inverse lehmer code to solve?
                 raise TypeError("Fixed permutations and euclidean embedding are not compatible!")
-            y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :]
             # necessary for pytorch lightning to push the tensor onto the correct cuda device
-            y['jigsaw'] = y['jigsaw'].type_as(x['msa']).float()
+            if not self.euclid_emb_device_flag:
+                self.euclid_emb = self.euclid_emb.type_as(x['msa']).float()
+                self.euclid_emb_device_flag = True
+            y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :]
 
         if self.contrastive:
             contrastive_perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
