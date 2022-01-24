@@ -51,34 +51,33 @@ def test_embedded_jigsaw_loss():
                            [  0.0,  0.0, 42.0, 42.0]],
                           [[ 42.0, 42.0, 42.0, 42.0],
                            [ 42.0, 42.0, 42.0, 42.0]]])
-    target = torch.tensor([[[  1.0,  1.0,  1.0,  1.0],
-                            [  0.0,  0.0,  0.0,  0.0]], 
-                           [[  1.0,  1.0,  1.0,  1.0],
-                            [  0.0,  0.0,  0.0,  0.0]],
-                           [[  1.0,  1.0, -1.0, -1.0],
-                            [  0.0,  0.0, -1.0, -1.0]],
+    target = torch.tensor([[[  1.0,  1.0,  0.0,  0.0],
+                            [  0.0,  0.0,  1.0,  1.0]], 
+                           [[  0.0,  0.0,  1.0,  1.0],
+                            [  1.0,  1.0,  0.0,  0.0]],
+                           [[  1.0,  0.0, -1.0, -1.0],
+                            [  0.0,  1.0, -1.0, -1.0]],
                            [[ -1.0, -1.0, -1.0, -1.0],
                             [ -1.0, -1.0, -1.0, -1.0]]])
     
     loss_metric = EmbeddedJigsawLoss(reduction='mean')
     loss = loss_metric(preds, target)
-    loss_ref = torch.tensor(8.0) / 24
-    print(loss, loss_ref)
+    loss_ref = torch.tensor(10.0) / 24
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
     
     loss_metric = EmbeddedJigsawLoss(reduction='sum')
     loss = loss_metric(preds, target)
-    loss_ref = torch.tensor(8.0)
+    loss_ref = torch.tensor(10.0)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
     
     loss_metric = EmbeddedJigsawLoss(reduction='none')
     loss = loss_metric(preds, target)
-    loss_ref = torch.tensor([[[ 0.0, 0.0, 0.0, 0.0],
-                              [ 0.0, 0.0, 0.0, 0.0]], 
-                             [[ 1.0, 1.0, 1.0, 1.0],
-                              [ 1.0, 1.0, 1.0, 1.0]],
-                             [[ 0.0, 0.0, 0.0, 0.0],
-                              [ 0.0, 0.0, 0.0, 0.0]],
+    loss_ref = torch.tensor([[[ 0.0, 0.0, 1.0, 1.0],
+                              [ 0.0, 0.0, 1.0, 1.0]], 
+                             [[ 0.0, 0.0, 1.0, 1.0],
+                              [ 0.0, 0.0, 1.0, 1.0]],
+                             [[ 0.0, 1.0, 0.0, 0.0],
+                              [ 0.0, 1.0, 0.0, 0.0]],
                              [[ 0.0, 0.0, 0.0, 0.0],
                               [ 0.0, 0.0, 0.0, 0.0]]])
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
