@@ -1,10 +1,10 @@
 import argparse
 from datetime import datetime
 from functools import partial
-import numpy as np
 import os
 import random
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
@@ -199,7 +199,8 @@ def main():
         task_losses=task_losses,
         task_loss_weights=task_loss_weights,
         metrics=metrics,
-        alphabet_size=len(train_ds.token_mapping), padding_token=train_ds.token_mapping['PADDING_TOKEN'],
+        alphabet_size=len(train_ds.token_mapping),
+        padding_token=train_ds.token_mapping['PADDING_TOKEN'],
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,
