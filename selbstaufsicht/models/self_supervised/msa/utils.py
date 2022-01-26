@@ -28,6 +28,7 @@ def get_tasks(tasks: List[str],
               jigsaw_padding_token: int = -1,
               jigsaw_linear: bool = True,
               jigsaw_euclid_emb: torch.Tensor = None,
+              jigsaw_delimiter: bool = True,
               simclr_temperature: float = 100.,
               ) -> Tuple[transforms.SelfSupervisedCompose, Dict[str, Module], Dict[str, Module], Dict[str, ModuleDict]]:
     """
@@ -47,6 +48,7 @@ def get_tasks(tasks: List[str],
         jigsaw_padding_token (int, optional): Special token that indicates padded sequences in the jigsaw label. Defaults to -1.
         jigsaw_linear (bool, optional): if True linear head, otherwise two layer MLP. Defaults to True.
         jigsaw_euclid_emb (torch.Tensor, optional): Euclidean embedding of the discrete permutation metric. Defaults to None.
+        jigsaw_delimiter (bool, optional): Whether delimiter token is inserted between jigsaw partitions. Defaults to True.
         simclr_temperature (float, optional): Distillation temperatur for the SimCLR loss of contrastive learning. Defaults to 100..
 
     Raises:
@@ -71,9 +73,10 @@ def get_tasks(tasks: List[str],
         MSATokenize(rna2index)]
 
     if 'jigsaw' in tasks:
+        delimiter_token = rna2index['DELIMITER_TOKEN'] if jigsaw_delimiter else None
         transformslist.append(
             RandomMSAShuffling(
-                delimiter_token=rna2index['DELIMITER_TOKEN'],
+                delimiter_token=delimiter_token,
                 num_partitions=jigsaw_partitions,
                 num_classes=jigsaw_classes,
                 euclid_emb=jigsaw_euclid_emb,
