@@ -242,7 +242,7 @@ class TiedAxialSelfAttention2d(nn.Module):
 
         Returns:
             Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
-            Output data [B, E, L, D]; row attention maps [B, H, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
+            Output data [B, E, L, D]; row attention maps [B, H, 1, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
         """
 
         B, E, L, D = x.size()
@@ -382,7 +382,7 @@ class TransmorpherBlock2d(nn.Module):
         factory_kwargs = {'device': device, 'dtype': dtype}
         dim_model = dim_head * num_heads
         super(TransmorpherBlock2d, self).__init__()
-        self.attn = _get_attention_function(attention)(dim_head, num_heads, dropout=dropout, **factory_kwargs)
+        self.attn = _get_attention_function(attention)(num_heads, dim_head, dropout=dropout, **factory_kwargs)
 
         self.lin1 = nn.Linear(dim_model, dim_ff, **factory_kwargs)
         self.dropout = nn.Dropout(dropout)
