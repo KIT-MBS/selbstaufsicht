@@ -321,6 +321,7 @@ class DistanceFromChain():
             for j in range(i + 1, len(chain)):
                 res2 = chain.get_list()[j]
                 distances[i, j] = mindist(res1, res2)
+        del y['structure']
 
         distances = distances + distances.t()
         y['distances'] = distances
@@ -335,7 +336,7 @@ class ContactFromDistance():
         self.threshold = threshold
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
-        y['distances'] = y['distances'] < self.threshold
+        y['contact'] = (y['distances'] < self.threshold).float()
         return x, y
 
 
@@ -535,7 +536,7 @@ def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool 
 
     max_nseqs = len(msa)
     if max_nseqs > nseqs:
-        indices = torch.randperm(max_nseqs)[:nseqs]
+        indices = torch.cat((torch.tensor([0]), (torch.randperm(max_nseqs-1)+1)[:nseqs-1]), dim=0)
         msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
     return msa
 
@@ -594,6 +595,8 @@ def _maximize_diversity_naive(msa: MultipleSeqAlignment, msa_indices: List[int],
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
+    # TODO ensure reference sequence is contained in output
+    raise
 
     # naive strategy: compute hamming distances on-the-fly, when needed
     hd_matrix = torch.zeros((len(msa_indices), len(sampled_msa)))
@@ -640,6 +643,8 @@ def _maximize_diversity_cached(msa: MultipleSeqAlignment,
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
+    # TODO ensure reference sequence is contained in output
+    raise
 
     # cached strategy: use pre-computed hamming distances
     indices = tuple(zip(*[(msa_idx, sampled_msa_idx) for msa_idx in msa_indices for sampled_msa_idx in sampled_msa_indices]))
@@ -678,6 +683,8 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, contr
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
+    # TODO ensure reference sequence is contained in output
+    raise
 
     # since the function is deterministic and contrastive input should be different from the regular input, it is sampled randomly
     if contrastive:
@@ -715,6 +722,8 @@ def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool = 
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
+    # TODO ensure reference sequence is contained in output
+    raise
 
     if contrastive:
         return msa[nseqs:2 * nseqs]
