@@ -656,7 +656,7 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
     def iterative_pseudo_inv(x: torch.Tensor, num_iter: int):
         i = torch.eye(x.shape[-1], device = x.device)
         
-        z = 1 / torch.amax(torch.sum(x, dim = -2), dim = -1).expand_as(x) * x.transpose(-1, -2)
+        z = 1 / torch.amax(torch.sum(x, dim = -2), dim = -1)[:, None, None] * x.transpose(-1, -2)
         
         for _ in range(num_iter):
             xz = x @ z
