@@ -686,9 +686,9 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
             k = k * attn_mask[:, :, :, None, None]
             v = v * attn_mask[:, :, :, None, None]
         
-        q = q.permute(0, 3, 2, 1, 4).view(B*H, L, E*DH)  # [B*H, L, E*DH]
-        k = k.permute(0, 3, 2, 1, 4).view(B*H, L, E*DH)  # [B*H, L, E*DH]
-        v = v.permute(0, 3, 2, 1, 4).view(B*H, L, E*DH)  # [B*H, L, E*DH]
+        q = q.permute(0, 3, 2, 1, 4).reshape(B*H, L, E*DH)  # [B*H, L, E*DH]
+        k = k.permute(0, 3, 2, 1, 4).reshape(B*H, L, E*DH)  # [B*H, L, E*DH]
+        v = v.permute(0, 3, 2, 1, 4).reshape(B*H, L, E*DH)  # [B*H, L, E*DH]
         
         if need_attn_maps:
             row_out, row_attn_maps = self._nystroem_attention(q, k, v, need_attn_maps)  # [B*H, L, E*DH], [B*H, L, L]
@@ -696,7 +696,7 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         else:
             row_out = self._nystroem_attention(q, k, v, need_attn_maps)  # [B*H, L, E*DH]
 
-        row_out = row_out.view(B, H, L, E, DH).permute(0, 3, 2, 1, 4).view(B, E, L, self.embed_dim)  # [B, E, L, D]
+        row_out = row_out.view(B, H, L, E, DH).permute(0, 3, 2, 1, 4).reshape(B, E, L, self.embed_dim)  # [B, E, L, D]
 
         # NOTE: Dropout cannot be applied on attention maps, as they are not computed
         row_out = self.dropout1(row_out)
@@ -728,9 +728,9 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
             k = k * attn_mask[:, :, :, None, None]
             v = v * attn_mask[:, :, :, None, None]
         
-        q = q.permute(0, 2, 3, 1, 4).view(B*L*H, E, DH)  # [B*L*H, E, DH]
-        k = k.permute(0, 2, 3, 1, 4).view(B*L*H, E, DH)  # [B*L*H, E, DH]
-        v = v.permute(0, 2, 3, 1, 4).view(B*L*H, E, DH)  # [B*L*H, E, DH]
+        q = q.permute(0, 2, 3, 1, 4).reshape(B*L*H, E, DH)  # [B*L*H, E, DH]
+        k = k.permute(0, 2, 3, 1, 4).reshape(B*L*H, E, DH)  # [B*L*H, E, DH]
+        v = v.permute(0, 2, 3, 1, 4).reshape(B*L*H, E, DH)  # [B*L*H, E, DH]
         
         if need_attn_maps:
             col_out, col_attn_maps = self._nystroem_attention(q, k, v, need_attn_maps)  # [B*L*H, E, DH], [B*L*H, E, E]
@@ -738,7 +738,7 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         else:
             col_out = self._nystroem_attention(q, k, v, need_attn_maps)  # [B*H, L, E*DH]
 
-        col_out = col_out.view(B, L, H, E, DH).permute(0, 3, 1, 2, 4).view(B, E, L, self.embed_dim)  # [B, E, L, D]
+        col_out = col_out.view(B, L, H, E, DH).permute(0, 3, 1, 2, 4).reshape(B, E, L, self.embed_dim)  # [B, E, L, D]
 
         # NOTE: Dropout cannot be applied on attention maps, as they are not computed
         col_out = self.dropout2(col_out)
