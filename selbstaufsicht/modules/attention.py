@@ -745,8 +745,8 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         col_out = self.dropout2(col_out)
 
         if need_attn_maps:
-            return row_out, row_attn_maps
-        return row_out
+            return col_out, col_attn_maps
+        return col_out
 
     def forward(self,
                 x: torch.Tensor,
