@@ -616,13 +616,13 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         self.num_landmarks = q.shape[-2] // 2
         
         # compute landmarks for queries and keys
-        q_lm = self._compute_landmarks(q_)   # [b, m, d]
-        k_lm = self._compute_landmarks(k_)   # [b, m, d]
+        q_lm = self._compute_landmarks(q)   # [b, m, d]
+        k_lm = self._compute_landmarks(k)   # [b, m, d]
         
         # compute sub-matrices, apply softmax
         a = torch.softmax(q_lm @ k_lm.transpose(-1, -2), dim = -1)   # [b, m, m]
-        b = torch.softmax(q_lm @ k_.transpose(-1, -2), dim = -1)   # [b, m, n]
-        f = torch.softmax(q_ @ k_lm.transpose(-1, -2), dim = -1)   # [b, n, m]
+        b = torch.softmax(q_lm @ k.transpose(-1, -2), dim = -1)   # [b, m, n]
+        f = torch.softmax(q @ k_lm.transpose(-1, -2), dim = -1)   # [b, n, m]
         
         # compute pseudo-inverse of a
         a_inv = self.iterative_pseudo_inv(a, self.num_inv_iter)   # [b, m, m]
