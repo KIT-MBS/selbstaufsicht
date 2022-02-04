@@ -21,6 +21,7 @@ from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downs
 def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Training Script')
     # Architecture
+    parser.add_argument('--attention', default='tied', type=str, help="Used attention mechanism: full, axial, tied, nystroem")
     parser.add_argument('--num-blocks', default=6, type=int, help="Number of consecutive Transmorpher blocks")
     parser.add_argument('--feature-dim-head', default=64, type=int, help="Size of the feature dimension per Transmorpher head")
     parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")

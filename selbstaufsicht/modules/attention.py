@@ -583,6 +583,248 @@ class TiedAxialSelfAttention2d(nn.Module):
         return out
 
 
+class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
+    def __init__(self,
+                 num_heads: int,
+                 dim_head: int,
+                 dropout: float = 0.,
+                 layer_norm_eps: float = 1e-5,
+                 num_landmarks: int = 256,
+                 num_inv_iter: int = 6,
+                 device: Union[str, torch.device] = None,
+                 dtype: torch.dtype = None) -> None:
+        """
+        Initializes multi head tied axial nystroem self-attention 2D module.
+        cf. https://arxiv.org/abs/2102.03902
+
+        Args:
+            num_heads (int): Number of parallel axial self-attention heads.
+            dim_head (int): Embedding dimensionality per axial self-attention head.
+            dropout (float, optional): Dropout probability. Defaults to 0..
+            layer_norm_eps (float, optional): Epsilon used by LayerNormalization. Defaults to 1e-5.
+            num_landmarks (int, optional): Number of landmarks in Nystroem approximation. Defaults to 256.
+            num_inv_iter (int, optional): Number of iterations in Moore-Penrose inverse approximation. Defaults to 6.
+            device (Union[str, torch.device], optional): Used computation device. Defaults to None.
+            dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
+        """
+
+        super(TiedAxialNystroemSelfAttention2d, self).__init__(num_heads, dim_head, dropout, layer_norm_eps, device, dtype)
+        self.num_landmarks = num_landmarks
+        self.num_inv_iter = num_inv_iter
+    
+    def _nystroem_attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, need_attn_maps: bool = True) -> torch.Tensor:
+        
+        # compute landmarks for queries and keys
+        q_lm = self._compute_landmarks(q_)   # [b, m, d]
+        k_lm = self._compute_landmarks(k_)   # [b, m, d]
+        
+        # compute sub-matrices, apply softmax
+        a = torch.softmax(q_lm @ k_lm.transpose(-1, -2), dim = -1)   # [b, m, m]
+        b = torch.softmax(q_lm @ k_.transpose(-1, -2), dim = -1)   # [b, m, n]
+        f = torch.softmax(q_ @ k_lm.transpose(-1, -2), dim = -1)   # [b, n, m]
+        
+        # compute pseudo-inverse of a
+        a_inv = self.iterative_pseudo_inv(a, self.num_inv_iter)   # [b, m, m]
+        
+        if need_attn_maps:
+            # [b, n, m] x [b, m, m] x [b, m, n] -> [b, n, n]
+            attn_maps = f @ a_inv @ b
+            # [b, n, n] x [b, n, d] -> [b, n, d]
+            out = attn_maps @ v
+            return attn_maps, out
+        else:
+            # ([b, n, m] x [b, m, m]) x ([b, m, n] x [b, n, d]) -> [b, n, d]
+            return (f @ a_inv) @ (b @ v)
+    
+    def _compute_landmarks(self, x: torch.Tensor) -> torch.Tensor:
+        # divide dimension n in m partitions, which are averaged over dimension n
+        b, n, d = x.shape
+        rest_n = n % self.num_landmarks
+        
+        if rest_n == 0:
+            out = x.reshape(b, self.num_landmarks, n // self.num_landmarks, d)
+        else:
+            out = torch.empty((b, self.num_landmarks + 1, n // self.num_landmarks, d))  
+            out[:, :-1, :, :] = x[:, :-rest_n, :].reshape(b, self.num_landmarks, n // self.num_landmarks, d)
+            out[:, -1, :rest_n, :] = x[:, -rest_n:, :].reshape(b, 1, rest_n, d)
+            out[:, -1, rest_n:, :] = 0
+            
+        return out.mean(dim = -2)
+    
+    @staticmethod
+    def iterative_pseudo_inv(x: torch.Tensor, num_iter: int):
+        i = torch.eye(x.shape[-1], device = x.device)
+        
+        z = 1 / torch.amax(torch.sum(x, dim = -2), dim = -1) * x.transpose(-1, -2)
+        
+        for _ in range(num_iter):
+            xz = x @ z
+            z = 0.25 * z @ (13 * i - xz @ (15 * i - xz @ (7 * i - xz)))
+        
+        return z
+    
+    def row_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, 
+                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Performs row attention.
+
+        Args:
+            q (torch.Tensor): Query tensor [B, E, L, H, DH].
+            k (torch.Tensor): Key tensor [B, E, L, H, DH].
+            v (torch.Tensor): Value tensor [B, E, L, H, DH].
+            attn_mask (torch.Tensor): Attention mask for padded elements [B, E, L].
+            need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+
+        Returns:
+            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Output data [B, E, L, D]; row attention maps [B, H, L, L] (optional).
+        """
+        
+        B, E, L, H, DH = q.size()
+        
+        if attn_mask is not None:
+            q = q * attn_mask[:, :, :, None, None]
+            k = k * attn_mask[:, :, :, None, None]
+            v = v * attn_mask[:, :, :, None, None]
+        
+        q = q.permute(0, 3, 2, 1, 4).view(B*H, L, E*DH)  # [B*H, L, E*DH]
+        k = k.permute(0, 3, 2, 1, 4).view(B*H, L, E*DH)  # [B*H, L, E*DH]
+        v = v.permute(0, 3, 2, 1, 4).view(B*H, L, E*DH)  # [B*H, L, E*DH]
+        
+        if need_attn_maps:
+            row_out, row_attn_maps = self._nystroem_attention(q, k, v, need_attn_maps)  # [B*H, L, E*DH], [B*H, L, L]
+            row_attn_maps = row_attn_maps.view(B, H, L, L)
+        else:
+            row_out = self._nystroem_attention(q, k, v, need_attn_maps)  # [B*H, L, E*DH]
+
+        row_out = row_out.view(B, H, L, E, DH).permute(0, 3, 2, 1, 4).view(B, E, L, self.embed_dim)  # [B, E, L, D]
+
+        # NOTE: Dropout cannot be applied on attention maps, as they are not computed
+        row_out = self.dropout1(row_out)
+
+        if need_attn_maps:
+            return row_out, row_attn_maps
+        return row_out
+    
+    def col_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, 
+                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Performs column attention.
+
+        Args:
+            q (torch.Tensor): Query tensor [B, E, L, H, DH].
+            k (torch.Tensor): Key tensor [B, E, L, H, DH].
+            v (torch.Tensor): Value tensor [B, E, L, H, DH].
+            attn_mask (torch.Tensor): Attention mask for padded elements [B, H, E, L].
+            need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+
+        Returns:
+            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Output data [B, E, L, D]; column attention maps [B, H, L, L] (optional).
+        """
+
+        B, E, L, H, DH = q.size()
+        
+        if attn_mask is not None:
+            q = q * attn_mask[:, :, :, None, None]
+            k = k * attn_mask[:, :, :, None, None]
+            v = v * attn_mask[:, :, :, None, None]
+        
+        q = q.permute(0, 2, 3, 1, 4).view(B*L*H, E, DH)  # [B*L*H, E, DH]
+        k = k.permute(0, 2, 3, 1, 4).view(B*L*H, E, DH)  # [B*L*H, E, DH]
+        v = v.permute(0, 2, 3, 1, 4).view(B*L*H, E, DH)  # [B*L*H, E, DH]
+        
+        if need_attn_maps:
+            col_out, col_attn_maps = self._nystroem_attention(q, k, v, need_attn_maps)  # [B*L*H, E, DH], [B*L*H, E, E]
+            col_attn_maps = col_attn_maps.view(B, L, H, E, E).permute(0, 2, 3, 4, 1)  # [B, H, E, E, L]
+        else:
+            col_out = self._nystroem_attention(q, k, v, need_attn_maps)  # [B*H, L, E*DH]
+
+        col_out = col_out.view(B, L, H, E, DH).permute(0, 3, 1, 2, 4).view(B, E, L, self.embed_dim)  # [B, E, L, D]
+
+        # NOTE: Dropout cannot be applied on attention maps, as they are not computed
+        col_out = self.dropout2(col_out)
+
+        if need_attn_maps:
+            return row_out, row_attn_maps
+        return row_out
+
+    def forward(self,
+                x: torch.Tensor,
+                padding_mask: torch.Tensor = None,
+                need_attn_maps: bool = True,
+                attn_chunk_size: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+        """
+        Performs tied axial nystroem self-attention on 2D data.
+
+        Args:
+            x (torch.Tensor): Input data [B, E, L, D].
+            padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
+            need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+            attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
+
+        Returns:
+            Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+            Output data [B, E, L, D]; row attention maps [B, H, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
+        """
+        
+        # TODO: Implement attn chunking
+
+        B, E, L, D = x.size()
+        assert D == self.embed_dim
+
+        attn_mask = None
+        if padding_mask is not None:
+            assert padding_mask.dtype == torch.bool
+            assert padding_mask.size() == (B, E, L)
+            attn_mask = padding_mask
+
+        q, k, v = self.in_row_projection(x).chunk(3, dim=-1)  # [B, E, L, D]
+        q = q.view(B, E, L, self.num_heads, self.dim_head)  # [B, E, L, H, DH]
+        k = k.view(B, E, L, self.num_heads, self.dim_head)
+        v = v.view(B, E, L, self.num_heads, self.dim_head)
+
+        q = q * (self.dim_head * E) ** -0.5
+        # NOTE row attn
+        if attn_chunk_size > 0:
+            if need_attn_maps:
+                row_out, row_attn_maps = checkpoint.checkpoint(self.row_attn, q, k, v, attn_mask, need_attn_maps)
+            else:
+                row_out = checkpoint.checkpoint(self.row_attn, q, k, v, attn_mask, need_attn_maps)
+        else:
+            if need_attn_maps:
+                row_out, row_attn_maps = self.row_attn(q, k, v, attn_mask, need_attn_maps)
+            else:
+                row_out = self.row_attn(q, k, v, attn_mask, need_attn_maps)
+        
+        out = x + row_out
+        out = self.norm1(out)
+
+        q, k, v = self.in_col_projection(out).chunk(3, dim=-1)  # [B, E, L, D]
+        q = q.view(B, E, L, self.num_heads, self.dim_head)  # [B, E, L, H, DH]
+        k = k.view(B, E, L, self.num_heads, self.dim_head)
+        v = v.view(B, E, L, self.num_heads, self.dim_head)
+
+        q = q * self.dim_head ** -0.5
+        # NOTE col attn
+        if attn_chunk_size > 0:
+            if need_attn_maps:
+                col_out, col_attn_maps = checkpoint.checkpoint(self.col_attn, q, k, v, attn_mask, need_attn_maps)
+            else:
+                col_out = checkpoint.checkpoint(self.col_attn, q, k, v, attn_mask, need_attn_maps)
+        else:
+            if need_attn_maps:
+                col_out, col_attn_maps = self.col_attn(q, k, v, attn_mask, need_attn_maps)
+            else:
+                col_out = self.col_attn(q, k, v, attn_mask, need_attn_maps)
+            
+
+        out = out + col_out
+        out = self.norm2(out)
+
+        if need_attn_maps:
+            return out, (row_attn_maps, col_attn_maps)
+        return out
+
+
 # TODO not sure about the name, self attention, transform oneself... mutate... morph meh
 class Transmorpher2d(nn.Module):
     def __init__(self, block: nn.Module, num_blocks: int, norm: nn.Module = None) -> None:
@@ -717,7 +959,7 @@ def _get_attention_function(attention: str) -> Type[nn.Module]:
     Returns the module that corresponds to the given attention mechanism.
 
     Args:
-        attention (str): Attention mechanism. Currently implemented: full, axial, tied.
+        attention (str): Attention mechanism. Currently implemented: full, axial, tied, nystroem.
 
     Raises:
         RuntimeError: Unknown attention mechanism.
@@ -732,7 +974,9 @@ def _get_attention_function(attention: str) -> Type[nn.Module]:
         return AxialSelfAttention2d
     elif attention == 'tied':
         return TiedAxialSelfAttention2d
-    raise RuntimeError("Expected full, axial, or tied not {}".format(attention))
+    elif attention == 'nystroem':
+        return TiedAxialNystroemSelfAttention2d
+    raise RuntimeError("Expected full, axial, tied or nystroem not {}".format(attention))
 
 
 def _get_activation_function(activation: str) -> Type[nn.Module]:
