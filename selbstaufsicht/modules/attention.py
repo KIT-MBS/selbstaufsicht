@@ -613,6 +613,7 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         self.num_inv_iter = num_inv_iter
     
     def _nystroem_attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, need_attn_maps: bool = True) -> torch.Tensor:
+        self.num_landmarks = q.shape[-2] // 2
         
         # compute landmarks for queries and keys
         q_lm = self._compute_landmarks(q_)   # [b, m, d]
