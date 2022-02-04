@@ -624,8 +624,14 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         b = torch.softmax(q_lm @ k.transpose(-1, -2), dim = -1)   # [b, m, n]
         f = torch.softmax(q @ k_lm.transpose(-1, -2), dim = -1)   # [b, n, m]
         
+        del q
+        del k
+        del q_lm
+        del k_lm
+        
         # compute pseudo-inverse of a
         a_inv = self.iterative_pseudo_inv(a, self.num_inv_iter)   # [b, m, m]
+        del a
         
         if need_attn_maps:
             # [b, n, m] x [b, m, m] x [b, m, n] -> [b, n, n]
