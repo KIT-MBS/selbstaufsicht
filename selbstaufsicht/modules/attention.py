@@ -645,10 +645,10 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         if rest_n == 0:
             out = x.reshape(b, self.num_landmarks, n // self.num_landmarks, d)
         else:
-            out = torch.empty((b, self.num_landmarks + 1, n // self.num_landmarks, d))  
+            out = torch.empty((b, self.num_landmarks + 1, n // self.num_landmarks, d), device = x.device)  
             out[:, :-1, :, :] = x[:, :-rest_n, :].reshape(b, self.num_landmarks, n // self.num_landmarks, d)
-            out[:, -1, :rest_n, :] = x[:, -rest_n:, :].reshape(b, 1, rest_n, d)
-            out[:, -1, rest_n:, :] = 0
+            out[:, -1:, :rest_n, :] = x[:, -rest_n:, :].reshape(b, 1, rest_n, d)
+            out[:, -1:, rest_n:, :] = 0
             
         return out.mean(dim = -2)
     
