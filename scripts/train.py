@@ -195,6 +195,7 @@ def main():
         args.num_blocks,
         args.num_heads,
         args.feature_dim_head,
+        attention=args.attention,
         task_heads=task_heads,
         task_losses=task_losses,
         task_loss_weights=task_loss_weights,
