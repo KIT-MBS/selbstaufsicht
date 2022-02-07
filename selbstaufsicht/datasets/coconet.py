@@ -2,6 +2,7 @@ import os
 import re
 import subprocess as sp
 import pathlib
+from copy import deepcopy
 
 import numpy as np
 from Bio.PDB.Residue import Residue
@@ -73,20 +74,22 @@ class CoCoNetDataset(Dataset):
                     resids = [r.get_id() for r in chain]
                     firstid = resids[0][1]
                     lastid = resids[-1][1]
+
                     # insert missing residues in the middle
+                    dummy_atom = Atom(name='X',
+                            coord=np.array((np.nan, np.nan, np.nan), 'f'),
+                            bfactor=0.,
+                            occupancy=1.,
+                            altloc='',
+                            fullname='dummy',
+                            serial_number=0,
+                            element='C')
+
                     assert resids[-1][2] == ' '
                     for j, i in enumerate(range(firstid, lastid-1)):
                         if i not in chain:
-                            dummy_atom = Atom(name='X',
-                                    coord=(np.nan, np.nan, np.nan),
-                                    bfactor=0.,
-                                    occupancy=1.,
-                                    altloc='',
-                                    fullname='dummy',
-                                    serial_number=0,
-                                    element='C')
                             r = Residue((' ', i, ' '), 'X', '')
-                            r.add(dummy_atom)
+                            r.add(deepcopy(dummy_atom))
                             chain.insert(j, r)
 
                 # NOTE add missing residues at the ends
@@ -97,9 +100,12 @@ class CoCoNetDataset(Dataset):
                     # NOTE prefix
                     for i in range(matches[0].start()):
                         r = Residue((' ', i, ' '), 'X', '')
+                        r.add(deepcopy(dummy_atom))
                         chain.insert(i, r)
+                    # NOTE postfix
                     for i in range(matches[0].end(), len(refseq)):
                         r = Residue((' ', i, 'Y'), 'X', '')
+                        r.add(deepcopy(dummy_atom))
                         chain.add(r)
 
                 # NOTE fill in correct res names and renumber
