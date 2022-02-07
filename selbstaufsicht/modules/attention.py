@@ -590,7 +590,7 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
                  dropout: float = 0.,
                  layer_norm_eps: float = 1e-5,
                  num_landmarks: int = 256,
-                 num_inv_iter: int = 6,
+                 num_inv_iter: int = 20,
                  device: Union[str, torch.device] = None,
                  dtype: torch.dtype = None) -> None:
         """
@@ -613,7 +613,17 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         self.num_inv_iter = num_inv_iter
     
     def _nystroem_attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, need_attn_maps: bool = True) -> torch.Tensor:
-        self.num_landmarks = q.shape[-2] // 2
+        n = q.shape[-2]
+
+        if 64 < n:
+            self.num_landmarks = 64
+        elif 32 < n <= 64:
+            self.num_landmarks = 32
+        elif 16 < n <= 32:
+            self.num_landmarks = 16
+        else:
+            self.num_landmarks = n
+
         
         # compute landmarks for queries and keys
         q_lm = self._compute_landmarks(q)   # [b, m, d]
@@ -621,6 +631,11 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         
         # compute sub-matrices, apply softmax
         a = torch.softmax(q_lm @ k_lm.transpose(-1, -2), dim = -1)   # [b, m, m]
+        
+        # compute pseudo-inverse of a
+        a = self.iterative_pseudo_inv(a, self.num_inv_iter)   # [b, m, m]
+        
+        # compute sub-matrices, apply softmax
         b = torch.softmax(q_lm @ k.transpose(-1, -2), dim = -1)   # [b, m, n]
         f = torch.softmax(q @ k_lm.transpose(-1, -2), dim = -1)   # [b, n, m]
         
@@ -629,19 +644,15 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         del q_lm
         del k_lm
         
-        # compute pseudo-inverse of a
-        a_inv = self.iterative_pseudo_inv(a, self.num_inv_iter)   # [b, m, m]
-        del a
-        
         if need_attn_maps:
             # [b, n, m] x [b, m, m] x [b, m, n] -> [b, n, n]
-            attn_maps = f @ a_inv @ b
+            attn_maps = f @ a @ b
             # [b, n, n] x [b, n, d] -> [b, n, d]
             out = attn_maps @ v
             return attn_maps, out
         else:
             # ([b, n, m] x [b, m, m]) x ([b, m, n] x [b, n, d]) -> [b, n, d]
-            return (f @ a_inv) @ (b @ v)
+            return (f @ a) @ (b @ v)
     
     def _compute_landmarks(self, x: torch.Tensor) -> torch.Tensor:
         # divide dimension n in m partitions, which are averaged over dimension n
