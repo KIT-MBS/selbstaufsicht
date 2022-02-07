@@ -47,6 +47,7 @@ class JigsawHead(nn.Module):
                  d: int,
                  num_classes: int,
                  proj_linear: bool = True,
+                 euclid_emb: bool = False,
                  layer_norm_eps: float = 1e-5,
                  device: Union[str, torch.device] = None,
                  dtype: torch.dtype = None) -> None:
@@ -57,6 +58,7 @@ class JigsawHead(nn.Module):
             d (int): Embedding dimensionality.
             num_classes (int): Number of classes (number of allowed permutations)
             proj_linear (bool): if True uses a linear projection head, if False uses two layers with LayerNorm and ReLU, Defaults to True.
+            euclid_emb (bool, optional): Whether Euclidean embedding of the discrete permutation metric is used. Defaults to False.
             layer_norm_eps (float, optional): Epsilon used by LayerNormalization. Defaults to 1e-5.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
@@ -64,6 +66,7 @@ class JigsawHead(nn.Module):
 
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(JigsawHead, self).__init__()
+        self.euclid_emb = euclid_emb
         if proj_linear:
             self.proj = nn.Linear(d, num_classes, **factory_kwargs)
         else:
@@ -71,7 +74,7 @@ class JigsawHead(nn.Module):
                 nn.Linear(d, d, **factory_kwargs),
                 nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs),
                 nn.ReLU(),
-                nn.Linear(d, d, bias=False, **factory_kwargs),
+                nn.Linear(d, num_classes, bias=False, **factory_kwargs),
             )
 
     def forward(self, latent: torch.Tensor, x: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -88,7 +91,10 @@ class JigsawHead(nn.Module):
 
         # latent is of shape [B, E, L, D]
         latent = latent[:, :, 0, :]  # [B, E, D]
-        return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
+        if self.euclid_emb:
+            return self.proj(latent)  # [B, E, NClasses]
+        else:
+            return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
 
 
 # TODO different hidden and out dim?
