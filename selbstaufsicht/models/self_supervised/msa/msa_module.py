@@ -58,7 +58,7 @@ class MSAModel(pl.LightningModule):
             pos_padding_token (int, optional): Numerical token that is used for padding in positional embedding in auxiliary input
             max_seqlen (int, optional): maximum sequence length for learned positional embedding
             h_params (Dict[str, Any], optional): Hyperparameters for logging. Defaults to None.
-            task_heads (Dict[str, nn.Module], optional): Head modules for upstream tasks. Defaults to None.
+            task_heads (nn.ModuleDict[str, nn.Module], optional): Head modules for upstream tasks. Defaults to None.
             task_losses (Dict[str, nn.Module], optional): Loss functions for upstream tasks. Defaults to None.
             task_loss_weights (Dict[str, float], optional): per task loss weights. Defaults to None.
             metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
@@ -96,8 +96,6 @@ class MSAModel(pl.LightningModule):
             assert self.task_heads.keys() == self.losses.keys()
         self.lr = lr
         self.lr_warmup = lr_warmup
-        if need_attn:
-            raise NotImplementedError('Extracting attention maps not yet implemented')
         self.need_attn = need_attn
         self.use_fused_adam = use_fused_adam
         self.save_hyperparameters(h_params)
@@ -117,10 +115,8 @@ class MSAModel(pl.LightningModule):
 
         # NOTE feature dim = -1
         x = self.embedding(x) + self.positional_embedding(aux_features)
-        # TODO extract attention maps
-        latent = self.backbone(x, padding_mask, self.need_attn)
-        return latent
-    
+        return self.backbone(x, padding_mask, self.need_attn)
+
     def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
         """
         Performs a single training or validation step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
@@ -138,7 +134,16 @@ class MSAModel(pl.LightningModule):
         x, y = batch_data
         mode = "training" if self.training else "validation"
 
-        latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+        latent = None
+        if 'contact' in self.tasks:
+            # TODO eval mode for all modules except contact head?
+            # TODO the contact prediction is a bit hacky
+            with torch.no_grad():
+                latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+            x['attn_maps'] = attn_maps
+        else:
+            latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+
         if 'contrastive' in self.tasks:
             if x['msa'].size(0) == 1:
                 print('WARN: contrastive task is not really going to work with batch_size==1')
@@ -150,7 +155,6 @@ class MSAModel(pl.LightningModule):
             for m in self.metrics[task]:
                 mvalue = self.metrics[task][m](preds[task], y[task])
                 self.log(f'{task}_{mode}_{m}', mvalue, on_step=self.training, on_epoch=True)
-        # TODO weights
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         for task in self.tasks:
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
@@ -174,7 +178,7 @@ class MSAModel(pl.LightningModule):
         """
 
         return self._step(batch_data, batch_idx)
-    
+
     def validation_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> None:
         """
         Performs a single validation step: First passes cropped, subsampled and tokenized MSAs through the backbone model,

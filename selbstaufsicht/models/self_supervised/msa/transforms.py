@@ -313,7 +313,7 @@ class DistanceFromChain():
 
         def mindist(r1, r2):
             distances = torch.tensor([[a1 - a2 for a2 in r2] for a1 in r1])
-            return torch.min(distances)
+            return torch.min(distances.flatten())
 
         chain = structure[0].get_list()[0]
         distances = torch.zeros((len(chain), len(chain)))

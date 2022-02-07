@@ -1,3 +1,4 @@
+import math
 from typing import Dict, Union
 import torch
 import torch.nn as nn
@@ -131,3 +132,38 @@ class ContrastiveHead(nn.Module):
         latent = latent.mean(dim=-2)  # [B, D]
 
         return self.proj(latent)
+
+
+class ContactHead(nn.Module):
+    def __init__(self, num_maps, cull_tokens, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(ContactHead, self).__init__()
+        self.num_maps = num_maps
+        self.cull_tokens = cull_tokens
+        self.l = nn.Conv2d(num_maps, num_maps, kernel_size=1, bias=False, **factory_kwargs)
+        # self.f = nn.Sigmoid()
+
+    def forward(self, latent, x) -> torch.Tensor:
+        # TODO only tied axial attention for now
+        # TODO only batch size 1 for now
+        # TODO remove start seq, delimiter, and mask tokens in one go
+        # TODO think about if delimiter tokens are not aligned
+        B, E, L = x['msa'].size()
+        assert B == 1
+
+        mask = torch.ones((L, ))
+        for token in self.cull_tokens:
+            mask -= (x['msa'][:, 0].reshape((L, )) == token).int()
+        mask = mask.bool()
+        degapped_L = int(mask.sum())
+        mask = torch.reshape(mask, (B, 1, L))
+        mask = torch.logical_and(mask.reshape((B, 1, L)).expand(B, L, L), mask.reshape((B, L, 1)).expand(B, L, L))
+        mask = mask.reshape((B, 1, L, L)).expand((B, self.num_maps, L ,L))
+
+        out = x['attn_maps']
+        out = torch.cat([m[0].squeeze(dim=2) for m in out], dim=1) # [B, num_blocks * H, L, L]
+        out = out.masked_select(mask).reshape(B, self.num_maps, degapped_L, degapped_L)
+        out = self.l(out)
+        out = out.sum(dim=1)  # [B, L, L]
+        return out
+        # return self.f(out)
