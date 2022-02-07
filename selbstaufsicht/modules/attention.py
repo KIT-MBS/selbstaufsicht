@@ -666,10 +666,10 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         else:
             additional_landmarks = int(math.ceil(n_rest / n_ratio))
             out = torch.empty((b, self.num_landmarks + additional_landmarks, n // self.num_landmarks, d), device = x.device)  
-            out[:, :-additional_landmarks, :, :] = x[:, :-rest_n, :].reshape(b, self.num_landmarks, n // self.num_landmarks, d)
+            out[:, :-additional_landmarks, :, :] = x[:, :-n_rest, :].reshape(b, self.num_landmarks, n // self.num_landmarks, d)
             additional_landmarks_out_flat = out[:, -additional_landmarks:, :, :].view(b, -1, d)
-            additional_landmarks_out_flat[:, :rest_n, :] = x[:, -rest_n:, :]
-            additional_landmarks_out_flat[:, rest_n:, :] = 0
+            additional_landmarks_out_flat[:, :n_rest, :] = x[:, -n_rest:, :]
+            additional_landmarks_out_flat[:, n_rest:, :] = 0
             
         return out.mean(dim = -2)
     
