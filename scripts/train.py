@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 from functools import partial
+import math
 import os
 import random
 
@@ -12,7 +13,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.plugins import DDPPlugin, DeepSpeedPlugin
 
-from selbstaufsicht.utils import data_loader_worker_init
+from selbstaufsicht.utils import data_loader_worker_init, lehmer_encode, perm_gram_matrix, embed_finite_metric_space
 from selbstaufsicht import models
 from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downstream_transforms, MSACollator
@@ -38,6 +39,7 @@ def main():
     parser.add_argument('--learning-rate-warmup', default=200, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
+    parser.add_argument('--attn-chunk-size', default=0, type=int, help="Chunk size in attention computation. Chunking causes sequential computation, which increases training time, but decreases memory pressure. Sizes below one activate the non-chunking implementation.")
     parser.add_argument('--dp-strategy', default='ddp', type=str, help="Data-parallelism strategy: ddp, zero-2, or zero-3. Note that DeepSpeed ZeRO requires precision=16.")
     parser.add_argument('--dp-zero-bucket-size', default=5e8, type=int, help="Allocated bucket size for DeepSpeed ZeRO DP strategy.")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
@@ -67,6 +69,8 @@ def main():
                         where each duplicate is labeled with a different permutation in numerical order. Value 0 disables this mechanism."""
                         )
     parser.add_argument('--jigsaw-nonlinear', action='store_true', help="Uses a non-linear projection head for the jigsaw task.")
+    parser.add_argument('--jigsaw-disable-delimiter', action='store_true', help="Disables delimiter token between partitions in the jigsaw task.")
+    parser.add_argument('--jigsaw-euclid-emb', action='store_true', help="Uses an euclidean embedding of the discrete permutation metric for the jigsaw task.")
     parser.add_argument('--jigsaw-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
     parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
     parser.add_argument('--contrastive-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
@@ -100,7 +104,6 @@ def main():
     data_loader_rng.manual_seed(args.rng_seed)
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
-    use_fused_adam = False
     if num_gpus * args.num_nodes > 1:
         if args.dp_strategy == 'ddp':
             dp_strategy = DDPPlugin(find_unused_parameters=False)
@@ -110,13 +113,35 @@ def main():
                 raise ValueError("DeepSpeed ZeRO Stage 2 requires precision=16!")
         elif args.dp_strategy == 'zero-3':
             dp_strategy = DeepSpeedPlugin(stage=3, allgather_bucket_size=args.dp_zero_bucket_size, reduce_bucket_size=args.dp_zero_bucket_size)
-            use_fused_adam = True
             if args.precision != 16:
                 raise ValueError("DeepSpeed ZeRO Stage 3 requires precision=16!")
         else:
             raise ValueError("Unknown DP strategy: %s" % args.dp_strategy)
     else:
         dp_strategy = None
+
+    if args.jigsaw_euclid_emb:
+        # for num_partitions > 5, the euclidean embedding becomes highly inefficient
+        if args.jigsaw_partitions > 5:
+            raise ValueError("Euclidean embedding is too inefficient for num_partitions=%d!" % args.jigsaw_partitions)
+
+        # check if embedding is available on disk
+        emb_filename = 'jigsaw_euclid_emb_%d.pt' % args.jigsaw_partitions
+        if os.path.isfile(emb_filename):
+            # load embedding from disk
+            jigsaw_euclid_emb = torch.load(emb_filename)
+        else:
+            if num_gpus > 0:
+                raise ValueError("To compute the euclidean embedding, please pass num_gpus=0.")
+            perm_indices = list(range(0, math.factorial(args.jigsaw_partitions)))
+            perms = torch.stack([lehmer_encode(i, args.jigsaw_partitions) for i in perm_indices])
+            d0 = perm_gram_matrix(perms)
+            emb = embed_finite_metric_space(d0)
+            torch.save(emb, emb_filename)
+            print("Embedding computed and saved. Please restart the script.")
+            exit(0)
+    else:
+        jigsaw_euclid_emb = None
 
     # TODO should take token mapping?
     transform, task_heads, task_losses, metrics = get_tasks(tasks,
@@ -130,6 +155,8 @@ def main():
                                                             jigsaw_partitions=args.jigsaw_partitions,
                                                             jigsaw_classes=args.jigsaw_permutations,
                                                             jigsaw_linear=not args.jigsaw_nonlinear,
+                                                            jigsaw_euclid_emb=jigsaw_euclid_emb,
+                                                            jigsaw_delimiter=not args.jigsaw_disable_delimiter,
                                                             simclr_temperature=args.contrastive_temperature)
 
     root = os.environ['DATA_PATH']
@@ -206,7 +233,7 @@ def main():
         dropout=args.dropout,
         emb_grad_freq_scale=not args.disable_emb_grad_freq_scale,
         h_params=args,
-        use_fused_adam=use_fused_adam
+        attn_chunk_size=args.attn_chunk_size
     )
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,

@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 import torch
+import numpy as np
 from Bio.Align import MultipleSeqAlignment
 import math
 import random
@@ -138,6 +139,7 @@ class RandomMSAShuffling():
                  delimiter_token: int = None,
                  num_partitions: int = None,
                  num_classes: int = None,
+                 euclid_emb: torch.Tensor = None,
                  contrastive: bool = False):
         """
         Initializes random MSA shuffling.
@@ -150,6 +152,7 @@ class RandomMSAShuffling():
             delimiter_token (int, optional): Special token that is used to separate shuffled partitions from each other. Defaults to None.
             num_partitions (int, optional): Number of shuffled partitions per sequence. Needs to be specified, if \"permutations\" is unspecified. Defaults to None.
             num_classes (int, optional): Number of allowed permutations. Needs to be specified, if \"permutations\" is unspecified. Defaults to None.
+            euclid_emb (torch.Tensor, optional): Euclidean embedding of the discrete permutation metric. Defaults to None.
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
         Raises:
@@ -160,20 +163,24 @@ class RandomMSAShuffling():
             raise ValueError("Permutations have to be given explicitely or parameters to generate them.")
 
         if permutations is None:
-            perm_indices = list(range(1, math.factorial(num_partitions)))
-            random.shuffle(perm_indices)
+            self.perm_indices = list(range(1, math.factorial(num_partitions)))
+            random.shuffle(self.perm_indices)
             # NOTE always include 'no transformation'
-            perm_indices.insert(0, 0)
-            self.permutations = torch.stack([lehmer_encode(i, num_partitions) for i in perm_indices[:num_classes]]).unsqueeze(0)
+            self.perm_indices.insert(0, 0)
+            self.permutations = torch.stack([lehmer_encode(i, num_partitions) for i in self.perm_indices[:num_classes]]).unsqueeze(0)
+            self.perm_indices = torch.tensor(self.perm_indices)
         else:
             # NOTE attribute permutations is expected to have shape [num_classes, num_partitions]
             # NOTE add singleton dim for later expansion to num_seq dim
+            self.perm_indices = None
             self.permutations = permutations.unsqueeze(0)
         self.num_partitions = max(self.permutations[0, 0])
         self.num_classes = len(self.permutations[0])
         self.minleader = minleader
         self.mintrailer = mintrailer
         self.delimiter_token = delimiter_token
+        self.euclid_emb = euclid_emb
+        self.euclid_emb_device_flag = False
         self.contrastive = contrastive
 
     def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
@@ -191,22 +198,32 @@ class RandomMSAShuffling():
         num_seq = x['msa'].size(0)
         if 'jigsaw' in y:
             # TODO: ugly, only works for fixed subsampling mode
-            label = y['jigsaw'][:num_seq]
+            perm_sampling = y['jigsaw'][:num_seq]
         else:
-            label = torch.randint(0, self.num_classes, (num_seq,))
+            perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
         shuffled_msa = _jigsaw(x['msa'],
                                self.permutations.expand(num_seq, -1, -1)[range(num_seq),
-                               label], delimiter_token=self.delimiter_token,
+                               perm_sampling], delimiter_token=self.delimiter_token,
                                minleader=self.minleader,
                                mintrailer=self.mintrailer)
         x['msa'] = shuffled_msa
-        y['jigsaw'] = label
+        if self.euclid_emb is None:
+            y['jigsaw'] = perm_sampling
+        else:
+            if self.perm_indices is None:
+                # TODO: Implement inverse lehmer code to solve?
+                raise TypeError("Fixed permutations and euclidean embedding are not compatible!")
+            # necessary for pytorch lightning to push the tensor onto the correct cuda device
+            if not self.euclid_emb_device_flag:
+                self.euclid_emb = self.euclid_emb.type_as(x['msa']).float()
+                self.euclid_emb_device_flag = True
+            y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :]
 
         if self.contrastive:
-            contrastive_perm = torch.randint(0, self.num_classes, (num_seq,))
+            contrastive_perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
             x['contrastive'] = _jigsaw(x['contrastive'],
                                        self.permutations.expand(num_seq, -1, -1)[range(num_seq),
-                                       contrastive_perm],
+                                       contrastive_perm_sampling],
                                        delimiter_token=self.delimiter_token,
                                        minleader=self.minleader,
                                        mintrailer=self.mintrailer)
@@ -297,33 +314,66 @@ class ExplicitPositionalEncoding():
 
 
 class DistanceFromChain():
+    def __init__(self, chunk_size: int = 600):
+        """
+        Initializes distance-from-chain computation.
+
+        Args:
+            chunk_size (int, optional): Chunk size in residuum dimension. Defaults to 600.
+        """
+
+        self.chunk_size = chunk_size
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
         """
         Takes a biopython structure containing a single chain and returns a distance map.
+
         Args:
             structure (Bio.PDB.Structure): Molecular structure to generate distance map from.
+
         Returns:
             torch.Tensor [L', L'] residue distance map
         """
         structure = y['structure']
-        # TODO missing residue check?
         assert len(structure) == 1
         assert len(structure[0]) == 1
 
-        def mindist(r1, r2):
-            distances = torch.tensor([[a1 - a2 for a2 in r2] for a1 in r1])
-            return torch.min(distances.flatten())
+        if torch.cuda.is_available():
+            worker_info = torch.utils.data.get_worker_info()
+            if worker_info is None:
+                device = 'cuda'
+            else:
+                # only as many data loaders as GPUs are allowed
+                assert worker_info.num_workers <= torch.cuda.device_count()
+                device = 'cuda:%d' % worker_info.id
+        else:
+            device = 'cpu'
 
         chain = structure[0].get_list()[0]
-        distances = torch.zeros((len(chain), len(chain)))
-        for i, res1 in enumerate(chain.get_list()):
-            for j in range(i + 1, len(chain)):
-                res2 = chain.get_list()[j]
-                distances[i, j] = mindist(res1, res2)
-        del y['structure']
+        atom_coords = [[a.get_coord() for a in r] for r in chain]
+        nums_atoms = [len(atom_coords_r) for atom_coords_r in atom_coords]
+        num_atoms_max = max(nums_atoms)
+        num_residues = len(atom_coords)
+        num_chunks = int(math.ceil(num_residues / self.chunk_size))
 
-        distances = distances + distances.t()
+        distances = torch.zeros((num_residues, num_residues), device=device)
+        atom_coords_t = torch.full((num_residues, num_atoms_max, 3), torch.inf, device=device)  # [R, A, 3]
+        for idx in range(num_residues):
+            atom_coords_rt = torch.tensor(np.array(atom_coords[idx]), device=device)
+            atom_coords_t[idx, :nums_atoms[idx], :] = atom_coords_rt
+
+        for idx in range(num_chunks):
+            residues_slice = slice(idx * self.chunk_size, (idx + 1) * self.chunk_size)
+
+            atom_coords_t1 = atom_coords_t[residues_slice, :, :].view(-1, 1, num_atoms_max, 1, 3).expand(-1, num_residues, num_atoms_max, num_atoms_max, 3)  # [RC, R, A, A, 3]
+            atom_coords_t2 = atom_coords_t.view(1, num_residues, 1, num_atoms_max, 3).expand(atom_coords_t1.shape[0], num_residues, num_atoms_max, num_atoms_max, 3)  # [RC, R, A, A, 3]
+
+            distances_chunk = torch.linalg.vector_norm(atom_coords_t1 - atom_coords_t2, dim=-1)  # [RC, R, A, A]
+            distances_chunk = torch.nan_to_num(distances_chunk, nan=torch.inf)
+            distances_chunk = torch.amin(distances_chunk, dim=(-1, -2))  # [RC, R]
+            distances[residues_slice, :] = distances_chunk
+
+        del y['structure']
         y['distances'] = distances
         return x, y
 

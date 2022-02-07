@@ -3,7 +3,6 @@ from typing import Any, Dict, Tuple, Union
 import torch
 from torch import nn
 
-from deepspeed.ops.adam import FusedAdam
 import pytorch_lightning as pl
 
 from selbstaufsicht.modules import Transmorpher2d, TransmorpherBlock2d
@@ -36,7 +35,7 @@ class MSAModel(pl.LightningModule):
             task_loss_weights: Dict[str, float] = None,
             metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
-            use_fused_adam: bool = False,
+            attn_chunk_size: int = 0,
             device: Union[str, torch.device] = None,
             dtype: torch.dtype = None) -> None:
         """
@@ -63,7 +62,7 @@ class MSAModel(pl.LightningModule):
             task_loss_weights (Dict[str, float], optional): per task loss weights. Defaults to None.
             metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
-            use_fused_adam (bool, optional): Whether to use optimized FusedAdam implementation or not. Defaults to False.
+            attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
 
@@ -97,7 +96,7 @@ class MSAModel(pl.LightningModule):
         self.lr = lr
         self.lr_warmup = lr_warmup
         self.need_attn = need_attn
-        self.use_fused_adam = use_fused_adam
+        self.attn_chunk_size = attn_chunk_size
         self.save_hyperparameters(h_params)
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
@@ -115,7 +114,7 @@ class MSAModel(pl.LightningModule):
 
         # NOTE feature dim = -1
         x = self.embedding(x) + self.positional_embedding(aux_features)
-        return self.backbone(x, padding_mask, self.need_attn)
+        return self.backbone(x, padding_mask, self.need_attn, self.attn_chunk_size)
 
     def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
         """
@@ -136,8 +135,7 @@ class MSAModel(pl.LightningModule):
 
         latent = None
         if 'contact' in self.tasks:
-            # TODO eval mode for all modules except contact head?
-            # TODO the contact prediction is a bit hacky
+            # NOTE eval mode for all modules except contact head
             with torch.no_grad():
                 latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
             x['attn_maps'] = attn_maps
@@ -200,10 +198,7 @@ class MSAModel(pl.LightningModule):
             Dict[str, Any]: Optimization algorithm, lr scheduler.
         """
 
-        if self.use_fused_adam:
-            optimizer = FusedAdam(self.parameters(), lr=self.lr)
-        else:
-            optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
 
         class inverse_square_root_rule():
             def __init__(self, warmup: int) -> None:
