@@ -657,15 +657,19 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
     def _compute_landmarks(self, x: torch.Tensor) -> torch.Tensor:
         # divide dimension n in m partitions, which are averaged over dimension n
         b, n, d = x.shape
-        rest_n = n % self.num_landmarks
         
-        if rest_n == 0:
+        n_ratio = n // self.num_landmarks
+        n_rest = n % self.num_landmarks
+        
+        if n_rest == 0:
             out = x.reshape(b, self.num_landmarks, n // self.num_landmarks, d)
         else:
-            out = torch.empty((b, self.num_landmarks + 1, n // self.num_landmarks, d), device = x.device)  
-            out[:, :-1, :, :] = x[:, :-rest_n, :].reshape(b, self.num_landmarks, n // self.num_landmarks, d)
-            out[:, -1:, :rest_n, :] = x[:, -rest_n:, :].reshape(b, 1, rest_n, d)
-            out[:, -1:, rest_n:, :] = 0
+            additional_landmarks = int(math.ceil(n_rest / n_ratio))
+            out = torch.empty((b, self.num_landmarks + additional_landmarks, n // self.num_landmarks, d), device = x.device)  
+            out[:, :-additional_landmarks, :, :] = x[:, :-rest_n, :].reshape(b, self.num_landmarks, n // self.num_landmarks, d)
+            additional_landmarks_out_flat = out[:, -additional_landmarks:, :, :].view(b, -1, d)
+            additional_landmarks_out_flat[:, :rest_n, :] = x[:, -rest_n:, :]
+            additional_landmarks_out_flat[:, rest_n:, :] = 0
             
         return out.mean(dim = -2)
     
