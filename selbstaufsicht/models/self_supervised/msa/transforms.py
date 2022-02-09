@@ -390,7 +390,7 @@ class ContactFromDistance():
         contacts[y['distances'] < self.threshold] = 1.
         contacts[y['distances'] == torch.inf] = -1.
 
-        y['contacts'] = contacts
+        y['contact'] = contacts
         return x, y
 
 
