@@ -184,9 +184,9 @@ def test_subsampling_uniform(msa_sample):
 
     sampled_ref = MultipleSeqAlignment(
         [
-            SeqRecord(Seq("CCUACU."), id='seq3'),
-            SeqRecord(Seq("UCUCCUC"), id='seq4'),
             SeqRecord(Seq("ACUCCUA"), id='seq1'),
+            SeqRecord(Seq("AAU.CUA"), id='seq2'),
+            SeqRecord(Seq("UCUCCUC"), id='seq4'),
         ])
 
     for idx in range(len(sampled)):
@@ -197,22 +197,22 @@ def test_subsampling_fixed(msa_sample):
     sampler = MSASubsampling(2, True, 'fixed')
     sampled = sampler(*msa_sample)[0]['msa']
     sampled_contrastive = sampler(*msa_sample)[0]['contrastive']
-    
+
     sampled_ref = MultipleSeqAlignment(
         [
             SeqRecord(Seq("ACUCCUA"), id='seq1'),
             SeqRecord(Seq("AAU.CUA"), id='seq2'),
         ])
-    
+
     sampled_contrastive_ref = MultipleSeqAlignment(
         [
             SeqRecord(Seq("CCUACU."), id='seq3'),
             SeqRecord(Seq("UCUCCUC"), id='seq4'),
         ])
-    
+
     for idx in range(len(sampled)):
         assert sampled[idx].seq == sampled_ref[idx].seq
-        
+
     for idx in range(len(sampled_contrastive)):
         assert sampled_contrastive[idx].seq == sampled_contrastive_ref[idx].seq
 
@@ -411,9 +411,10 @@ def test_compose(msa_sample):
     transform_composition = SelfSupervisedCompose(transforms)
     sample, target = transform_composition(*msa_sample)
 
-    msa_ref = torch.tensor([[17, 5, 5, 4, 3, 5, 4, 1],
-                            [17, 4, 5, 4, 5, 5, 4, 5],
-                            [17, 3, 5, 4, 5, 5, 4, 3]])
+    msa_ref = torch.tensor([[17, 3, 5, 4, 5, 5, 4, 3],   # seq1
+                            [17, 3, 3, 4, 1, 5, 4, 3],   # seq2
+                            [17, 4, 5, 4, 5, 5, 4, 5]])  # seq4
+    print(sample['msa'])
 
     testing.assert_close(sample['msa'], msa_ref, rtol=0, atol=0)
 
@@ -428,10 +429,10 @@ def test_distance_from_chain(bio_structure):
         [0., 1., 0.],
         [1., 0., 1.],
         [0., 1., 0.]
-    ])
-    
+    ], device=y['distances'].device)
+
     testing.assert_close(y['distances'], distances_ref)
-    
+
 
 if __name__ == '__main__':
     pass

@@ -645,8 +645,6 @@ def _maximize_diversity_naive(msa: MultipleSeqAlignment, msa_indices: List[int],
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
-    # TODO ensure reference sequence is contained in output
-    raise
 
     # naive strategy: compute hamming distances on-the-fly, when needed
     hd_matrix = torch.zeros((len(msa_indices), len(sampled_msa)))
@@ -693,8 +691,6 @@ def _maximize_diversity_cached(msa: MultipleSeqAlignment,
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
-    # TODO ensure reference sequence is contained in output
-    raise
 
     # cached strategy: use pre-computed hamming distances
     indices = tuple(zip(*[(msa_idx, sampled_msa_idx) for msa_idx in msa_indices for sampled_msa_idx in sampled_msa_indices]))
@@ -733,8 +729,6 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, contr
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
-    # TODO ensure reference sequence is contained in output
-    raise
 
     # since the function is deterministic and contrastive input should be different from the regular input, it is sampled randomly
     if contrastive:
@@ -772,8 +766,7 @@ def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool = 
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
-    # TODO ensure reference sequence is contained in output
-    raise
+    # TODO ensure this works, when there are not 2*nseqs sequences in the msa
 
     if contrastive:
         return msa[nseqs:2 * nseqs]
