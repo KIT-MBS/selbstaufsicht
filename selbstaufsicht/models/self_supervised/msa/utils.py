@@ -149,6 +149,12 @@ def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, thres
     return downstream_transform
 
 
+def get_downstream_metrics():
+    metrics = ModuleDict()
+    metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1)})
+    return metrics
+
+
 class MSACollator():
     def __init__(self, msa_padding_token: int, inpainting_mask_padding_token: int = 0, jigsaw_padding_token: int = -1) -> None:
         """
