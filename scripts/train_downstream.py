@@ -11,7 +11,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
-from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, MSACollator, get_tasks
+from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, MSACollator, get_tasks, get_downstream_metrics
 
 
 def main():
@@ -24,6 +24,7 @@ def main():
 
     root = os.environ['DATA_PATH']
     downstream_transform = get_downstream_transforms(subsample_depth=50)
+    metrics = get_downstream_metrics()
     downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
     test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
 
@@ -67,12 +68,11 @@ def main():
             emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
             )
     model.tasks = ['contact']
-    model.losses['contact'] = nn.CrossEntropyLoss(ignore_index=-1)  # TODO there probably should be a weight for contacts
+    model.losses['contact'] = nn.NLLLoss(ignore_index=-1)  # TODO there probably should be a weight for contacts
     model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[downstream_ds.token_mapping[l] for l in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
     model.need_attn = True
     model.task_loss_weights = {'contact': 1.}
-    # TODO accuracy
-    model.metrics = {'contact': []}
+    model.metrics = metrics
 
     train_dl = DataLoader(downstream_ds, batch_size=1, shuffle=True)
 

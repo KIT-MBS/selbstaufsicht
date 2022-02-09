@@ -147,7 +147,7 @@ class ContactHead(nn.Module):
         self.num_maps = num_maps
         self.cull_tokens = cull_tokens
         self.l = nn.Conv2d(num_maps, num_maps, kernel_size=1, bias=False, **factory_kwargs)
-        # self.f = nn.Sigmoid()
+        self.f = nn.Sigmoid()
 
     def forward(self, latent, x) -> torch.Tensor:
         # TODO only tied axial attention for now
@@ -170,6 +170,10 @@ class ContactHead(nn.Module):
         out = torch.cat([m[0].squeeze(dim=2) for m in out], dim=1) # [B, num_blocks * H, L, L]
         out = out.masked_select(mask).reshape(B, self.num_maps, degapped_L, degapped_L)
         out = self.l(out)
-        out = out.sum(dim=1)  # [B, L, L]
+        # TODO this is some hackery to use the ignore_index of NLLLoss, since BCELoss does not have it
+        out = out.sum(dim=1, keepdim=True)  # [B, 1, L, L]
+        out = self.f(out)
+        out = torch.cat((out, 1. - out), dim=1)
+        out = torch.log(out)
+
         return out
-        # return self.f(out)
