@@ -386,7 +386,11 @@ class ContactFromDistance():
         self.threshold = threshold
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
-        y['contact'] = (y['distances'] < self.threshold).float()
+        contacts = torch.zeros_like(y['distances'], dtype = torch.long)
+        contacts[y['distances'] < self.threshold] = 1.
+        contacts[y['distances'] == torch.inf] = -1.
+
+        y['contacts'] = contacts
         return x, y
 
 

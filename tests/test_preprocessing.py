@@ -12,7 +12,7 @@ from selbstaufsicht.transforms import SelfSupervisedCompose
 from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
-from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain
+from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
 
@@ -434,12 +434,21 @@ def test_distance_from_chain(bio_structure):
         [4., 3., 4., torch.inf, 0.],
     ], device=y['distances'].device)
 
-    print(y['distances'])
-    print(distances_ref)
-
     testing.assert_close(y['distances'], distances_ref)
 
+    cfd = ContactFromDistance(1.5)
+    x, y = cfd(x, y)
+    contacts_ref = torch.tensor([
+        [1, 1, 1, -1, 0],
+        [1, 1, 1, -1, 0],
+        [1, 1, 1, -1, 0],
+        [-1, -1, -1, -1, -1],
+        [0, 0, 0, -1, 1],
+    ], device=y['distances'].device, dtype=torch.long)
 
+    print(y['contacts'])
+
+    testing.assert_close(y['contacts'], contacts_ref)
 
 
 if __name__ == '__main__':
