@@ -3,6 +3,7 @@ import torch
 import torch.testing as testing
 import pytest
 
+import numpy as np
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
@@ -420,18 +421,25 @@ def test_compose(msa_sample):
 
 
 def test_distance_from_chain(bio_structure):
-    dfc = DistanceFromChain(2)
+    dfc = DistanceFromChain(3)
     x = None
     y = {'structure': bio_structure}
     x, y = dfc(x, y)
 
     distances_ref = torch.tensor([
-        [0., 1., 0.],
-        [1., 0., 1.],
-        [0., 1., 0.]
+        [0., 1., 0., torch.inf, 4.],
+        [1., 0., 1., torch.inf, 3.],
+        [0., 1., 0., torch.inf, 4.],
+        [torch.inf, torch.inf, torch.inf, torch.inf, torch.inf],
+        [4., 3., 4., torch.inf, 0.],
     ], device=y['distances'].device)
 
+    print(y['distances'])
+    print(distances_ref)
+
     testing.assert_close(y['distances'], distances_ref)
+
+
 
 
 if __name__ == '__main__':

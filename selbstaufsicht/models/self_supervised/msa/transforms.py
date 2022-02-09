@@ -369,7 +369,7 @@ class DistanceFromChain():
             atom_coords_t2 = atom_coords_t.view(1, num_residues, 1, num_atoms_max, 3).expand(atom_coords_t1.shape[0], num_residues, num_atoms_max, num_atoms_max, 3)  # [RC, R, A, A, 3]
 
             distances_chunk = torch.linalg.vector_norm(atom_coords_t1 - atom_coords_t2, dim=-1)  # [RC, R, A, A]
-            distances_chunk = torch.nan_to_num(distances_chunk, nan=torch.inf)
+            distances_chunk = torch.nan_to_num(distances_chunk, nan=torch.inf, posinf=torch.inf)
             distances_chunk = torch.amin(distances_chunk, dim=(-1, -2))  # [RC, R]
             distances[residues_slice, :] = distances_chunk
 
