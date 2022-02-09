@@ -153,7 +153,7 @@ class ContactHead(nn.Module):
         # TODO only tied axial attention for now
         # TODO only batch size 1 for now
         # TODO remove start seq, delimiter, and mask tokens in one go
-        # TODO think about if delimiter tokens are not aligned
+        # TODO think about when delimiter tokens are not aligned
         B, E, L = x['msa'].size()
         assert B == 1
 
@@ -173,7 +173,7 @@ class ContactHead(nn.Module):
         # TODO this is some hackery to use the ignore_index of NLLLoss, since BCELoss does not have it
         out = out.sum(dim=1, keepdim=True)  # [B, 1, L, L]
         out = self.f(out)
-        out = torch.cat((out, 1. - out), dim=1)
+        out = torch.cat((1. - out, out), dim=1)
         out = torch.log(out)
 
         return out
