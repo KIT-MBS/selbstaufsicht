@@ -146,6 +146,7 @@ class BinaryTopLPrecision(Metric):
         preds = preds[:, 1, :, :].squeeze(1)
         assert preds.size() == target.size()
         preds = (preds + torch.transpose(preds, 1, 2)) * 0.5
+        preds = torch.triu(preds, 4)
         val, idx = torch.topk(preds.flatten(), L)
         labels = target.flatten()[idx]
 
