@@ -9,7 +9,7 @@ from selbstaufsicht.utils import rna2index
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
-from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss
+from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryTopLPrecision
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
 # NOTE mask and padding tokens can not be reconstructed
@@ -151,7 +151,8 @@ def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, thres
 
 def get_downstream_metrics():
     metrics = ModuleDict()
-    metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1)})
+    # metrics['contact'] = ModuleDict({'acc': Accuracy(ignore_index=-1), 'topLprec': BinaryTopLPrecision()})
+    metrics['contact'] = ModuleDict({'topLprec': BinaryTopLPrecision()})
     return metrics
 
 

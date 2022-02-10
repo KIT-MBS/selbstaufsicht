@@ -1,6 +1,12 @@
 import torch
 from torch import nn
 
+from torchmetrics import Metric
+from torchmetrics import Accuracy as ReferenceAccuracy
+
+
+# TODO is this obsolete?
+# TODO implement synchronization stuff, inherit from Metric
 class Accuracy(nn.Module):
     def __init__(self, class_dim: int = -1, ignore_index: int = -1, preds_one_hot: bool = True) -> None:
         """
@@ -11,12 +17,12 @@ class Accuracy(nn.Module):
             ignore_index (int, optional): Class index which is ignored in comparison. Defaults to -1.
             preds_one_hot (bool, optional): Whether \"preds\" is one-hot-encoded in \"class_dim\". Defaults to True.
         """
-        
+
         super(Accuracy, self).__init__()
         self.class_dim = class_dim
         self.ignore_index = ignore_index
         self.preds_one_hot = preds_one_hot
-    
+
     def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
         Computes accuracy for given predictions and target data.
@@ -28,26 +34,26 @@ class Accuracy(nn.Module):
         Returns:
             torch.Tensor: Accuracy.
         """
-        
+
         if self.preds_one_hot:
             # check if shapes match (exclude class dim for preds due to one-hot encoding)
             assert preds.shape[:self.class_dim] + (preds.shape[self.class_dim + 1:] if self.class_dim != -1 else ()) == target.shape, "Shapes must match except for \'class_dim\'!"
-            
+
             # check if ignore_index is outside of class index range
             num_classes = preds.shape[self.class_dim]
             assert not 0 <= self.ignore_index < num_classes, "Parameter \'ignore_index\' must not be in range [0, num_classes)!"
         else:
             assert preds.shape == target.shape, "Shapes must match!"
-        
+
         num_total = target.numel()
         num_ignore = target[target == self.ignore_index].numel()
-        
+
         if self.preds_one_hot:
             preds_argmax = torch.argmax(preds, dim=self.class_dim)
         else:
             preds_argmax = preds
         num_correct = (preds_argmax == target).sum()
-        
+
         return num_correct / (num_total - num_ignore)
 
 
@@ -60,12 +66,13 @@ class EmbeddedJigsawAccuracy(Accuracy):
             euclid_emb (torch.Tensor): Euclidean embedding of the discrete permutation metric.
             ignore_value (int, optional): Target value which is ignored in comparison. Defaults to -1.
         """
-        
-        super(EmbeddedJigsawAccuracy, self).__init__(ignore_index=ignore_value, preds_one_hot=False)
+
+        # super(EmbeddedJigsawAccuracy, self).__init__(ignore_index=ignore_value, preds_one_hot=False)
+        super(EmbeddedJigsawAccuracy, self).__init__(ignore_index=ignore_value)
         self.euclid_emb = euclid_emb
         self.euclid_emb_device_flag = False
         self.ignore_value = ignore_value
-        
+
     def permutation_indices(self, x: torch.Tensor) -> torch.Tensor:
         """
         Compares each M-dimensional vector of x with each row vector of the Euclidean embedding.
@@ -77,26 +84,26 @@ class EmbeddedJigsawAccuracy(Accuracy):
         Returns:
             torch.Tensor: Permutation indices.
         """
-        
+
         assert x.shape[self.class_dim] == self.euclid_emb.shape[1]
-        
+
         # expand x by permutation dim, permute permutation dim and embedding dim
         temp = x.unsqueeze(-1).expand(*x.shape, self.euclid_emb.shape[0])  # [*, M, P]
         temp = temp.transpose(-1, -2)  # [*, P, M]
-        
+
         # expand embedding to shape of x
         euclid_emb = self.euclid_emb.view(*((1,) * (x.dim() - 1) + self.euclid_emb.shape)).expand(*(x.shape[:-1] + self.euclid_emb.shape))  # [*, P, M]
-        
+
         # compute L2 distances over class_dim
         temp = torch.linalg.vector_norm(temp - euclid_emb, dim=-1)  # [*, P]
-        
+
         # find indices of minimum L2 distances over permutation dim
         return torch.argmin(temp, dim=-1)  # [*]
-        
-    
+
+
     def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
-        Computes accuracy for given predictions and target data by taking the closest permutation index from the Euclidean embedding for predictions, according to the L2 norm. 
+        Computes accuracy for given predictions and target data by taking the closest permutation index from the Euclidean embedding for predictions, according to the L2 norm.
 
         Args:
             preds (torch.Tensor): Predictions.
@@ -105,22 +112,46 @@ class EmbeddedJigsawAccuracy(Accuracy):
         Returns:
             torch.Tensor: Accuracy.
         """
-        
+
         assert preds.shape == target.shape, "Shapes must match!"
-        
+
         # necessary for pytorch lightning to push the tensor onto the correct cuda device
         if not self.euclid_emb_device_flag:
             self.euclid_emb = self.euclid_emb.type_as(preds)
             self.euclid_emb_device_flag = True
-        
+
         # invert embedding: get permutation indices
         preds_indices = self.permutation_indices(preds)
         target_indices = self.permutation_indices(target)
-        
+
         # compute ignore mask
         mask = (target == self.ignore_value).sum(dim=-1) == target.shape[-1]
-        
+
         # apply ignore_mask only to targets
         target_indices[mask] = self.ignore_index
-        
+
         return super().forward(preds_indices, target_indices)
+
+
+class BinaryTopLPrecision(Metric):
+    def __init__(self, ignore_index=-1, dist_sync_on_step=False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.ignore_index = ignore_index
+        self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
+        self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
+
+    def update(self, preds, target):
+        L = target.size(-1)
+        assert target.size(0) == 1
+        preds = preds[:, 1, :, :].squeeze(1)
+        assert preds.size() == target.size()
+        preds = (preds + torch.transpose(preds, 1, 2)) * 0.5
+        val, idx = torch.topk(preds.flatten(), L)
+        labels = target.flatten()[idx]
+
+        self.tp += torch.sum(labels == 1)
+        self.fp += torch.sum(labels == 0)
+
+
+    def compute(self) -> torch.Tensor:
+        return self.tp.float() / (self.tp.float() + self.fp.float())
