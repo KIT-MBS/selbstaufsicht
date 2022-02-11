@@ -29,7 +29,10 @@ def main():
     test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
 
     # NOTE for some reason, load_from_checkpoint fails to infer the hyperparameters correctly from the checkpoint file
-    checkpoint = torch.load(args.checkpoint)
+    if torch.cuda.is_available():
+        checkpoint = torch.load(args.checkpoint)
+    else:
+        checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
     h_params = checkpoint['hyper_parameters']
     learning_rate = 0.0001
 
