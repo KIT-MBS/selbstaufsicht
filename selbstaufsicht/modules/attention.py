@@ -612,6 +612,26 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         self.num_landmarks = num_landmarks
         self.num_inv_iter = num_inv_iter
     
+    class IterativePseudoInv(Function):
+        @staticmethod
+        def forward(ctx, x: torch.Tensor, num_iter: int) -> torch.Tensor:
+            i = torch.eye(x.shape[-1], device = x.device)
+            z = 1 / torch.amax(torch.sum(x, dim = -2), dim = -1)[:, None, None] * x.transpose(-1, -2)
+            for idx in range(num_iter):
+                xz = x @ z
+                z = 0.25 * z @ (13 * i - xz @ (15 * i - xz @ (7 * i - xz)))
+            ctx.save_for_backward(z)
+            return z
+
+        @staticmethod
+        def backward(ctx: Any, z_grad: torch.Tensor) -> Tuple[torch.Tensor, None]:
+            z, = ctx.saved_tensors
+            z_t = z.transpose(-1, -2)
+            x_grad = -z_t @ z_grad  # bik.T @ bij -> bkj
+            x_grad = x_grad @ z_t  # bkj @ blj.T -> bkl
+            return x_grad, None
+
+
     def _nystroem_attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, need_attn_maps: bool = True) -> torch.Tensor:
         n = q.shape[-2]
 
@@ -624,7 +644,6 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         else:
             self.num_landmarks = n
 
-        
         # compute landmarks for queries and keys
         q_lm = self._compute_landmarks(q)   # [b, m, d]
         k_lm = self._compute_landmarks(k)   # [b, m, d]
@@ -633,7 +652,7 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
         a = torch.softmax(q_lm @ k_lm.transpose(-1, -2), dim = -1)   # [b, m, m]
         
         # compute pseudo-inverse of a
-        a = self.iterative_pseudo_inv(a, self.num_inv_iter)   # [b, m, m]
+        a = self.IterativePseudoInv.apply(a, self.num_inv_iter)   # [b, m, m]
         
         # compute sub-matrices, apply softmax
         b = torch.softmax(q_lm @ k.transpose(-1, -2), dim = -1)   # [b, m, n]
@@ -672,18 +691,6 @@ class TiedAxialNystroemSelfAttention2d(TiedAxialSelfAttention2d):
             additional_landmarks_out_flat[:, n_rest:, :] = 0
             
         return out.mean(dim = -2)
-    
-    @staticmethod
-    def iterative_pseudo_inv(x: torch.Tensor, num_iter: int):
-        i = torch.eye(x.shape[-1], device = x.device)
-        
-        z = 1 / torch.amax(torch.sum(x, dim = -2), dim = -1)[:, None, None] * x.transpose(-1, -2)
-        
-        for _ in range(num_iter):
-            xz = x @ z
-            z = 0.25 * z @ (13 * i - xz @ (15 * i - xz @ (7 * i - xz)))
-        
-        return z
     
     def row_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor, 
                  need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
