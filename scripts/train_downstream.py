@@ -36,6 +36,17 @@ def main():
     h_params = checkpoint['hyper_parameters']
     learning_rate = 0.0001
 
+    print(checkpoint['hyper_parameters'].keys())
+
+    if h_params['jigsaw_euclid_emb']:
+        embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
+        jigsaw_euclid_emb = torch.empty((1, embed_size))
+
+    if 'jigsaw_disable_delimiter' in h_params:
+        jigsaw_delimiter = not h_params['jigsaw_disable_delimiter']
+    else:
+        jigsaw_delimiter = True
+
     tasks = []
     if h_params['task_inpainting']:
         tasks.append("inpainting")
@@ -54,6 +65,8 @@ def main():
                                     jigsaw_partitions=h_params['jigsaw_partitions'],
                                     jigsaw_classes=h_params['jigsaw_permutations'],
                                     jigsaw_linear=not h_params['jigsaw_nonlinear'],
+                                    jigsaw_delimiter= jigsaw_delimiter,
+                                    jigsaw_euclid_emb=jigsaw_euclid_emb,
                                     simclr_temperature=h_params['contrastive_temperature'])
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
