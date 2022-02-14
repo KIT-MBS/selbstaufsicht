@@ -33,7 +33,8 @@ class MSAModel(pl.LightningModule):
             task_heads: Dict[str, nn.Module] = None,
             task_losses: Dict[str, nn.Module] = None,
             task_loss_weights: Dict[str, float] = None,
-            metrics: Dict[str, nn.ModuleDict] = None,
+            train_metrics: Dict[str, nn.ModuleDict] = None,
+            val_metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
             attn_chunk_size: int = 0,
             device: Union[str, torch.device] = None,
@@ -60,7 +61,8 @@ class MSAModel(pl.LightningModule):
             task_heads (nn.ModuleDict[str, nn.Module], optional): Head modules for upstream tasks. Defaults to None.
             task_losses (Dict[str, nn.Module], optional): Loss functions for upstream tasks. Defaults to None.
             task_loss_weights (Dict[str, float], optional): per task loss weights. Defaults to None.
-            metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
+            train_metrics (Dict[str, nn.ModuleDict], optional): Training metrics for upstream tasks. Defaults to None.
+            val_metrics (Dict[str, nn.ModuleDict], optional): Validation metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
             attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
@@ -90,7 +92,8 @@ class MSAModel(pl.LightningModule):
 
         self.task_heads = task_heads
         self.losses = task_losses
-        self.metrics = metrics
+        self.train_metrics = train_metrics
+        self.val_metrics = val_metrics
         if task_heads is not None:
             assert self.task_heads.keys() == self.losses.keys()
         self.lr = lr
@@ -131,7 +134,12 @@ class MSAModel(pl.LightningModule):
         """
 
         x, y = batch_data
-        mode = "training" if self.training else "validation"
+        if self.training:
+            mode = "training"
+            metrics = self.train_metrics
+        else:
+            mode = "validation"
+            metrics = self.val_metrics
 
         latent = None
         if 'contact' in self.tasks:
@@ -150,9 +158,9 @@ class MSAModel(pl.LightningModule):
         preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
-            for m in self.metrics[task]:
-                self.metrics[task][m](preds[task], y[task])
-                self.log(f'{task}_{mode}_{m}', self.metrics[task][m], on_step=self.training, on_epoch=True)
+            for m in metrics[task]:
+                metrics[task][m](preds[task], y[task])
+                self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         for task in self.tasks:
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)

@@ -55,9 +55,9 @@ def get_tasks(tasks: List[str],
         ValueError: Unknown upstream task.
 
     Returns:
-        Tuple[transforms.SelfSupervisedCompose, Dict[str, nn.Module], Dict[str, nn.Module], Dict[str, ModuleDict]]:
+        Tuple[transforms.SelfSupervisedCompose, Dict[str, nn.Module], Dict[str, nn.Module], Dict[str, ModuleDict], Dict[str, ModuleDict]]:
         Composition of preprocessing transforms; head modules for upstream tasks;
-        loss functions for upstream tasks; further metrics for upstream tasks
+        loss functions for upstream tasks; further training/validation metrics for upstream tasks
     """
 
     if not set(tasks) <= {'inpainting', 'jigsaw', 'contrastive'}:
@@ -95,30 +95,35 @@ def get_tasks(tasks: List[str],
 
     transform = transforms.SelfSupervisedCompose(transformslist)
 
-    metrics = ModuleDict()
+    train_metrics = ModuleDict()
+    val_metrics = ModuleDict()
 
     task_heads = ModuleDict()
     task_losses = dict()
     if 'jigsaw' in tasks:
         if jigsaw_euclid_emb is not None:
             jigsaw_classes = jigsaw_euclid_emb.shape[1]
-            acc_metric = EmbeddedJigsawAccuracy(jigsaw_euclid_emb, ignore_value=jigsaw_padding_token)
+            train_acc_metric = EmbeddedJigsawAccuracy(jigsaw_euclid_emb, ignore_value=jigsaw_padding_token)
+            val_acc_metric = EmbeddedJigsawAccuracy(jigsaw_euclid_emb, ignore_value=jigsaw_padding_token)
             loss_fn = EmbeddedJigsawLoss(ignore_value=jigsaw_padding_token)
         else:
-            acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
+            train_acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
+            val_acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
             loss_fn = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
 
         head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear, euclid_emb=jigsaw_euclid_emb is not None)
         task_heads['jigsaw'] = head
         task_losses['jigsaw'] = loss_fn
-        metrics['jigsaw'] = ModuleDict({'acc': acc_metric})
+        train_metrics['jigsaw'] = ModuleDict({'acc': train_acc_metric})
+        val_metrics['jigsaw'] = ModuleDict({'acc': val_acc_metric})
     if 'inpainting' in tasks:
         # NOTE never predict mask token or padding token
         head = InpaintingHead(dim, len(rna2index) - 2)
         task_heads['inpainting'] = head
 
         task_losses['inpainting'] = CrossEntropyLoss()
-        metrics['inpainting'] = ModuleDict({'acc': Accuracy()})
+        train_metrics['inpainting'] = ModuleDict({'acc': Accuracy()})
+        val_metrics['inpainting'] = ModuleDict({'acc': Accuracy()})
     if 'contrastive' in tasks:
         head = ContrastiveHead(dim)
         task_heads['contrastive'] = head
@@ -126,7 +131,7 @@ def get_tasks(tasks: List[str],
         # TODO
         metrics['contrastive'] = ModuleDict({})
 
-    return transform, task_heads, task_losses, metrics
+    return transform, task_heads, task_losses, train_metrics, val_metrics
 
 
 def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, threshold: float = 4.):
