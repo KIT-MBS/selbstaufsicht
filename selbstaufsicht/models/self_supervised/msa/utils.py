@@ -155,10 +155,12 @@ def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, thres
 
 
 def get_downstream_metrics():
-    metrics = ModuleDict()
+    train_metrics = ModuleDict()
+    val_metrics = ModuleDict()
     # metrics['contact'] = ModuleDict({'acc': Accuracy(ignore_index=-1), 'topLprec': BinaryTopLPrecision()})
-    metrics['contact'] = ModuleDict({'topLprec': BinaryTopLPrecision()})
-    return metrics
+    train_metrics['contact'] = ModuleDict({'topLprec': BinaryTopLPrecision()})
+    val_metrics['contact'] = ModuleDict({'topLprec': BinaryTopLPrecision()})
+    return train_metrics, val_metrics
 
 
 class MSACollator():
