@@ -24,7 +24,7 @@ def main():
 
     root = os.environ['DATA_PATH']
     downstream_transform = get_downstream_transforms(subsample_depth=50)
-    metrics = get_downstream_metrics()
+    train_metrics, val_metrics = get_downstream_metrics()
     downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
     test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
 
@@ -36,8 +36,7 @@ def main():
     h_params = checkpoint['hyper_parameters']
     learning_rate = 0.0001
 
-    print(checkpoint['hyper_parameters'].keys())
-
+    jigsaw_euclid_emb = None
     if h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
         jigsaw_euclid_emb = torch.empty((1, embed_size))
@@ -54,20 +53,20 @@ def main():
         tasks.append("jigsaw")
     if h_params['task_contrastive']:
         tasks.append("contrastive")
-    _, task_heads, task_losses, _ = get_tasks(tasks,
-                                    h_params['feature_dim_head'] * h_params['num_heads'],
-                                    subsample_depth=h_params['subsampling_depth'],
-                                    subsample_mode=h_params['subsampling_mode'],
-                                    crop_size=h_params['cropping_size'],
-                                    crop_mode=h_params['cropping_mode'],
-                                    masking=h_params['inpainting_masking_type'],
-                                    p_mask=h_params['inpainting_masking_p'],
-                                    jigsaw_partitions=h_params['jigsaw_partitions'],
-                                    jigsaw_classes=h_params['jigsaw_permutations'],
-                                    jigsaw_linear=not h_params['jigsaw_nonlinear'],
-                                    jigsaw_delimiter= jigsaw_delimiter,
-                                    jigsaw_euclid_emb=jigsaw_euclid_emb,
-                                    simclr_temperature=h_params['contrastive_temperature'])
+    _, task_heads, task_losses, _, _ = get_tasks(tasks,
+                                       h_params['feature_dim_head'] * h_params['num_heads'],
+                                       subsample_depth=h_params['subsampling_depth'],
+                                       subsample_mode=h_params['subsampling_mode'],
+                                       crop_size=h_params['cropping_size'],
+                                       crop_mode=h_params['cropping_mode'],
+                                       masking=h_params['inpainting_masking_type'],
+                                        p_mask=h_params['inpainting_masking_p'],
+                                       jigsaw_partitions=h_params['jigsaw_partitions'],
+                                       jigsaw_classes=h_params['jigsaw_permutations'],
+                                       jigsaw_linear=not h_params['jigsaw_nonlinear'],
+                                       jigsaw_delimiter= jigsaw_delimiter,
+                                       jigsaw_euclid_emb=jigsaw_euclid_emb,
+                                       simclr_temperature=h_params['contrastive_temperature'])
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
             checkpoint_path = args.checkpoint,
@@ -88,14 +87,15 @@ def main():
     model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[downstream_ds.token_mapping[l] for l in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
     model.need_attn = True
     model.task_loss_weights = {'contact': 1.}
-    model.metrics = metrics
+    model.train_metrics = train_metrics
+    model.val_metrics = val_metrics
 
     train_dl = DataLoader(downstream_ds, batch_size=1, shuffle=True)
 
     dt_now = datetime.now()
     log_run_name = 'downstream_' + dt_now.strftime(args.log_run_name)
     tb_logger = TensorBoardLogger(save_dir=h_params['log_dir'], name=h_params['log_exp_name'], version=log_run_name)
-    trainer = Trainer()
+    trainer = Trainer(logger=tb_logger)
     trainer.fit(model, train_dl)
 
 if __name__ == '__main__':
