@@ -132,14 +132,14 @@ def main():
                           num_workers=0,
                           worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
                           generator=data_loader_rng, 
-                          pin_memory=num_gpus > 0)
+                          pin_memory=False)
     test_dl = DataLoader(test_ds, 
                          batch_size=args.batch_size,
                          shuffle=False,
                          num_workers=0,
                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
                          generator=data_loader_rng, 
-                         pin_memory=num_gpus > 0)
+                         pin_memory=False)
 
     tb_logger = TensorBoardLogger(save_dir=log_dir, name=log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs, 
