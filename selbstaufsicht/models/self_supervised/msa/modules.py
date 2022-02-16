@@ -157,7 +157,7 @@ class ContactHead(nn.Module):
         B, E, L = x['msa'].size()
         assert B == 1
 
-        mask = torch.ones((L, ))
+        mask = torch.ones((L, ), device=x['msa'].device)
         for token in self.cull_tokens:
             mask -= (x['msa'][:, 0].reshape((L, )) == token).int()
         mask = mask.bool()
