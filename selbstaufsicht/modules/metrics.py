@@ -140,28 +140,103 @@ class EmbeddedJigsawAccuracy(Accuracy):
 
 
 class BinaryTopLPrecision(Metric):
-    def __init__(self, diag_shift=4, dist_sync_on_step=False):
+    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, dist_sync_on_step: bool = False) -> None:
+        """
+        Initializes binary top-L precision metric with ignore index support.
+
+        Args:
+            ignore_idx (int, optional): Ignored index in the target values. Defaults to -1.
+            diag_shift (int, optional): Diagonal offset for predictions. Defaults to 4.
+            dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
+        """
+        
         super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.ignore_idx = ignore_idx
         self.diag_shift = diag_shift
         self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
         self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
 
-    def update(self, preds, target):
-        # preds: [B, 2, L, L]
-        # target: [B, L, L]
+    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
+        """
+        Updates internal metric states by comparing predicted and target values.
+
+        Args:
+            preds (torch.Tensor): Predictions [B, 2, L, L].
+            target (torch.Tensor): Targets [B, L, L].
+        """
         
         L = target.size(-1)
-        assert target.size(0) == 1
-        preds = preds[:, 1, :, :].squeeze(1)
-        # preds: [B, L, L]
-        assert preds.size() == target.size()
-        preds = torch.triu(preds, self.diag_shift)
-        _, idx = torch.topk(preds.flatten(), L)
-        labels = target.flatten()[idx]
+        preds_ = preds[:, 1, :, :].squeeze(1)
+        assert preds_.size() == target.size()
+        preds_ = torch.triu(preds_, self.diag_shift)
+        preds_ = preds_[target != self.ignore_idx]
+        target_ = target[target != self.ignore_idx]
+        _, idx = torch.topk(preds_, L)
+        target_ = target_[idx]
 
-        self.tp += torch.sum(labels == 1)
-        self.fp += torch.sum(labels == 0)
-
+        self.tp += torch.sum(target_ == 1)
+        self.fp += torch.sum(target_ == 0)
 
     def compute(self) -> torch.Tensor:
+        """
+        Computes binary top-L precision.
+
+        Returns:
+            torch.Tensor: Top-L precision.
+        """
+        
         return self.tp.float() / (self.tp.float() + self.fp.float())
+
+
+class BinaryConfusionMatrix(Metric):
+    def __init__(self, dist_sync_on_step: bool = False) -> None:
+        """
+        Initializes confusion matrix metric for binary classification with ignore index support.
+
+        Args:
+            dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
+        """
+        
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
+        self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
+        self.add_state('tn', default=torch.tensor(0), dist_reduce_fx='sum')
+        self.add_state('fn', default=torch.tensor(0), dist_reduce_fx='sum')
+
+    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
+        """
+        Updates internal metric states by comparing predicted and target values.
+        Ignored target values should be set negative.
+
+        Args:
+            preds (torch.Tensor): Predictions [N, 2].
+            target (torch.Tensor): Targets [N].
+        """
+        
+        assert preds.ndim == 2
+        assert target.ndim == 1
+        
+        B, C = preds.shape
+        assert C == 2
+        assert B == target.shape[0]
+        
+        preds_ = torch.argmax(preds, dim=1)
+        tp = torch.logical_and(preds_ == 1, target == 1).sum()
+        fp = torch.logical_and(preds_ == 1, target == 0).sum()
+        tn = torch.logical_and(preds_ == 0, target == 0).sum()
+        fn = torch.logical_and(preds_ == 0, target == 1).sum()
+
+        self.tp += tp
+        self.fp += fp
+        self.tn += tn
+        self.fn += fn
+
+    def compute(self) -> torch.Tensor:
+        """
+        Computes confusion matrix for binary classification.
+
+        Returns:
+            torch.Tensor: [[TP, FN], [FP, TN]]
+        """
+        
+        return torch.tensor([[self.tp, self.fn], [self.fp, self.tn]])

@@ -5,7 +5,6 @@ import pandas as pd
 import pytorch_lightning as pl
 import torch
 from torch import nn
-from torchmetrics.functional import confusion_matrix
 
 from selbstaufsicht.modules import Transmorpher2d, TransmorpherBlock2d
 
@@ -121,7 +120,7 @@ class MSAModel(pl.LightningModule):
         x = self.embedding(x) + self.positional_embedding(aux_features)
         return self.backbone(x, padding_mask, self.need_attn, self.attn_chunk_size)
 
-    def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]:
+    def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
         """
         Performs a single training or validation step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
         whose latent representation output is then passed through the upstream task related head models.
@@ -132,7 +131,7 @@ class MSAModel(pl.LightningModule):
             batch_idx (int): Batch number.
 
         Returns:
-            Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]: Input, target, predictions, summed loss across all upstream tasks
+            torch.Tensor: Summed loss across all upstream tasks
         """
 
         x, y = batch_data
@@ -162,17 +161,15 @@ class MSAModel(pl.LightningModule):
         for task in self.tasks:
             for m in metrics[task]:
                 metrics[task][m](preds[task], y[task])
-                self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
+                if m != 'confmat':
+                    self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         for task in self.tasks:
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
         
-        out = {'input': x, 'preds': preds, 'target': y}
-        if self.training:
-            out['loss'] = loss
-        return out
+        return loss
     
     def _epoch_end(self, outputs: List[Any]) -> None:
         """
@@ -183,11 +180,14 @@ class MSAModel(pl.LightningModule):
         """
         
         if 'contact' in self.tasks:
-            mode = "training" if self.training else "validation"
-            preds = torch.cat([tmp['preds']['contact'].permute(0, 2, 3, 1).flatten(0, 2) for tmp in outputs])
-            targets = torch.cat([tmp['target']['contact'].flatten() for tmp in outputs])
-            conf_mat = confusion_matrix(preds, targets, num_classes=2)
-            conf_mar = torch.flip(conf_mat, [0, 1])
+            if self.training:
+                mode = "training"
+                metrics = self.train_metrics
+            else:
+                mode = "validation"
+                metrics = self.val_metrics
+            
+            conf_mat = metrics['contact']['confmat'].compute()
 
             df_cm = pd.DataFrame(confusion_matrix.numpy(), index = range(2), columns=range(2))
             plt.figure(figsize = (10,7))
@@ -195,6 +195,7 @@ class MSAModel(pl.LightningModule):
             plt.close(fig_)
             
             self.logger.experiment.add_figure("contact_%s_confmat" % mode, fig_, self.current_epoch)
+            metrics['contact']['confmat'].reset()
 
     def training_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
         """
@@ -223,7 +224,7 @@ class MSAModel(pl.LightningModule):
             batch_idx (int): Batch number.
         """
 
-        return self._step(batch_data, batch_idx)
+        self._step(batch_data, batch_idx)
     
     def training_epoch_end(self, outputs: List[Any]) -> None:
         """
