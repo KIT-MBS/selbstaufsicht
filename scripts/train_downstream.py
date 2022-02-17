@@ -58,6 +58,8 @@ def main():
         dp_strategy = None
         checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
     h_params = checkpoint['hyper_parameters']
+
+    learning_rate = 0.0001
     
     root = os.environ['DATA_PATH']
     downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'])
@@ -70,6 +72,7 @@ def main():
     log_exp_name = h_params['log_exp_name'] if args.log_exp_name == "" else args.log_exp_name
     log_run_name = "downstream__" + h_params['log_run_name'] if args.log_run_name == "" else dt_now.strftime(args.log_run_name)
 
+    jigsaw_euclid_emb = None
     if h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
         jigsaw_euclid_emb = torch.empty((1, embed_size))
