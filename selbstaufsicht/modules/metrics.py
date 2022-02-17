@@ -2,13 +2,10 @@ import torch
 from torch import nn
 
 from torchmetrics import Metric
-from torchmetrics import Accuracy as ReferenceAccuracy
 
 
-# TODO is this obsolete?
-# TODO implement synchronization stuff, inherit from Metric
-class Accuracy(nn.Module):
-    def __init__(self, class_dim: int = -1, ignore_index: int = -1, preds_one_hot: bool = True) -> None:
+class Accuracy(Metric):
+    def __init__(self, class_dim: int = -1, ignore_index: int = -1, preds_one_hot: bool = True, dist_sync_on_step=False) -> None:
         """
         Initializes accuracy metric with ignore-index support and specifiable class dimension.
 
@@ -16,25 +13,26 @@ class Accuracy(nn.Module):
             class_dim (int, optional): Class dimension, which is used for comparison. All other dimensions are treated as batch dimensions. Defaults to -1.
             ignore_index (int, optional): Class index which is ignored in comparison. Defaults to -1.
             preds_one_hot (bool, optional): Whether \"preds\" is one-hot-encoded in \"class_dim\". Defaults to True.
+            dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
         """
 
-        super(Accuracy, self).__init__()
+        super(Accuracy, self).__init__(dist_sync_on_step=dist_sync_on_step)
         self.class_dim = class_dim
         self.ignore_index = ignore_index
         self.preds_one_hot = preds_one_hot
-
-    def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        self.add_state("correct", default=torch.tensor(0), dist_reduce_fx="sum")
+        self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
+        self.add_state("ignore", default=torch.tensor(0), dist_reduce_fx="sum")
+    
+    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         """
-        Computes accuracy for given predictions and target data.
+        Updates internal metric states by evaluating given predictions and target data.
 
         Args:
             preds (torch.Tensor): Predictions.
             target (torch.Tensor): Target data. If \"preds_one_hot\", it is expected to not contain class dim as \"preds\", but class indices.
-
-        Returns:
-            torch.Tensor: Accuracy.
         """
-
+        
         if self.preds_one_hot:
             # check if shapes match (exclude class dim for preds due to one-hot encoding)
             assert preds.shape[:self.class_dim] + (preds.shape[self.class_dim + 1:] if self.class_dim != -1 else ()) == target.shape, "Shapes must match except for \'class_dim\'!"
@@ -53,8 +51,20 @@ class Accuracy(nn.Module):
         else:
             preds_argmax = preds
         num_correct = (preds_argmax == target).sum()
+        
+        self.correct += num_correct
+        self.total += num_total
+        self.ignore += num_ignore
+    
+    def compute(self) -> torch.Tensor:
+        """
+        Computes accuracy for accumulated internal metric states.
 
-        return num_correct / (num_total - num_ignore)
+        Returns:
+            torch.Tensor: Accuracy.
+        """
+        
+        return self.correct.float() / (self.total - self.ignore)
 
 
 class EmbeddedJigsawAccuracy(Accuracy):
@@ -67,8 +77,7 @@ class EmbeddedJigsawAccuracy(Accuracy):
             ignore_value (int, optional): Target value which is ignored in comparison. Defaults to -1.
         """
 
-        # super(EmbeddedJigsawAccuracy, self).__init__(ignore_index=ignore_value, preds_one_hot=False)
-        super(EmbeddedJigsawAccuracy, self).__init__(ignore_index=ignore_value)
+        super(EmbeddedJigsawAccuracy, self).__init__(ignore_index=ignore_value, preds_one_hot=False)
         self.euclid_emb = euclid_emb
         self.euclid_emb_device_flag = False
         self.ignore_value = ignore_value
@@ -100,19 +109,16 @@ class EmbeddedJigsawAccuracy(Accuracy):
         # find indices of minimum L2 distances over permutation dim
         return torch.argmin(temp, dim=-1)  # [*]
 
-
-    def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         """
-        Computes accuracy for given predictions and target data by taking the closest permutation index from the Euclidean embedding for predictions, according to the L2 norm.
+        Updates internal metric states by evaluating given predictions and target data by taking the closest permutation index from the Euclidean embedding 
+        for predictions, according to the L2 norm.
 
         Args:
             preds (torch.Tensor): Predictions.
             target (torch.Tensor): Target data.
-
-        Returns:
-            torch.Tensor: Accuracy.
         """
-
+        
         assert preds.shape == target.shape, "Shapes must match!"
 
         # necessary for pytorch lightning to push the tensor onto the correct cuda device
@@ -130,7 +136,7 @@ class EmbeddedJigsawAccuracy(Accuracy):
         # apply ignore_mask only to targets
         target_indices[mask] = self.ignore_index
 
-        return super().forward(preds_indices, target_indices)
+        super().update(preds_indices, target_indices)
 
 
 class BinaryTopLPrecision(Metric):

@@ -144,20 +144,20 @@ def main():
         jigsaw_euclid_emb = None
 
     # TODO should take token mapping?
-    transform, task_heads, task_losses, metrics = get_tasks(tasks,
-                                                            args.feature_dim_head * args.num_heads,
-                                                            subsample_depth=args.subsampling_depth,
-                                                            subsample_mode=args.subsampling_mode,
-                                                            crop_size=args.cropping_size,
-                                                            crop_mode=args.cropping_mode,
-                                                            masking=args.inpainting_masking_type,
-                                                            p_mask=args.inpainting_masking_p,
-                                                            jigsaw_partitions=args.jigsaw_partitions,
-                                                            jigsaw_classes=args.jigsaw_permutations,
-                                                            jigsaw_linear=not args.jigsaw_nonlinear,
-                                                            jigsaw_euclid_emb=jigsaw_euclid_emb,
-                                                            jigsaw_delimiter=not args.jigsaw_disable_delimiter,
-                                                            simclr_temperature=args.contrastive_temperature)
+    transform, task_heads, task_losses, train_metrics, val_metrics = get_tasks(tasks,
+                                                                               args.feature_dim_head * args.num_heads,
+                                                                               subsample_depth=args.subsampling_depth,
+                                                                               subsample_mode=args.subsampling_mode,
+                                                                               crop_size=args.cropping_size,
+                                                                               crop_mode=args.cropping_mode,
+                                                                               masking=args.inpainting_masking_type,
+                                                                               p_mask=args.inpainting_masking_p,
+                                                                               jigsaw_partitions=args.jigsaw_partitions,
+                                                                               jigsaw_classes=args.jigsaw_permutations,
+                                                                               jigsaw_linear=not args.jigsaw_nonlinear,
+                                                                               jigsaw_euclid_emb=jigsaw_euclid_emb,
+                                                                               jigsaw_delimiter=not args.jigsaw_disable_delimiter,
+                                                                               simclr_temperature=args.contrastive_temperature)
 
     root = os.environ['DATA_PATH']
     dataset_name = args.dataset.lower()
@@ -225,7 +225,8 @@ def main():
         task_heads=task_heads,
         task_losses=task_losses,
         task_loss_weights=task_loss_weights,
-        metrics=metrics,
+        train_metrics=train_metrics,
+        val_metrics=val_metrics,
         alphabet_size=len(train_ds.token_mapping),
         padding_token=train_ds.token_mapping['PADDING_TOKEN'],
         lr=args.learning_rate,
