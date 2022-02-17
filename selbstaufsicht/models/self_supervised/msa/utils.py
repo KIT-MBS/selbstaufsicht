@@ -157,8 +157,8 @@ def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, thres
 def get_downstream_metrics():
     train_metrics = ModuleDict()
     val_metrics = ModuleDict()
-    train_metrics['contact'] = ModuleDict({'acc': Accuracy(ignore_index=-1), 'topLprec': BinaryTopLPrecision()})
-    val_metrics['contact'] = ModuleDict({'acc': Accuracy(ignore_index=-1), 'topLprec': BinaryTopLPrecision()})
+    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision()})
+    val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision()})
     return train_metrics, val_metrics
 
 
