@@ -36,8 +36,7 @@ def main():
     h_params = checkpoint['hyper_parameters']
     learning_rate = 0.0001
 
-    print(checkpoint['hyper_parameters'].keys())
-
+    jigsaw_euclid_emb = None
     if h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
         jigsaw_euclid_emb = torch.empty((1, embed_size))
