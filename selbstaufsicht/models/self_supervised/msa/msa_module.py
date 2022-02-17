@@ -1,5 +1,5 @@
 import math
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import pandas as pd
 import pytorch_lightning as pl
