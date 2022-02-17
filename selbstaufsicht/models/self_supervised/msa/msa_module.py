@@ -184,8 +184,8 @@ class MSAModel(pl.LightningModule):
         
         if 'contact' in self.tasks:
             mode = "training" if self.training else "validation"
-            preds = torch.cat([tmp['preds'] for tmp in outputs])
-            targets = torch.cat([tmp['target'] for tmp in outputs])
+            preds = torch.cat([tmp['preds']['contact'] for tmp in outputs])
+            targets = torch.cat([tmp['target']['contact'] for tmp in outputs])
             conf_mat = confusion_matrix(preds, targets, num_classes=2)
             conf_mar = torch.flip(conf_mat, [0, 1])
 
