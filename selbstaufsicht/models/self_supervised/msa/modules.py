@@ -173,7 +173,8 @@ class ContactHead(nn.Module):
         # TODO this is some hackery to use the ignore_index of NLLLoss, since BCELoss does not have it
         out = out.sum(dim=1, keepdim=True)  # [B, 1, L, L]
         out = self.f(out)
-        out = torch.cat((1. - out, out), dim=1)
+        out = torch.cat((1. - out, out), dim=1)  # [B, 2, L, L]
         out = torch.log(out)
+        out = (out + torch.transpose(out, -1, -2)) * 0.5
 
         return out

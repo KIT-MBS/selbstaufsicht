@@ -140,20 +140,23 @@ class EmbeddedJigsawAccuracy(Accuracy):
 
 
 class BinaryTopLPrecision(Metric):
-    def __init__(self, ignore_index=-1, dist_sync_on_step=False):
+    def __init__(self, diag_shift=4, dist_sync_on_step=False):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
-        self.ignore_index = ignore_index
+        self.diag_shift = diag_shift
         self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
         self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
 
     def update(self, preds, target):
+        # preds: [B, 2, L, L]
+        # target: [B, L, L]
+        
         L = target.size(-1)
         assert target.size(0) == 1
         preds = preds[:, 1, :, :].squeeze(1)
+        # preds: [B, L, L]
         assert preds.size() == target.size()
-        preds = (preds + torch.transpose(preds, 1, 2)) * 0.5
-        preds = torch.triu(preds, 4)
-        val, idx = torch.topk(preds.flatten(), L)
+        preds = torch.triu(preds, self.diag_shift)
+        _, idx = torch.topk(preds.flatten(), L)
         labels = target.flatten()[idx]
 
         self.tp += torch.sum(labels == 1)
