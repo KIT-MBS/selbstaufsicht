@@ -134,7 +134,7 @@ def get_tasks(tasks: List[str],
     return transform, task_heads, task_losses, train_metrics, val_metrics
 
 
-def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, threshold: float = 4.):
+def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, threshold: float = 4., device=None):
     # TODO better subsampling
     transformslist = [
         MSASubsampling(subsample_depth, mode='uniform'),
@@ -147,7 +147,7 @@ def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, thres
                 num_classes=1)
         )
     transformslist.append(ExplicitPositionalEncoding())
-    transformslist.append(DistanceFromChain())
+    transformslist.append(DistanceFromChain(device=device))
     transformslist.append(ContactFromDistance(threshold))
     downstream_transform = transforms.SelfSupervisedCompose(transformslist)
 

@@ -314,7 +314,7 @@ class ExplicitPositionalEncoding():
 
 
 class DistanceFromChain():
-    def __init__(self, chunk_size: int = 600):
+    def __init__(self, chunk_size: int = 600, device=None):
         """
         Initializes distance-from-chain computation.
 
@@ -322,6 +322,7 @@ class DistanceFromChain():
             chunk_size (int, optional): Chunk size in residuum dimension. Defaults to 600.
         """
 
+        self.device=device
         self.chunk_size = chunk_size
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
@@ -338,16 +339,19 @@ class DistanceFromChain():
         assert len(structure) == 1
         assert len(structure[0]) == 1
 
-        if torch.cuda.is_available():
-            worker_info = torch.utils.data.get_worker_info()
-            if worker_info is None:
-                device = 'cuda'
+        if self.device is None:
+            if torch.cuda.is_available():
+                worker_info = torch.utils.data.get_worker_info()
+                if worker_info is None:
+                    device = 'cuda'
+                else:
+                    # only as many data loaders as GPUs are allowed
+                    assert worker_info.num_workers <= torch.cuda.device_count()
+                    device = 'cuda:%d' % worker_info.id
             else:
-                # only as many data loaders as GPUs are allowed
-                assert worker_info.num_workers <= torch.cuda.device_count()
-                device = 'cuda:%d' % worker_info.id
+                device = 'cpu'
         else:
-            device = 'cpu'
+            device = self.device
 
         chain = structure[0].get_list()[0]
         atom_coords = [[a.get_coord() for a in r] for r in chain]
