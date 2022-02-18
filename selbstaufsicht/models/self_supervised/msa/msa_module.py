@@ -189,7 +189,7 @@ class MSAModel(pl.LightningModule):
             
             conf_mat = metrics['contact']['confmat'].compute()
 
-            df_cm = pd.DataFrame(confusion_matrix.numpy(), index = range(2), columns=range(2))
+            df_cm = pd.DataFrame(conf_mat.numpy(), index = range(2), columns=range(2))
             plt.figure(figsize = (10,7))
             fig_ = sns.heatmap(df_cm, annot=True, cmap='Spectral').get_figure()
             plt.close(fig_)
