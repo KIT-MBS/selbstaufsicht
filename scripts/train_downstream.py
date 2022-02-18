@@ -62,7 +62,7 @@ def main():
     learning_rate = 0.0001
 
     root = os.environ['DATA_PATH']
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'])
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], threshold= 10.)
     train_metrics, val_metrics = get_downstream_metrics()
     downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
     test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
