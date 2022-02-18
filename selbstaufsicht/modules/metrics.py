@@ -165,17 +165,28 @@ class BinaryTopLPrecision(Metric):
             target (torch.Tensor): Targets [B, L, L].
         """
         
-        L = target.size(-1)
-        preds_ = preds[:, 1, :, :].squeeze(1)
+        assert preds.shape[1] == 2
+        B, L, _ = target.shape
+        preds_ = preds[:, 1, :, :].squeeze(1)  # [B, L, L]
         assert preds_.size() == target.size()
+        
         preds_ = torch.triu(preds_, self.diag_shift)
-        preds_ = preds_[target != self.ignore_idx]
-        target_ = target[target != self.ignore_idx]
-        _, idx = torch.topk(preds_, L)
-        target_ = target_[idx]
+        preds_[target == self.ignore_idx] = 0.
+        preds_ = preds_.view(B, -1)  # [B, L*L]
+        val, idx = torch.topk(preds_, L, dim=-1)  # [B, L]
+        
+        target_ = target.view(B, -1)  # [B, L*L]
+        target_ = torch.gather(target_, dim=1, index=idx)  # [B, L]
+        
+        preds_ = torch.argmax(preds, dim=1)  # [B, L, L]
+        preds_ = preds_.view(B, -1)  # [B, L*L]
+        preds_ = torch.gather(preds_, dim=1, index=idx)  # [B, L]
+        
+        tp = torch.logical_and(preds_ == 1, target_ == 1).sum()
+        fp = torch.logical_and(preds_ == 1, target_ == 0).sum()
 
-        self.tp += torch.sum(target_ == 1)
-        self.fp += torch.sum(target_ == 0)
+        self.tp += tp
+        self.fp += fp
 
     def compute(self) -> torch.Tensor:
         """
@@ -209,18 +220,15 @@ class BinaryConfusionMatrix(Metric):
         Ignored target values should be set negative.
 
         Args:
-            preds (torch.Tensor): Predictions [N, 2].
-            target (torch.Tensor): Targets [N].
+            preds (torch.Tensor): Predictions [B, 2, L, L].
+            target (torch.Tensor): Targets [B, L, L].
         """
         
-        assert preds.ndim == 2
-        assert target.ndim == 1
+        assert preds.shape[1] == 2
+        preds_ = preds.permute(0, 2, 3, 1)  # [B, L, L, 2]
+        preds_ = torch.argmax(preds_, dim=-1)  # [B, L, L]
+        assert preds_.size() == target.size()
         
-        B, C = preds.shape
-        assert C == 2
-        assert B == target.shape[0]
-        
-        preds_ = torch.argmax(preds, dim=1)
         tp = torch.logical_and(preds_ == 1, target == 1).sum()
         fp = torch.logical_and(preds_ == 1, target == 0).sum()
         tn = torch.logical_and(preds_ == 0, target == 0).sum()
