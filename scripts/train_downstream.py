@@ -42,13 +42,13 @@ def main():
     parser.add_argument('--log-run-name', default='', type=str, help='Logging run name. Supports 1989 C standard datetime codes. If empty, the run name of the pre-trained model is used, prefixed by \"downstream__\". Default: \"\"')
 
     args = parser.parse_args()
-    
+
     torch.manual_seed(args.rng_seed)
     np.random.seed(args.rng_seed)
     random.seed(args.rng_seed)
     data_loader_rng = torch.Generator()
     data_loader_rng.manual_seed(args.rng_seed)
-    
+
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
         dp_strategy = DDPPlugin(find_unused_parameters=True)
@@ -60,20 +60,20 @@ def main():
     h_params = checkpoint['hyper_parameters']
 
     learning_rate = 0.0001
-    
+
     root = os.environ['DATA_PATH']
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'])
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], threshold= 10.)
     train_metrics, val_metrics = get_downstream_metrics()
     downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
     test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
-    
+
     dt_now = datetime.now()
     log_dir = h_params['log_dir'] if args.log_dir == "" else args.log_dir
     log_exp_name = h_params['log_exp_name'] if args.log_exp_name == "" else args.log_exp_name
     log_run_name = "downstream__" + h_params['log_run_name'] if args.log_run_name == "" else dt_now.strftime(args.log_run_name)
 
     jigsaw_euclid_emb = None
-    if h_params['jigsaw_euclid_emb']:
+    if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
         jigsaw_euclid_emb = torch.empty((1, embed_size))
     else:
@@ -129,30 +129,30 @@ def main():
     model.train_metrics = train_metrics
     model.val_metrics = val_metrics
 
-    train_dl = DataLoader(downstream_ds, 
+    train_dl = DataLoader(downstream_ds,
                           batch_size=args.batch_size,
                           shuffle=not args.disable_shuffle,
                           num_workers=0,
                           worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
-                          generator=data_loader_rng, 
+                          generator=data_loader_rng,
                           pin_memory=False)
-    test_dl = DataLoader(test_ds, 
+    test_dl = DataLoader(test_ds,
                          batch_size=args.batch_size,
                          shuffle=False,
                          num_workers=0,
                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
-                         generator=data_loader_rng, 
+                         generator=data_loader_rng,
                          pin_memory=False)
 
     tb_logger = TensorBoardLogger(save_dir=log_dir, name=log_exp_name, version=log_run_name)
-    trainer = Trainer(max_epochs=args.num_epochs, 
-                      gpus=args.num_gpus, 
+    trainer = Trainer(max_epochs=args.num_epochs,
+                      gpus=args.num_gpus,
                       auto_select_gpus=num_gpus > 0,
                       num_nodes=args.num_nodes,
                       precision=args.precision,
                       strategy=dp_strategy,
-                      enable_progress_bar=not args.disable_progress_bar, 
-                      log_every_n_steps=args.log_every, 
+                      enable_progress_bar=not args.disable_progress_bar,
+                      log_every_n_steps=args.log_every,
                       logger=tb_logger)
     trainer.fit(model, train_dl, test_dl)
 
