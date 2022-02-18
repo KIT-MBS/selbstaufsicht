@@ -1,9 +1,10 @@
 import math
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
+
+import pandas as pd
+import pytorch_lightning as pl
 import torch
 from torch import nn
-
-import pytorch_lightning as pl
 
 from selbstaufsicht.modules import Transmorpher2d, TransmorpherBlock2d
 
@@ -160,14 +161,41 @@ class MSAModel(pl.LightningModule):
         for task in self.tasks:
             for m in metrics[task]:
                 metrics[task][m](preds[task], y[task])
-                self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
+                if m != 'confmat':
+                    self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         for task in self.tasks:
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
-        if self.training:
-            return loss
+        
+        return loss
+    
+    def _epoch_end(self, outputs: List[Any]) -> None:
+        """
+        Is invoked at the end of an epoch. Computes confusion matrix, if \"contact\" is in tasks.
+
+        Args:
+            outputs (List[Any]): Outputs from training/validation steps.
+        """
+        
+        if 'contact' in self.tasks:
+            if self.training:
+                mode = "training"
+                metrics = self.train_metrics
+            else:
+                mode = "validation"
+                metrics = self.val_metrics
+            
+            conf_mat = metrics['contact']['confmat'].compute()
+
+            df_cm = pd.DataFrame(confusion_matrix.numpy(), index = range(2), columns=range(2))
+            plt.figure(figsize = (10,7))
+            fig_ = sns.heatmap(df_cm, annot=True, cmap='Spectral').get_figure()
+            plt.close(fig_)
+            
+            self.logger.experiment.add_figure("contact_%s_confmat" % mode, fig_, self.current_epoch)
+            metrics['contact']['confmat'].reset()
 
     def training_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
         """
@@ -197,6 +225,26 @@ class MSAModel(pl.LightningModule):
         """
 
         self._step(batch_data, batch_idx)
+    
+    def training_epoch_end(self, outputs: List[Any]) -> None:
+        """
+        Is invoked at the end of a training epoch.
+
+        Args:
+            outputs (List[Any]): Outputs from training steps.
+        """
+        
+        self._epoch_end(outputs)
+    
+    def validation_epoch_end(self, outputs: List[Any]) -> None:
+        """
+        Is invoked at the end of a validation epoch.
+
+        Args:
+            outputs (List[Any]): Outputs from validation steps.
+        """
+        
+        self._epoch_end(outputs)
 
     def configure_optimizers(self) -> Dict[str, Any]:
         """
