@@ -2,7 +2,7 @@ import torch
 import torch.testing as testing
 import pytest
 
-from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss
+from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryTopLPrecision, BinaryConfusionMatrix
 from selbstaufsicht.utils import lehmer_encode, perm_metric, perm_gram_matrix, embed_finite_metric_space
 
 
@@ -190,3 +190,74 @@ def test_embed_finite_metric_space():
     d0 = perm_gram_matrix(perms)
     emb = embed_finite_metric_space(d0)
     assert torch.all(emb >= 0)
+    
+
+def test_binary_top_l_precision():
+    top_l_precision_metric = BinaryTopLPrecision(diag_shift=1)
+    preds = torch.Tensor([[[[0.1, 0.4, 0.3, 0.8], 
+                            [0.4, 0.2, 0.9, 0.7],
+                            [0.3, 0.9, 0.1, 0.2],
+                            [0.8, 0.7, 0.2, 0.2]], 
+                           [[0.9, 0.6, 0.7, 0.2], 
+                            [0.6, 0.8, 0.1, 0.3],
+                            [0.7, 0.1, 0.9, 0.8],
+                            [0.2, 0.3, 0.8, 0.8]]],
+                          [[[0.9, 0.6, 0.7, 0.2], 
+                            [0.6, 0.8, 0.1, 0.3],
+                            [0.7, 0.1, 0.9, 0.8],
+                            [0.2, 0.3, 0.8, 0.8]], 
+                           [[0.1, 0.4, 0.3, 0.8], 
+                            [0.4, 0.2, 0.9, 0.7],
+                            [0.3, 0.9, 0.1, 0.2],
+                            [0.8, 0.7, 0.2, 0.2]]]])
+    target = torch.Tensor([[[ 1, 0,  1,  1], 
+                            [ 0, 1,  0,  1],
+                            [ 1, 0,  1,  0],
+                            [ 1, 1,  0,  1]], 
+                           [[ 0, 1,  0, -1], 
+                            [ 1, 0,  1,  0],
+                            [ 0, 1,  0, -1],
+                            [-1, 0, -1,  0]]])
+    
+    top_l_precision = top_l_precision_metric(preds, target)
+    tp = top_l_precision_metric.tp
+    fp = top_l_precision_metric.fp
+    
+    assert tp == 2
+    assert fp == 3
+    assert top_l_precision_metric == 2 / 5
+    
+    
+def test_binary_confusion_matrix():
+    confmat_metric = BinaryConfusionMatrix()
+    preds = torch.Tensor([[[[0.0, 0.0, 0.0], 
+                            [1.0, 1.0, 1.0],
+                            [1.0, 1.0, 1.0]], 
+                           [[1.0, 1.0, 1.0], 
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0]]],
+                          [[[1.0, 0.5, 0.5], 
+                            [0.5, 0.5, 0.5],
+                            [0.5, 0.5, 0.5]], 
+                           [[0.0, 0.5, 0.5], 
+                            [0.5, 0.5, 0.5],
+                            [0.5, 0.5, 0.5]]]])
+    target = torch.Tensor([[[ 1,  0,  0], 
+                            [ 0,  0,  0],
+                            [ 1,  1,  1]], 
+                           [[ 1, -1, -1], 
+                            [-1, -1, -1],
+                            [-1, -1, -1]]])
+    
+    confmat = confmat_metric(preds, target)
+    tp = confmat_metric.tp
+    fp = confmat_metric.fp
+    tn = confmat_metric.tn
+    fn = confmat_metric.fn
+    
+    assert tp == 1
+    assert fp == 2
+    assert tn == 3
+    assert fn == 4
+    confmat_ref = torch.tensor([[1, 4], [2, 3]])
+    testing.assert_close(confmat, confmat_ref, rtol=0, atol=0)
