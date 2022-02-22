@@ -97,7 +97,7 @@ class MSAModel(pl.LightningModule):
         self.losses = task_losses
         self.train_metrics = train_metrics
         self.val_metrics = val_metrics
-        self.downstream_loss_device_flag = not 'contact' in self.tasks
+        self.downstream_loss_device_flag = False
         if task_heads is not None:
             assert self.task_heads.keys() == self.losses.keys()
         self.lr = lr
@@ -144,13 +144,13 @@ class MSAModel(pl.LightningModule):
         else:
             mode = "validation"
             metrics = self.val_metrics
-            
-        if not self.downstream_loss_device_flag:
-            self.losses['contact'].weight.to(self.device)
-            self.downstream_loss_device_flag = True
 
         latent = None
         if 'contact' in self.tasks:
+            if not self.downstream_loss_device_flag:
+                self.losses['contact'].weight = self.losses['contact'].weight.to(self.device)
+                self.downstream_loss_device_flag = True
+
             # NOTE eval mode for all modules except contact head
             with torch.no_grad():
                 latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
