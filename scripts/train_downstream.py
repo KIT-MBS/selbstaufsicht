@@ -23,11 +23,14 @@ def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Weakly Supervised Contact Prediction Script')
     # Pre-trained model
     parser.add_argument('--checkpoint', type=str, help="Path to pre-trained model checkpoint")
+    # Contact prediction
+    parser.add_argument('--distance-threshold', default=10., type=float, help="Minimum distance between two atoms in angström that is not considered as a contact")
     # Training process
     parser.add_argument('--num-epochs', default=1000, type=int, help="Number of training epochs")
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu training)")
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=1000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
+    parser.add_argument('--loss-contact-weight', default=0.97, type=int, help="Weight that is used to rescale loss for contacts. Weight for no-contacts equals 1 minus the set value.")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
@@ -62,7 +65,7 @@ def main():
     learning_rate = 0.0001
 
     root = os.environ['DATA_PATH']
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], threshold= 10.)
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], threshold=args.distance_threshold)
     train_metrics, val_metrics = get_downstream_metrics()
     downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
     test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
@@ -122,7 +125,7 @@ def main():
             )
     model.tasks = ['contact']
     # TODO there probably should be a weight for contacts
-    model.losses['contact'] = nn.NLLLoss(ignore_index=-1)
+    model.losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
     model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[downstream_ds.token_mapping[l] for l in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
     model.need_attn = True
     model.task_loss_weights = {'contact': 1.}
