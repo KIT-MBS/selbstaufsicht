@@ -170,8 +170,8 @@ class BinaryTopLPrecision(Metric):
         preds_ = preds[:, 1, :, :].squeeze(1)  # [B, L, L]
         assert preds_.size() == target.size()
         
-        preds_ = torch.triu(preds_, self.diag_shift)
-        preds_[target == self.ignore_idx] = 0.
+        preds_ = torch.triu(preds_, self.diag_shift) + torch.tril(torch.full_like(preds_, -torch.inf), self.diag_shift)
+        preds_[target == self.ignore_idx] = -torch.inf
         preds_ = preds_.view(B, -1)  # [B, L*L]
         val, idx = torch.topk(preds_, L, dim=-1)  # [B, L]
         
