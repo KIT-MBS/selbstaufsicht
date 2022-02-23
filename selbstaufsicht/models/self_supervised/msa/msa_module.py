@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pytorch_lightning as pl
 import seaborn as sns
+import sklearn.metrics as skl_metrics
 import torch
 from torch import nn
 
@@ -123,7 +124,7 @@ class MSAModel(pl.LightningModule):
         x = self.embedding(x) + self.positional_embedding(aux_features)
         return self.backbone(x, padding_mask, self.need_attn, self.attn_chunk_size)
 
-    def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
+    def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]:
         """
         Performs a single training or validation step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
         whose latent representation output is then passed through the upstream task related head models.
@@ -134,7 +135,7 @@ class MSAModel(pl.LightningModule):
             batch_idx (int): Batch number.
 
         Returns:
-            torch.Tensor: Summed loss across all upstream tasks
+            Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]: Input, target, predictions, summed loss across all upstream tasks
         """
 
         x, y = batch_data
@@ -176,11 +177,60 @@ class MSAModel(pl.LightningModule):
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
         
-        return loss
+        out = {'input': x, 'preds': preds, 'target': y, 'loss': loss}
+        return out
+    
+    def _create_confusion_matrix(self, conf_mat_metric: Any, mode: str) -> None:
+        """
+        Computes and plots confusion matrix.
+
+        Args:
+            conf_mat_metric (Any): Confusion matrix metric.
+            mode (str): Training or validation.
+        """
+        
+        conf_mat = conf_mat_metric.compute()
+
+        df_cm = pd.DataFrame(conf_mat.numpy(), index=range(2), columns=range(2))
+        plt.figure(figsize = (10,7))
+        fig_ = sns.heatmap(df_cm, annot=True, cmap='Spectral').get_figure()
+        plt.close(fig_)
+        
+        self.logger.experiment.add_figure("contact_%s_confmat" % mode, fig_, self.current_epoch)
+        conf_mat_metric.reset()
+        
+    def _create_roc_curve(self, preds: List[torch.Tensor], targets: List[torch.Tensor], mode: str) -> None:
+        """
+        Computes and plots ROC curve.
+
+        Args:
+            preds (List[torch.Tensor]): Predictions [B, 2, L, L].
+            target (List[torch.Tensor]): Targets [B, L, L].
+            mode (str): Training or validation.
+        """
+        
+        preds_ = torch.cat([torch.exp(tmp[:, 1, :, :]).flatten() for tmp in preds]).numpy()
+        target_ = torch.cat([tmp.flatten() for tmp in target]).numpy()
+        
+        fpr, tpr, threshold = skl_metrics.roc_curve(target_, preds_)
+        auc = skl_metrics.auc(fpr, tpr)
+        
+        fig_ = plt.figure(figsize = (10,7))
+        plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % auc)
+        plt.legend(loc = 'lower right')
+        plt.plot([0, 1], [0, 1],'r--')
+        plt.xlim([0, 1])
+        plt.ylim([0, 1])
+        plt.ylabel('TPR')
+        plt.xlabel('FPR')
+        plt.close(fig_)
+        
+        self.logger.experiment.add_figure("contact_%s_roc" % mode, fig_, self.current_epoch)
+        
     
     def _epoch_end(self, outputs: List[Any]) -> None:
         """
-        Is invoked at the end of an epoch. Computes confusion matrix, if \"contact\" is in tasks.
+        Is invoked at the end of an epoch. Computes metrics for imbalanced datasets, if \"contact\" is in tasks.
 
         Args:
             outputs (List[Any]): Outputs from training/validation steps.
@@ -194,15 +244,8 @@ class MSAModel(pl.LightningModule):
                 mode = "validation"
                 metrics = self.val_metrics
             
-            conf_mat = metrics['contact']['confmat'].compute()
-
-            df_cm = pd.DataFrame(conf_mat.numpy(), index = range(2), columns=range(2))
-            plt.figure(figsize = (10,7))
-            fig_ = sns.heatmap(df_cm, annot=True, cmap='Spectral').get_figure()
-            plt.close(fig_)
-            
-            self.logger.experiment.add_figure("contact_%s_confmat" % mode, fig_, self.current_epoch)
-            metrics['contact']['confmat'].reset()
+            self._create_confusion_matrix(metrics['contact']['confmat'], mode)
+            self._create_roc_curve([tmp['preds'] for tmp in outputs], [tmp['target'] for tmp in outputs], mode)
 
     def training_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
         """
