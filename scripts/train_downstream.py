@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu training)")
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=1000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
-    parser.add_argument('--loss-contact-weight', default=0.5, type=int, help="Weight that is used to rescale loss for contacts. Weight for no-contacts equals 1 minus the set value.")
+    parser.add_argument('--loss-contact-weight', default=0.5, type=float, help="Weight that is used to rescale loss for contacts. Weight for no-contacts equals 1 minus the set value.")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
