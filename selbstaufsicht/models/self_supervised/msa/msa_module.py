@@ -177,6 +177,8 @@ class MSAModel(pl.LightningModule):
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
         
+        for task in self.tasks:
+            preds[task] = preds[task].detach()
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss}
         return out
     
@@ -209,8 +211,14 @@ class MSAModel(pl.LightningModule):
             mode (str): Training or validation.
         """
         
-        preds_ = torch.cat([torch.exp(tmp[:, 1, :, :]).flatten() for tmp in preds]).numpy()
-        target_ = torch.cat([tmp.flatten() for tmp in target]).numpy()
+        preds_ = torch.cat([torch.exp(tmp[:, 1, :, :]).flatten() for tmp in preds])
+        target_ = torch.cat([tmp.flatten() for tmp in targets])
+        
+        preds_ = preds_[target_ != -1]
+        target_ = target_[target_ != -1]
+
+        preds_ = preds_.cpu().numpy()
+        target_ = target_.cpu().numpy()
         
         fpr, tpr, threshold = skl_metrics.roc_curve(target_, preds_)
         auc = skl_metrics.auc(fpr, tpr)
@@ -245,7 +253,8 @@ class MSAModel(pl.LightningModule):
                 metrics = self.val_metrics
             
             self._create_confusion_matrix(metrics['contact']['confmat'], mode)
-            self._create_roc_curve([tmp['preds'] for tmp in outputs], [tmp['target'] for tmp in outputs], mode)
+            if len(outputs) > 0:
+                self._create_roc_curve([tmp['preds']['contact'] for tmp in outputs], [tmp['target']['contact'] for tmp in outputs], mode)
 
     def training_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
         """
