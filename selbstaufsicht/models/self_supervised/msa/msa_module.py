@@ -283,7 +283,7 @@ class MSAModel(pl.LightningModule):
             batch_idx (int): Batch number.
         """
 
-        self._step(batch_data, batch_idx)
+        return self._step(batch_data, batch_idx)
     
     def training_epoch_end(self, outputs: List[Any]) -> None:
         """
