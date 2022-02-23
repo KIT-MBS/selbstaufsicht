@@ -134,10 +134,10 @@ def get_tasks(tasks: List[str],
     return transform, task_heads, task_losses, train_metrics, val_metrics
 
 
-def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, threshold: float = 4., device=None):
+def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., device=None):
     # TODO better subsampling
     transformslist = [
-        MSASubsampling(subsample_depth, mode='uniform'),
+        MSASubsampling(subsample_depth, mode=subsample_mode),
         MSATokenize(rna2index)]
     if jigsaw_partitions > 0:
         transformslist.append(

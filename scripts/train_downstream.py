@@ -25,6 +25,8 @@ def main():
     parser.add_argument('--checkpoint', type=str, help="Path to pre-trained model checkpoint")
     # Contact prediction
     parser.add_argument('--distance-threshold', default=10., type=float, help="Minimum distance between two atoms in angström that is not considered as a contact")
+    # Preprocessing
+    parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
     # Training process
     parser.add_argument('--num-epochs', default=1000, type=int, help="Number of training epochs")
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu training)")
@@ -65,7 +67,7 @@ def main():
     learning_rate = 0.0001
 
     root = os.environ['DATA_PATH']
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], threshold=args.distance_threshold)
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold)
     train_metrics, val_metrics = get_downstream_metrics()
     downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
     test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
