@@ -41,6 +41,7 @@ class MSAModel(pl.LightningModule):
             val_metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
             attn_chunk_size: int = 0,
+            l1_weight: float = 0.,
             device: Union[str, torch.device] = None,
             dtype: torch.dtype = None) -> None:
         """
@@ -69,6 +70,7 @@ class MSAModel(pl.LightningModule):
             val_metrics (Dict[str, nn.ModuleDict], optional): Validation metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
             attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
+            l1_weight(float, optional): Weight for L1 regularization (downstream task). Defaults to 0.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
 
@@ -99,6 +101,7 @@ class MSAModel(pl.LightningModule):
         self.train_metrics = train_metrics
         self.val_metrics = val_metrics
         self.downstream_loss_device_flag = False
+        self.l1_weight = l1_weight
         if task_heads is not None:
             assert self.task_heads.keys() == self.losses.keys()
         self.lr = lr
@@ -172,6 +175,8 @@ class MSAModel(pl.LightningModule):
                 if m != 'confmat':
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
+        if 'contact' in self.tasks and self.l1_weight > 0:
+            loss += self.task_heads['contact'].compute_l1(self.l1_weight)
         for task in self.tasks:
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
 

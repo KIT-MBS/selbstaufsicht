@@ -178,3 +178,19 @@ class ContactHead(nn.Module):
         out = (out + torch.transpose(out, -1, -2)) * 0.5
 
         return out
+
+    def compute_l1(self, l1_weight: float) -> torch.Tensor:
+        """
+        Computes additive penalization term for L1 regularization.
+
+        Args:
+            l1_weight (float): Weight by which L1 norm of parameters is scaled.
+
+        Returns:
+            torch.Tensor: L1 penalization term.
+        """
+        
+        l1_params = torch.cat([param.flatten() for param in self.parameters()])
+        l1 = l1_weight * torch.abs(l1_params).sum()
+        
+        return l1

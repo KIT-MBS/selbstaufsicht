@@ -33,6 +33,7 @@ def main():
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=1000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--loss-contact-weight', default=0.5, type=float, help="Weight that is used to rescale loss for contacts. Weight for no-contacts equals 1 minus the set value.")
+    parser.add_argument('--l1-weight', default=0.15, type=float, help="Weight for L1 regularization. 0 disables regularization.")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
@@ -133,6 +134,7 @@ def main():
     model.task_loss_weights = {'contact': 1.}
     model.train_metrics = train_metrics
     model.val_metrics = val_metrics
+    model.l1_weight = args.l1_weight
 
     train_dl = DataLoader(downstream_ds,
                           batch_size=args.batch_size,
