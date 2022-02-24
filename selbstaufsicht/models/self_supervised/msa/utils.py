@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple, Union
 from torch.nn import CrossEntropyLoss
 from torch.nn import Module, ModuleDict
 from selbstaufsicht import transforms
-from selbstaufsicht.utils import rna2index
+from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
@@ -22,6 +22,7 @@ def get_tasks(tasks: List[str],
               crop_size: int = 50,
               crop_mode: str = 'random-dependent',
               masking: str = 'token',
+              nonstatic_masking: bool = False,
               p_mask: float = 0.15,
               jigsaw_partitions: int = 3,
               jigsaw_classes: int = 4,
@@ -42,6 +43,7 @@ def get_tasks(tasks: List[str],
         crop_size (int, optional): Maximum uncropped sequence length. Defaults to 50.
         crop_mode (str, optional): Cropping mode. Defaults to 'random-dependent'.
         masking (str, optional): Masking mode for inpainting. Defaults to 'token'.
+        nonstatic_masking (bool, optional): Draws randomly from a predefined set of actual tokens for masking instead of using a static, special masking token.
         p_mask (float, optional): Masking probability for inpainting. Defaults to 0.15.
         jigsaw_partitions (int, optional): Number of shuffled partitions for jigsaw. Defaults to 3.
         jigsaw_classes (int, optional): Number of allowed permutations for jigsaw. Defaults to 4.
@@ -83,11 +85,12 @@ def get_tasks(tasks: List[str],
                 contrastive=contrastive)
         )
     if 'inpainting' in tasks:
+        mask_tokens = nonstatic_mask_tokens if nonstatic_masking else [rna2index['MASK_TOKEN']]
         transformslist.append(
             RandomMSAMasking(
                 p=p_mask,
                 mode=masking,
-                mask_token=rna2index['MASK_TOKEN'],
+                mask_tokens=mask_tokens,
                 contrastive=contrastive)
         )
 

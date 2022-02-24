@@ -8,7 +8,7 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
 
 from selbstaufsicht.transforms import SelfSupervisedCompose
-from selbstaufsicht.utils import rna2index
+from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding, MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain
@@ -23,9 +23,9 @@ def test_msa_tokenize(tokenized_sample):
     testing.assert_close(tokenized_sample[0]['msa'], tokenized_msa_ref, rtol=0, atol=0)
 
 
-def test_msa_mask_token(tokenized_sample):
+def test_msa_mask_token_static(tokenized_sample):
     masking = RandomMSAMasking(
-        p=.5, mode='token', mask_token=rna2index['MASK_TOKEN'])
+        p=.5, mode='token', mask_tokens=[rna2index['MASK_TOKEN']])
     positional = ExplicitPositionalEncoding()
 
     x, y = masking(*tokenized_sample)
@@ -56,11 +56,46 @@ def test_msa_mask_token(tokenized_sample):
     testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
     testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
     testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
+    
 
-
-def test_msa_mask_column(tokenized_sample):
+def test_msa_mask_token_nonstatic(tokenized_sample):
     masking = RandomMSAMasking(
-        p=.5, mode='column', mask_token=rna2index['MASK_TOKEN'])
+        p=.5, mode='token', mask_tokens=nonstatic_mask_tokens)
+    positional = ExplicitPositionalEncoding()
+
+    x, y = masking(*tokenized_sample)
+    x, y = positional(x, y)
+
+    x_ref = {'aux_features': torch.tensor([[1,
+                                            2,
+                                            3,
+                                            4,
+                                            5,
+                                            6,
+                                            7,
+                                            8]]),
+             'msa': torch.tensor([[17, 3, 4, 4, 0, 5, 2, 3],
+                                  [17, 2, 3, 4, 1, 5, 4, 0],
+                                  [17, 5, 3, 4, 3, 0, 5, 1],
+                                  [17, 0, 4, 4, 5, 3, 4, 3]]),
+             'mask': torch.tensor([[False, False,  True, False,  True, False,  True, False],
+                                   [False,  True, False, False, False, False, False,  True],
+                                   [False, False,  True, False,  True,  True,  True, False],
+                                   [False,  True,  True,  True, False,  True, False,  True]])}
+
+    y_ref = {'inpainting': torch.tensor(
+        [5, 5, 4, 3, 3, 5, 3, 5, 4, 4, 5, 4, 5, 5])}
+    
+    testing.assert_close(
+        x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
+    testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
+    testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
+    testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
+
+
+def test_msa_mask_column_static(tokenized_sample):
+    masking = RandomMSAMasking(
+        p=.5, mode='column', mask_tokens=[rna2index['MASK_TOKEN']])
     positional = ExplicitPositionalEncoding()
 
     x, y = masking(*tokenized_sample)
@@ -83,11 +118,38 @@ def test_msa_mask_column(tokenized_sample):
     testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
     testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
     testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
+    
 
-
-def test_msa_mask_block(tokenized_sample):
+def test_msa_mask_column_nonstatic(tokenized_sample):
     masking = RandomMSAMasking(
-        p=.5, mode='block', mask_token=rna2index['MASK_TOKEN'])
+        p=.5, mode='column', mask_tokens=nonstatic_mask_tokens)
+    positional = ExplicitPositionalEncoding()
+
+    x, y = masking(*tokenized_sample)
+    x, y = positional(x, y)
+
+    x_ref = {'aux_features': torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]]),
+             'msa': torch.tensor([[17, 3, 5, 4, 5, 3, 4, 5],
+                                  [17, 3, 3, 2, 1, 0, 4, 4],
+                                  [17, 5, 5, 5, 3, 2, 4, 2],
+                                  [17, 4, 5, 4, 5, 0, 4, 2]]),
+             'mask': torch.tensor([[False, False, False, True, False, True, False, True],
+                                   [False, False, False, True, False, True, False, True],
+                                   [False, False, False, True, False, True, False, True],
+                                   [False, False, False, True, False, True, False, True]])}
+
+    y_ref = {'inpainting': torch.tensor([4, 5, 3, 4, 5, 3, 4, 5, 1, 4, 5, 5])}
+
+    testing.assert_close(
+        x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
+    testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
+    testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
+    testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
+
+
+def test_msa_mask_block_static(tokenized_sample):
+    masking = RandomMSAMasking(
+        p=.5, mode='block', mask_tokens=[rna2index['MASK_TOKEN']])
     positional = ExplicitPositionalEncoding()
 
     x, y = masking(*tokenized_sample)
@@ -98,6 +160,34 @@ def test_msa_mask_block(tokenized_sample):
                                   [17, 3, 3, 19, 19, 19, 4, 3],
                                   [17, 5, 5, 19, 19, 19, 4, 1],
                                   [17, 4, 5, 19, 19, 19, 4, 5]]),
+             'mask': torch.tensor([[False, False, False, True, True, True, False, False],
+                                   [False, False, False, True, True, True, False, False],
+                                   [False, False, False, True, True, True, False, False],
+                                   [False, False, False, True, True, True, False, False]])}
+
+    y_ref = {'inpainting': torch.tensor(
+        [4, 5, 5, 4, 1, 5, 4, 3, 5, 4, 5, 5])}
+
+    testing.assert_close(
+        x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
+    testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
+    testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
+    testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
+    
+
+def test_msa_mask_block_nonstatic(tokenized_sample):
+    masking = RandomMSAMasking(
+        p=.5, mode='block', mask_tokens=nonstatic_mask_tokens)
+    positional = ExplicitPositionalEncoding()
+
+    x, y = masking(*tokenized_sample)
+    x, y = positional(x, y)
+
+    x_ref = {'aux_features': torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]]),
+             'msa': torch.tensor([[17, 3, 5, 5, 3, 3, 4, 3],
+                                  [17, 3, 3, 3, 0, 5, 4, 3],
+                                  [17, 5, 5, 0, 5, 4, 4, 1],
+                                  [17, 4, 5, 2, 0, 2, 4, 5]]),
              'mask': torch.tensor([[False, False, False, True, True, True, False, False],
                                    [False, False, False, True, True, True, False, False],
                                    [False, False, False, True, True, True, False, False],

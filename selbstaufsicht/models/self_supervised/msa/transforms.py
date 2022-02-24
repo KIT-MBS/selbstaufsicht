@@ -89,20 +89,20 @@ class MSACropping():
 
 class RandomMSAMasking():
     # TODO other tokens instead of mask token
-    def __init__(self, p: float, mode: str, mask_token: int, contrastive: bool = False, start_token: bool = True) -> None:
+    def __init__(self, p: float, mode: str, mask_tokens: List[int], contrastive: bool = False, start_token: bool = True) -> None:
         """
         Initializes random MSA masking transform.
 
         Args:
             p (float): Masking probability.
             mode (str): Masking mode. Currently implemented: block-wise, column-wise, token-wise.
-            mask_token (int): Masking token.
+            mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
             start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
         """
 
         self.p = p
-        self.mask_token = mask_token
+        self.mask_tokens = mask_tokens
         self.masking_fn = _get_masking_fn(mode, start_token)
         self.contrastive = contrastive
 
@@ -122,12 +122,12 @@ class RandomMSAMasking():
                 (flattened tensor of masked tokens) [~p*E*L].
         """
 
-        masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.mask_token)
+        masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.mask_tokens)
         x['msa'] = masked_msa
         x['mask'] = mask
         y['inpainting'] = target
         if self.contrastive:
-            x['contrastive'], _, _ = self.masking_fn(x['contrastive'], self.p, self.mask_token)
+            x['contrastive'], _, _ = self.masking_fn(x['contrastive'], self.p, self.mask_tokens)
         return x, y
 
 
@@ -450,15 +450,37 @@ def _jigsaw(msa: torch.Tensor, permutations: torch.Tensor, delimiter_token: int 
     return jigsawed_msa
 
 
-# TODO add capabilities for not masking and replace with random other token
-def _block_mask_msa(msa: torch.Tensor, p: float, mask_token: int, start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _get_replace_mask(mask: torch.Tensor, mask_tokens: List[int]) -> torch.Tensor:
+    """
+    Creates replace mask, which randomly assigns a mask token to each token to be masked.
+
+    Args:
+        mask (torch.Tensor): Boolean inpainting mask.
+        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
+
+    Returns:
+        torch.Tensor: Replace mask, which randomly assigns a mask token to each token to be masked.
+    """
+    
+    mask_tokens_t = torch.tensor(mask_tokens)
+    
+    replace_mask = torch.randint(1, len(mask_tokens) + 1, mask.size())
+    replace_mask *= mask
+    replace_mask -= 1
+    replace_mask = replace_mask[replace_mask != -1]
+    replace_mask = mask_tokens_t[replace_mask]
+    
+    return replace_mask
+
+
+def _block_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out a contiguous block of columns in the given MSA, whose size is determined by the given probability/ratio.
 
     Args:
         msa (torch.Tensor): Tokenized MSA [E, L].
         p (float): Masking probability/ratio.
-        mask_token (int): Special token that is used for masking.
+        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
         start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
 
     Returns:
@@ -472,20 +494,22 @@ def _block_mask_msa(msa: torch.Tensor, p: float, mask_token: int, start_token: b
 
     mask = torch.zeros_like(msa, dtype=torch.bool)
     mask[:, begin:end] = True
+    
+    replace_mask = _get_replace_mask(mask, mask_tokens)
 
     masked = msa[mask]
-    msa[mask] = mask_token
+    msa[mask] = replace_mask
     return msa, mask, masked
 
 
-def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, mask_token: int, start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out a given set of columns in the given MSA.
 
     Args:
         msa (torch.Tensor): Tokenized MSA [E, L].
         col_indices (torch.Tensor): Indices of columns that are to be masked.
-        mask_token (int): Special token that is used for masking.
+        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
         start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
 
     Returns:
@@ -494,20 +518,22 @@ def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, mask_
 
     mask = torch.zeros_like(msa, dtype=torch.bool)
     mask[:, col_indices + int(start_token)] = True
+    
+    replace_mask = _get_replace_mask(mask, mask_tokens)
 
     masked = msa[mask]
-    msa[mask] = mask_token
+    msa[mask] = replace_mask
     return msa, mask, masked
 
 
-def _column_mask_msa(msa: torch.Tensor, p: float, mask_token: int, start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _column_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out a random set of columns in the given MSA, whose size is determined by the given probability/ratio.
 
     Args:
         msa (torch.Tensor): Tokenized MSA [E, L].
         p (float): Masking probability/ratio.
-        mask_token (int): Special token that is used for masking.
+        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
         start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
 
     Returns:
@@ -519,18 +545,19 @@ def _column_mask_msa(msa: torch.Tensor, p: float, mask_token: int, start_token: 
     col_mask = torch.full((col_num,), p)
     col_mask = torch.bernoulli(col_mask).to(torch.bool)
     masked_col_indices = col_indices[col_mask]
-    return _column_mask_msa_indexed(msa, masked_col_indices, mask_token, start_token=start_token)
+    return _column_mask_msa_indexed(msa, masked_col_indices, mask_tokens, start_token=start_token)
 
 
 # TODO should seq start token be excluded from masking?
-def _token_mask_msa(msa: torch.Tensor, p: float, mask_token: int, start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _token_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out random tokens uniformly sampled from the given MSA, according to the given probability/ratio.
+    Masked tokens are randomly replaced by tokens from a given token set.
 
     Args:
         msa (torch.Tensor): Tokenized MSA [E, L].
         p (float): Masking probability/ratio.
-        mask_token (int): Special token that is used for masking.
+        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
         start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
 
     Returns:
@@ -540,13 +567,15 @@ def _token_mask_msa(msa: torch.Tensor, p: float, mask_token: int, start_token: b
     mask = torch.full(msa.size(), p)
     mask[:, :int(start_token)] = 0.
     mask = torch.bernoulli(mask).to(torch.bool)
+    
+    replace_mask = _get_replace_mask(mask, mask_tokens)
 
     masked = msa[mask]
-    msa[mask] = mask_token
+    msa[mask] = replace_mask
     return msa, mask, masked
 
 
-def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, float, int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, float, List[int]], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
     Returns the masking function that corresponds to the given masking mode.
 
@@ -558,7 +587,7 @@ def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, flo
         ValueError: Unknown masking mode.
 
     Returns:
-        Callable[[torch.Tensor, float, int], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]: Masking function
+        Callable[[torch.Tensor, float, List[int]], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]: Masking function
         (tokenized MSA [E, L]; masking probability/ratio; masking token -> masked MSA [E, L]; boolean masking mask [E, L]; masked tokens [~p*E*L])
     """
 
