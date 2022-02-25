@@ -16,6 +16,10 @@ rna2index['DELIMITER_TOKEN'] = len(rna2index)
 rna2index['MASK_TOKEN'] = len(rna2index)
 rna2index['PADDING_TOKEN'] = len(rna2index)
 
+# NOTE: Predefined set of actual tokens used for non-static masking
+nonstatic_mask_token_letters = [letter for letter in 'ACGU-']
+nonstatic_mask_tokens = [rna2index[letter] for letter in nonstatic_mask_token_letters]
+
 # rnaletter2tensor_encoded_ambiguity_dict = {
 #         '-': torch.tensor([1., 0., 0., 0., 0., 0.]),
 #         'G': torch.tensor([0., 1., 0., 0., 0., 0.]),
