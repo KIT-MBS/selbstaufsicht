@@ -22,8 +22,10 @@ def get_tasks(tasks: List[str],
               crop_size: int = 50,
               crop_mode: str = 'random-dependent',
               masking: str = 'token',
-              nonstatic_masking: bool = False,
               p_mask: float = 0.15,
+              p_mask_static: float = 0.8,
+              p_mask_nonstatic: float = 0.1,
+              p_mask_unchanged: float = 0.1,
               jigsaw_partitions: int = 3,
               jigsaw_classes: int = 4,
               jigsaw_padding_token: int = -1,
@@ -43,8 +45,10 @@ def get_tasks(tasks: List[str],
         crop_size (int, optional): Maximum uncropped sequence length. Defaults to 50.
         crop_mode (str, optional): Cropping mode. Defaults to 'random-dependent'.
         masking (str, optional): Masking mode for inpainting. Defaults to 'token'.
-        nonstatic_masking (bool, optional): Draws randomly from a predefined set of actual tokens for masking instead of using a static, special masking token.
         p_mask (float, optional): Masking probability for inpainting. Defaults to 0.15.
+        p_mask_static (float, optional): Conditional probability for static inpainting, if masked. Defaults to 0.8.
+        p_mask_nonstatic (float, optional): Conditional probability for nonstatic inpainting, if masked. Defaults to 0.1.
+        p_mask_unchanged (float, optional): Conditional probability for no change, if masked. Defaults to 0.1.
         jigsaw_partitions (int, optional): Number of shuffled partitions for jigsaw. Defaults to 3.
         jigsaw_classes (int, optional): Number of allowed permutations for jigsaw. Defaults to 4.
         jigsaw_padding_token (int, optional): Special token that indicates padded sequences in the jigsaw label. Defaults to -1.
@@ -85,12 +89,15 @@ def get_tasks(tasks: List[str],
                 contrastive=contrastive)
         )
     if 'inpainting' in tasks:
-        mask_tokens = nonstatic_mask_tokens if nonstatic_masking else [rna2index['MASK_TOKEN']]
         transformslist.append(
             RandomMSAMasking(
                 p=p_mask,
+                p_static=p_mask_static,
+                p_nonstatic=p_mask_nonstatic,
+                p_unchanged=p_mask_unchanged,
                 mode=masking,
-                mask_tokens=mask_tokens,
+                static_mask_token=rna2index['MASK_TOKEN'],
+                nonstatic_mask_tokens=nonstatic_mask_tokens,
                 contrastive=contrastive)
         )
 

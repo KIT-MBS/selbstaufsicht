@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 import torch
+from torch.distributions import Categorical, Distribution
 import numpy as np
 from Bio.Align import MultipleSeqAlignment
 import math
@@ -89,20 +90,28 @@ class MSACropping():
 
 class RandomMSAMasking():
     # TODO other tokens instead of mask token
-    def __init__(self, p: float, mode: str, mask_tokens: List[int], contrastive: bool = False, start_token: bool = True) -> None:
+    def __init__(self, p: float, p_static: float, p_nonstatic: float, p_unchanged: float, mode: str, static_mask_token: int, 
+                 nonstatic_mask_tokens: List[int], contrastive: bool = False, start_token: bool = True) -> None:
         """
         Initializes random MSA masking transform.
 
         Args:
             p (float): Masking probability.
+            p_static (float): Conditional probability for static inpainting, if masked.
+            p_nonstatic (float): Conditional probability for nonstatic inpainting, if masked.
+            p_unchanged (float): Conditional probability for no change, if masked.
             mode (str): Masking mode. Currently implemented: block-wise, column-wise, token-wise.
-            mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
+            static_mask_token (int): Token that is used to replace masked tokens static masking.
+            nonstatic_mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly in nonstatic masking.
             contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
             start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
         """
 
         self.p = p
-        self.mask_tokens = mask_tokens
+        assert p_static + p_nonstatic + p_unchanged == 1
+        self.masking_type_distribution = Categorical(torch.tensor([p_unchanged, p_static, p_nonstatic]))
+        self.static_mask_token = static_mask_token
+        self.nonstatic_mask_tokens = nonstatic_mask_tokens
         self.masking_fn = _get_masking_fn(mode, start_token)
         self.contrastive = contrastive
 
@@ -122,12 +131,14 @@ class RandomMSAMasking():
                 (flattened tensor of masked tokens) [~p*E*L].
         """
 
-        masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.mask_tokens)
+        masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.masking_type_distribution, 
+                                                   self.static_mask_token, self.nonstatic_mask_tokens)
         x['msa'] = masked_msa
         x['mask'] = mask
         y['inpainting'] = target
         if self.contrastive:
-            x['contrastive'], _, _ = self.masking_fn(x['contrastive'], self.p, self.mask_tokens)
+            x['contrastive'], _, _ = self.masking_fn(x['contrastive'], self.p, self.masking_type_distribution, 
+                                                     self.static_mask_token, self.nonstatic_mask_tokens)
         return x, y
 
 
@@ -450,37 +461,57 @@ def _jigsaw(msa: torch.Tensor, permutations: torch.Tensor, delimiter_token: int 
     return jigsawed_msa
 
 
-def _get_replace_mask(mask: torch.Tensor, mask_tokens: List[int]) -> torch.Tensor:
+def _get_replace_mask(mask: torch.Tensor, masking_type_sampling: torch.Tensor, static_mask_token: int, 
+                      nonstatic_mask_tokens: List[int]) -> torch.Tensor:
     """
     Creates replace mask, which randomly assigns a mask token to each token to be masked.
 
     Args:
         mask (torch.Tensor): Boolean inpainting mask.
-        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
+        masking_type_sampling (torch.Tensor): Sampling from categorical distribution of conditional probabilities for each masking type.
+        static_mask_token (int): Token that is used to replace masked tokens static masking.
+        nonstatic_mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly in nonstatic masking.
 
     Returns:
         torch.Tensor: Replace mask, which randomly assigns a mask token to each token to be masked.
     """
     
-    mask_tokens_t = torch.tensor(mask_tokens)
+    nonstatic_mask_tokens_t = torch.tensor(nonstatic_mask_tokens)
     
-    replace_mask = torch.randint(1, len(mask_tokens) + 1, mask.size())
+    assert set(torch.unique(masking_type_sampling).tolist()).issubset({0, 1, 2})
+    replace_mask = masking_type_sampling  # [0: unchanged, 1: static, 2: nonstatic]
     replace_mask *= mask
-    replace_mask -= 1
-    replace_mask = replace_mask[replace_mask != -1]
-    replace_mask = mask_tokens_t[replace_mask]
+    # exploiting call-by-reference
+    mask[replace_mask == 0] = False
+    replace_mask -= 2  # [-2: unchanged, -1: static, 0: nonstatic]
+    
+    # inserting nonstatic tokens
+    num_nonstatic = replace_mask[replace_mask == 0].numel()
+    nonstatic_sampling = torch.randint(0, len(nonstatic_mask_tokens), (num_nonstatic,))
+    replace_mask[replace_mask == 0] = nonstatic_sampling  # [-2: unchanged, -1: static, 0: nonstatic_1, ..., n-1: nonstatic_n]
+    # leveraging that tokens are non-negative
+    replace_mask[replace_mask >= 0] = nonstatic_mask_tokens_t[nonstatic_sampling]  # [-2: unchanged, -1: static] + nonstatic_tokens
+    
+    # inserting static token
+    replace_mask[replace_mask == -1] = static_mask_token  # [-2: unchanged] + [static_token] + nonstatic_tokens
+    
+    # discarding unchanged positions
+    replace_mask = replace_mask[replace_mask != -2]  # [static_token] + nonstatic_tokens
     
     return replace_mask
 
 
-def _block_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _block_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Distribution, static_mask_token: int, nonstatic_mask_tokens: List[int], 
+                    start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out a contiguous block of columns in the given MSA, whose size is determined by the given probability/ratio.
 
     Args:
         msa (torch.Tensor): Tokenized MSA [E, L].
         p (float): Masking probability/ratio.
-        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
+        masking_type_distribution (Distribution): Categorical distribution of conditional probabilities for each masking type.
+        static_mask_token (int): Token that is used to replace masked tokens static masking.
+        nonstatic_mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly in nonstatic masking.
         start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
 
     Returns:
@@ -495,21 +526,25 @@ def _block_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_t
     mask = torch.zeros_like(msa, dtype=torch.bool)
     mask[:, begin:end] = True
     
-    replace_mask = _get_replace_mask(mask, mask_tokens)
+    masking_type_sampling = masking_type_distribution.sample(mask.size())
+    replace_mask = _get_replace_mask(mask, masking_type_sampling, static_mask_token, nonstatic_mask_tokens)
 
     masked = msa[mask]
     msa[mask] = replace_mask
     return msa, mask, masked
 
 
-def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, masking_type_distribution: Distribution, static_mask_token: int, 
+                             nonstatic_mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out a given set of columns in the given MSA.
 
     Args:
         msa (torch.Tensor): Tokenized MSA [E, L].
         col_indices (torch.Tensor): Indices of columns that are to be masked.
-        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
+        masking_type_distribution (Distribution): Categorical distribution of conditional probabilities for each masking type.
+        static_mask_token (int): Token that is used to replace masked tokens static masking.
+        nonstatic_mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly in nonstatic masking.
         start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
 
     Returns:
@@ -519,21 +554,25 @@ def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, mask_
     mask = torch.zeros_like(msa, dtype=torch.bool)
     mask[:, col_indices + int(start_token)] = True
     
-    replace_mask = _get_replace_mask(mask, mask_tokens)
+    masking_type_sampling = masking_type_distribution.sample(mask.size())
+    replace_mask = _get_replace_mask(mask, masking_type_sampling, static_mask_token, nonstatic_mask_tokens)
 
     masked = msa[mask]
     msa[mask] = replace_mask
     return msa, mask, masked
 
 
-def _column_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _column_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Distribution, static_mask_token: int, nonstatic_mask_tokens: List[int], 
+                     start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out a random set of columns in the given MSA, whose size is determined by the given probability/ratio.
 
     Args:
         msa (torch.Tensor): Tokenized MSA [E, L].
         p (float): Masking probability/ratio.
-        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
+        masking_type_distribution (Distribution): Categorical distribution of conditional probabilities for each masking type.
+        static_mask_token (int): Token that is used to replace masked tokens static masking.
+        nonstatic_mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly in nonstatic masking.
         start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
 
     Returns:
@@ -545,11 +584,13 @@ def _column_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_
     col_mask = torch.full((col_num,), p)
     col_mask = torch.bernoulli(col_mask).to(torch.bool)
     masked_col_indices = col_indices[col_mask]
-    return _column_mask_msa_indexed(msa, masked_col_indices, mask_tokens, start_token=start_token)
+    return _column_mask_msa_indexed(msa, masked_col_indices, masking_type_distribution, static_mask_token, 
+                                    nonstatic_mask_tokens, start_token=start_token)
 
 
 # TODO should seq start token be excluded from masking?
-def _token_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _token_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Distribution, static_mask_token: int, nonstatic_mask_tokens: List[int], 
+                    start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out random tokens uniformly sampled from the given MSA, according to the given probability/ratio.
     Masked tokens are randomly replaced by tokens from a given token set.
@@ -557,7 +598,9 @@ def _token_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_t
     Args:
         msa (torch.Tensor): Tokenized MSA [E, L].
         p (float): Masking probability/ratio.
-        mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly.
+        masking_type_distribution (Distribution): Categorical distribution of conditional probabilities for each masking type.
+        static_mask_token (int): Token that is used to replace masked tokens static masking.
+        nonstatic_mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly in nonstatic masking.
         start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
 
     Returns:
@@ -568,14 +611,16 @@ def _token_mask_msa(msa: torch.Tensor, p: float, mask_tokens: List[int], start_t
     mask[:, :int(start_token)] = 0.
     mask = torch.bernoulli(mask).to(torch.bool)
     
-    replace_mask = _get_replace_mask(mask, mask_tokens)
+    masking_type_sampling = masking_type_distribution.sample(mask.size())
+    replace_mask = _get_replace_mask(mask, masking_type_sampling, static_mask_token, nonstatic_mask_tokens)
 
     masked = msa[mask]
     msa[mask] = replace_mask
     return msa, mask, masked
 
 
-def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, float, List[int]], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, float, Distribution, int, List[int]], 
+                                                               Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
     Returns the masking function that corresponds to the given masking mode.
 
@@ -587,8 +632,9 @@ def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, flo
         ValueError: Unknown masking mode.
 
     Returns:
-        Callable[[torch.Tensor, float, List[int]], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]: Masking function
-        (tokenized MSA [E, L]; masking probability/ratio; masking token -> masked MSA [E, L]; boolean masking mask [E, L]; masked tokens [~p*E*L])
+        Callable[[torch.Tensor, float, Distribution, int, List[int]], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]: Masking function
+        (tokenized MSA [E, L]; masking probability/ratio; distribution of conditional probabilities for each masking type; 
+        static-masking token; nonstatic-masking tokens -> masked MSA [E, L]; boolean masking mask [E, L]; masked tokens [~p*E*L])
     """
 
     if mode == 'token':

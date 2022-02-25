@@ -60,8 +60,10 @@ def main():
     parser.add_argument('--cropping-size', default=400, type=int, help="Maximum uncropped sequence length")
     parser.add_argument('--cropping-mode', default='random-dependent', type=str, help="Cropping mode: random-dependent, random-independent, fixed")
     parser.add_argument('--inpainting-masking-type', default='token', type=str, help="MSA masking type in the inpainting task")
-    parser.add_argument('--inpainting-nonstatic', action='store_true', help="Draws randomly from a predefined set of actual tokens for masking instead of using a static, special masking token.")
     parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MSA masking ratio in the inpainting task")
+    parser.add_argument('--inpainting-masking-p-static', default=0.8, type=float, help="Conditional probability that a token, if masked in the inpainting task, is replaced by a special masking token.")
+    parser.add_argument('--inpainting-masking-p-nonstatic', default=0.1, type=float, help="Conditional probability that a token, if masked in the inpainting task, is replaced by a randomly drawn regular token.")
+    parser.add_argument('--inpainting-masking-p-unchanged', default=0.1, type=float, help="Conditional probability that a token, if masked in the inpainting task, is not replaced.")
     parser.add_argument('--inpainting-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
     parser.add_argument('--jigsaw-partitions', default=3, type=int, help="Number of partitions in the jigsaw task")
     parser.add_argument('--jigsaw-permutations', default=6, type=int, help="Number of permutations in the jigsaw task")
@@ -152,8 +154,10 @@ def main():
                                                             crop_size=args.cropping_size,
                                                             crop_mode=args.cropping_mode,
                                                             masking=args.inpainting_masking_type,
-                                                            nonstatic_masking=args.inpainting_nonstatic,
                                                             p_mask=args.inpainting_masking_p,
+                                                            p_mask_static=args.inpainting_masking_p_static,
+                                                            p_mask_nonstatic=args.inpainting_masking_p_nonstatic,
+                                                            p_mask_unchanged=args.inpainting_masking_p_unchanged,
                                                             jigsaw_partitions=args.jigsaw_partitions,
                                                             jigsaw_classes=args.jigsaw_permutations,
                                                             jigsaw_linear=not args.jigsaw_nonlinear,
