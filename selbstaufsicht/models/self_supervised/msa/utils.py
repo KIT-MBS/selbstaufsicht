@@ -139,7 +139,8 @@ def get_tasks(tasks: List[str],
         task_heads['contrastive'] = head
         task_losses['contrastive'] = NT_Xent_Loss(simclr_temperature)
         # TODO
-        metrics['contrastive'] = ModuleDict({})
+        train_metrics['contrastive'] = ModuleDict({})
+        val_metrics['contrastive'] = ModuleDict({})
 
     return transform, task_heads, task_losses, train_metrics, val_metrics
 
