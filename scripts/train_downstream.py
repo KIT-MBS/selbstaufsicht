@@ -34,6 +34,7 @@ def main():
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu training)")
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=1000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
+    parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
     parser.add_argument('--loss-contact-weight', default=0.5, type=float, help="Weight that is used to rescale loss for contacts. Weight for no-contacts equals 1 minus the set value.")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
@@ -124,7 +125,7 @@ def main():
                 padding_token=downstream_ds.token_mapping['PADDING_TOKEN'],
                 lr=args.learning_rate,
                 lr_warmup=args.learning_rate_warmup,
-                dropout=0.,
+                dropout=args.dropout,
                 emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
                 fix_backbone=args.fix_backbone
                 )
@@ -140,7 +141,7 @@ def main():
                 padding_token=downstream_ds.token_mapping['PADDING_TOKEN'],
                 lr=args.learning_rate,
                 lr_warmup=args.learning_rate_warmup,
-                dropout=0.,
+                dropout=args.dropout,
                 emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
                 fix_backbone=args.fix_backbone
                 )
