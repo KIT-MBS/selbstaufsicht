@@ -182,8 +182,8 @@ class BinaryTopLPrecision(Metric):
         preds_ = preds_.view(B, -1)  # [B, L*L]
         preds_ = torch.gather(preds_, dim=1, index=idx)  # [B, L]
         
-        tp = torch.logical_and(preds_ == 1, target_ == 1).sum()
-        fp = torch.logical_and(preds_ == 1, target_ == 0).sum()
+        tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), val != -torch.inf).sum()
+        fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), val != -torch.inf).sum()
 
         self.tp += tp
         self.fp += fp
