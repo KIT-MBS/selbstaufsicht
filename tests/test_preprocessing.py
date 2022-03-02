@@ -582,9 +582,7 @@ def test_distance_from_chain(bio_structure):
         [0, 0, 0, -1, 1],
     ], device=y['distances'].device, dtype=torch.long)
 
-    print(y['contacts'])
-
-    testing.assert_close(y['contacts'], contacts_ref)
+    testing.assert_close(y['contact'], contacts_ref)
 
 
 if __name__ == '__main__':
