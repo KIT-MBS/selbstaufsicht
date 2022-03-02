@@ -340,7 +340,10 @@ class MSAModel(pl.LightningModule):
                     float: Multiplicative factor for lr scheduling.
                 """
 
-                return min((i + 1) / self.warmup, math.sqrt(self.warmup / (i + 1)))
+                if self.warmup > 0:
+                    return min((i + 1) / self.warmup, math.sqrt(self.warmup / (i + 1)))
+                else:
+                    return 1
 
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(self.lr_warmup))
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
