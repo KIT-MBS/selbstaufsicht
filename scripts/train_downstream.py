@@ -23,6 +23,8 @@ def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Weakly Supervised Contact Prediction Script')
     # Pre-trained model
     parser.add_argument('--checkpoint', type=str, help="Path to pre-trained model checkpoint")
+    parser.add_argument('--re-init', action='store_true', help="Re-initializes model parameters")
+    parser.add_argument('--fix-backbone', action='store_true', help="Fixes backbone parameters")
     # Contact prediction
     parser.add_argument('--distance-threshold', default=10., type=float, help="Minimum distance between two atoms in angström that is not considered as a contact")
     # Preprocessing
@@ -70,7 +72,7 @@ def main():
     downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold)
     train_metrics, val_metrics = get_downstream_metrics()
     downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
-    test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
+    test_ds = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform)
 
     dt_now = datetime.now()
     log_dir = h_params['log_dir'] if args.log_dir == "" else args.log_dir
@@ -111,20 +113,37 @@ def main():
                                        jigsaw_euclid_emb=jigsaw_euclid_emb,
                                        simclr_temperature=h_params['contrastive_temperature'])
 
-    model = models.self_supervised.MSAModel.load_from_checkpoint(
-            checkpoint_path = args.checkpoint,
-            num_blocks = h_params['num_blocks'],
-            num_heads = h_params['num_heads'],
-            feature_dim_head = h_params['feature_dim_head'],
-            task_heads=task_heads,
-            task_losses=task_losses,
-            alphabet_size=len(downstream_ds.token_mapping),
-            padding_token=downstream_ds.token_mapping['PADDING_TOKEN'],
-            lr=args.learning_rate,
-            lr_warmup=args.learning_rate_warmup,
-            dropout=0.,
-            emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
-            )
+    if args.re_init:
+        model = models.self_supervised.MSAModel(
+                num_blocks = h_params['num_blocks'],
+                num_heads = h_params['num_heads'],
+                dim_head = h_params['feature_dim_head'],
+                task_heads=task_heads,
+                task_losses=task_losses,
+                alphabet_size=len(downstream_ds.token_mapping),
+                padding_token=downstream_ds.token_mapping['PADDING_TOKEN'],
+                lr=args.learning_rate,
+                lr_warmup=args.learning_rate_warmup,
+                dropout=0.,
+                emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
+                fix_backbone=args.fix_backbone
+                )
+    else:
+        model = models.self_supervised.MSAModel.load_from_checkpoint(
+                checkpoint_path = args.checkpoint,
+                num_blocks = h_params['num_blocks'],
+                num_heads = h_params['num_heads'],
+                feature_dim_head = h_params['feature_dim_head'],
+                task_heads=task_heads,
+                task_losses=task_losses,
+                alphabet_size=len(downstream_ds.token_mapping),
+                padding_token=downstream_ds.token_mapping['PADDING_TOKEN'],
+                lr=args.learning_rate,
+                lr_warmup=args.learning_rate_warmup,
+                dropout=0.,
+                emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
+                fix_backbone=args.fix_backbone
+                )
     model.tasks = ['contact']
     # TODO there probably should be a weight for contacts
     model.losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)

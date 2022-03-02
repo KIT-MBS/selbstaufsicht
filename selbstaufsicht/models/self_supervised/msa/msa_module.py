@@ -41,6 +41,7 @@ class MSAModel(pl.LightningModule):
             val_metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
             attn_chunk_size: int = 0,
+            fix_backbone: bool = False,
             device: Union[str, torch.device] = None,
             dtype: torch.dtype = None) -> None:
         """
@@ -69,6 +70,7 @@ class MSAModel(pl.LightningModule):
             val_metrics (Dict[str, nn.ModuleDict], optional): Validation metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
             attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
+            fix_backbone (bool, optional): Fixes backbone parameters during downstream task. Defaults to False.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
 
@@ -105,6 +107,7 @@ class MSAModel(pl.LightningModule):
         self.lr_warmup = lr_warmup
         self.need_attn = need_attn
         self.attn_chunk_size = attn_chunk_size
+        self.fix_backbone = fix_backbone
         self.save_hyperparameters(h_params)
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
@@ -153,7 +156,7 @@ class MSAModel(pl.LightningModule):
                 self.downstream_loss_device_flag = True
 
             # NOTE eval mode for all modules except contact head
-            with torch.no_grad():
+            with torch.set_grad_enabled(not self.fix_backbone):
                 latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
             x['attn_maps'] = attn_maps
         else:
