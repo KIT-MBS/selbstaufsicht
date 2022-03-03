@@ -1,6 +1,7 @@
 import math
 from typing import Any, Dict, List, Tuple, Union
 
+import numpy as np
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 import seaborn as sns
