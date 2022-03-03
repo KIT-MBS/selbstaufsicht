@@ -2,7 +2,6 @@ import math
 from typing import Any, Dict, List, Tuple, Union
 
 import matplotlib.pyplot as plt
-import pandas as pd
 import pytorch_lightning as pl
 import seaborn as sns
 import sklearn.metrics as skl_metrics
@@ -195,10 +194,13 @@ class MSAModel(pl.LightningModule):
         """
         
         conf_mat = conf_mat_metric.compute()
-
-        df_cm = pd.DataFrame(conf_mat.numpy(), index=range(2), columns=range(2))
+        num_total = conf_mat.sum()
+        annotations =  np.array([["TP\n%.2E\n(%.2f%%)" % (conf_mat[0, 0], 100. * conf_mat[0, 0] / num_total), 
+                                  "FN\n%.2E\n(%.2f%%)" % (conf_mat[0, 1], 100. * conf_mat[0, 1] / num_total)],
+                                 ["FP\n%.2E\n(%.2f%%)" % (conf_mat[1, 0], 100. * conf_mat[1, 0] / num_total),
+                                  "TN\n%.2E\n(%.2f%%)" % (conf_mat[1, 1], 100. * conf_mat[1, 1] / num_total)]])
         plt.figure(figsize = (10,7))
-        fig_ = sns.heatmap(df_cm, annot=True, cmap='Spectral').get_figure()
+        fig_ = sns.heatmap(conf_mat.numpy(), annot=True, cmap='coolwarm').get_figure()
         plt.close(fig_)
         
         self.logger.experiment.add_figure("contact_%s_confmat" % mode, fig_, self.current_epoch)
@@ -218,6 +220,7 @@ class MSAModel(pl.LightningModule):
         target_ = torch.cat([tmp.flatten() for tmp in targets])
         
         preds_ = preds_[target_ != -1]
+        preds_[preds_ == -torch.inf] = torch.finfo(torch.float32).min
         target_ = target_[target_ != -1]
 
         preds_ = preds_.cpu().numpy()
@@ -226,7 +229,7 @@ class MSAModel(pl.LightningModule):
         fpr, tpr, threshold = skl_metrics.roc_curve(target_, preds_)
         auc = skl_metrics.auc(fpr, tpr)
         
-        fig_ = plt.figure(figsize = (10,7))
+        fig_ = plt.figure(figsize = (7,7))
         plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % auc)
         plt.legend(loc = 'lower right')
         plt.plot([0, 1], [0, 1],'r--')
