@@ -182,6 +182,9 @@ class MSAModel(pl.LightningModule):
         
         for task in self.tasks:
             preds[task] = preds[task].detach()
+        if 'contact' in self.tasks and not self.fix_backbone:
+            # TODO: Adapt to now interface, when only row_maps are returned
+            x['attn_maps'] = [(row_map.detach(), col_map.detach()) for row_map, col_map in x['attn_maps']]
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss}
         return out
     
