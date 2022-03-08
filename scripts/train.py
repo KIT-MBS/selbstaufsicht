@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.plugins import DDPPlugin, DeepSpeedPlugin
+from pytorch_lightning.plugins import DDPPlugin
 
 from selbstaufsicht.utils import data_loader_worker_init, lehmer_encode, perm_gram_matrix, embed_finite_metric_space
 from selbstaufsicht import models
@@ -40,8 +40,6 @@ def main():
     parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--attn-chunk-size', default=0, type=int, help="Chunk size in attention computation. Chunking causes sequential computation, which increases training time, but decreases memory pressure. Sizes below one activate the non-chunking implementation.")
-    parser.add_argument('--dp-strategy', default='ddp', type=str, help="Data-parallelism strategy: ddp, zero-2, or zero-3. Note that DeepSpeed ZeRO requires precision=16.")
-    parser.add_argument('--dp-zero-bucket-size', default=5e8, type=int, help="Allocated bucket size for DeepSpeed ZeRO DP strategy.")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--disable-random-split', action='store_true', help="disables the random dataset split")
@@ -108,18 +106,7 @@ def main():
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
-        if args.dp_strategy == 'ddp':
-            dp_strategy = DDPPlugin(find_unused_parameters=False)
-        elif args.dp_strategy == 'zero-2':
-            dp_strategy = DeepSpeedPlugin(stage=2, allgather_bucket_size=args.dp_zero_bucket_size, reduce_bucket_size=args.dp_zero_bucket_size)
-            if args.precision != 16:
-                raise ValueError("DeepSpeed ZeRO Stage 2 requires precision=16!")
-        elif args.dp_strategy == 'zero-3':
-            dp_strategy = DeepSpeedPlugin(stage=3, allgather_bucket_size=args.dp_zero_bucket_size, reduce_bucket_size=args.dp_zero_bucket_size)
-            if args.precision != 16:
-                raise ValueError("DeepSpeed ZeRO Stage 3 requires precision=16!")
-        else:
-            raise ValueError("Unknown DP strategy: %s" % args.dp_strategy)
+        dp_strategy = DDPPlugin(find_unused_parameters=False)
     else:
         dp_strategy = None
 
