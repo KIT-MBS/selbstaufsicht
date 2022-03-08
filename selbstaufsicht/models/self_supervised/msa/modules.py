@@ -141,11 +141,12 @@ class ContrastiveHead(nn.Module):
 
 
 class ContactHead(nn.Module):
-    def __init__(self, num_maps, cull_tokens, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
+    def __init__(self, num_maps, cull_tokens, log_clamp_min: float = 1e-6, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(ContactHead, self).__init__()
         self.num_maps = num_maps
         self.cull_tokens = cull_tokens
+        self.log_clamp_min = log_clamp_min
         self.l = nn.Conv2d(num_maps, 1, kernel_size=1, bias=False, **factory_kwargs)
         self.f = nn.Sigmoid()
 
@@ -173,6 +174,8 @@ class ContactHead(nn.Module):
         # TODO this is some hackery to use the ignore_index of NLLLoss, since BCELoss does not have it
         out = self.f(out)
         out = torch.cat((1. - out, out), dim=1)  # [B, 2, L, L]
+        # NOTE: This is crucial, since the gratient otherwise becomes NaN at some point
+        out = torch.clamp(out, min=self.log_clamp_min)
         out = torch.log(out)
         out = (out + torch.transpose(out, -1, -2)) * 0.5
 
