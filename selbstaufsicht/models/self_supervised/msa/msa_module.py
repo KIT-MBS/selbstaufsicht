@@ -201,7 +201,7 @@ class MSAModel(pl.LightningModule):
                                  ["FP\n%.2E\n(%.2f%%)" % (conf_mat[1, 0], 100. * conf_mat[1, 0] / num_total),
                                   "TN\n%.2E\n(%.2f%%)" % (conf_mat[1, 1], 100. * conf_mat[1, 1] / num_total)]])
         plt.figure(figsize = (10,7))
-        fig_ = sns.heatmap(conf_mat.numpy(), annot=True, cmap='coolwarm').get_figure()
+        fig_ = sns.heatmap(conf_mat.numpy(), annot=annotations, cmap='coolwarm').get_figure()
         plt.close(fig_)
         
         self.logger.experiment.add_figure("contact_%s_confmat" % mode, fig_, self.current_epoch)
