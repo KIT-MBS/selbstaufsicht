@@ -77,3 +77,69 @@ class EmbeddedJigsawLoss(nn.Module):
             loss /= (num_total - num_ignore)
         
         return loss
+
+
+class BinaryFocalNLLLoss(nn.Module):
+    def __init__(self, gamma: float = 2., weight: torch.Tensor = None, ignore_index: int = -1, reduction='mean'):
+        """
+        Initializes Binary Focal Negative Log Likelihood Loss with ignore-index support.
+
+        Args:
+            gamma (float, optional): Exponent of the modulating factor. Defaults to 2..
+            weight (torch.Tensor, optional): Weights, by which each class is re-scaled in the loss computation. Defaults to None.
+            ignore_index (int, optional): Target value which is ignored in comparison. Defaults to -1.
+            reduction (str, optional): Reduction mode: mean, sum. Defaults to \"mean\".
+        """
+        
+        super(BinaryFocalNLLLoss, self).__init__()
+        self.gamma = gamma
+        if weight is None:
+            self.weight = torch.tensor([0.5, 0.5])
+        else:
+            assert weight.numel() == 2, "Exactly two weights are needed!"
+            self.weight = weight
+            if self.weight.sum() != 1:
+                self.weight /= self.weight.sum()
+        self.ignore_index = ignore_index
+        self.reduction = reduction
+    
+    def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        Computes BinaryFocalNLLLoss for given predictions and target data (cf. https://arxiv.org/abs/1708.02002v2).
+
+        Args:
+            preds (torch.Tensor): Predictions (one-hot-encoded with class-dim 1).
+            target (torch.Tensor): Target data.
+
+        Returns:
+            torch.Tensor: BinaryFocalNLLLoss.
+        """
+        
+        # check if shapes match (exclude class dim for preds due to one-hot encoding)
+        assert preds.shape[:1] + preds.shape[2:] == target.shape, "Shapes must match except for class-dim 1!"
+        
+        # check if there are two classes
+        assert preds.shape[1] == 2
+
+        # check if ignore_index is outside of class index range
+        assert not 0 <= self.ignore_index < 2, "Parameter \'ignore_index\' must not be in range [0, 2)!"
+        
+        # compute and apply ignore mask
+        mask = target != self.ignore_index
+        target_ = target[mask]
+        preds_ = preds.permute(0, *(idx for idx in range(2, preds.ndim)), 1)
+        preds_ = preds_[mask, :]
+        
+        # compute focal loss
+        loss = torch.zeros(target.shape, device=target.device, dtype=preds.dtype)
+        loss[mask] = -(self.weight[0] * (torch.exp(preds_[:, 1])) ** self.gamma * (1 - target_) * preds_[:, 0] + 
+                       self.weight[1] * (torch.exp(preds_[:, 0])) ** self.gamma * target_ * preds_[:, 1])
+        
+        # perform reduction, if needed
+        if self.reduction in ('sum', 'mean'):
+            loss = loss.sum()
+        if self.reduction == 'mean':
+            # divide by sum of applied class weights in order to normalize w.r.t. class weights
+            loss /= self.weight[target_].sum()
+        
+        return loss
