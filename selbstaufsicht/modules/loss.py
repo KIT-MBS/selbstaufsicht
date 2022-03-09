@@ -131,7 +131,7 @@ class BinaryFocalNLLLoss(nn.Module):
         preds_ = preds_[mask, :]
         
         # compute focal loss
-        loss = torch.zeros(target.shape, device=target.device, dtype=preds.dtype)
+        loss = torch.zeros(target.shape, device=target.device)
         loss[mask] = -(self.weight[0] * (torch.exp(preds_[:, 1])) ** self.gamma * (1 - target_) * preds_[:, 0] + 
                        self.weight[1] * (torch.exp(preds_[:, 0])) ** self.gamma * target_ * preds_[:, 1])
         
