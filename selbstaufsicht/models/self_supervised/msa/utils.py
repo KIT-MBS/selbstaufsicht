@@ -166,8 +166,10 @@ def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', 
 def get_downstream_metrics():
     train_metrics = ModuleDict()
     val_metrics = ModuleDict()
-    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 'confmat': BinaryConfusionMatrix()})
-    val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 'confmat': BinaryConfusionMatrix()})
+    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
+                                           'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 'confmat': BinaryConfusionMatrix()})
+    val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
+                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 'confmat': BinaryConfusionMatrix()})
     return train_metrics, val_metrics
 
 

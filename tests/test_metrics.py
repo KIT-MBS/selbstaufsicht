@@ -225,7 +225,16 @@ def test_binary_top_l_precision():
     
     assert tp == 1
     assert fp == 1
-    assert top_l_precision_metric == 1 / 2
+    assert top_l_precision == 1 / 2
+    
+    top_l_precision_metric = BinaryTopLPrecision(diag_shift=1, treat_all_preds_positive=True)
+    top_l_precision = top_l_precision_metric(preds, target)
+    tp = top_l_precision_metric.tp
+    fp = top_l_precision_metric.fp
+    
+    assert tp == 3
+    assert fp == 2
+    assert top_l_precision == 3 / 5
     
     
 def test_binary_confusion_matrix():

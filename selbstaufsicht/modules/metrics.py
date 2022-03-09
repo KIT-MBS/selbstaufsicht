@@ -140,19 +140,21 @@ class EmbeddedJigsawAccuracy(Accuracy):
 
 
 class BinaryTopLPrecision(Metric):
-    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, dist_sync_on_step: bool = False) -> None:
+    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, treat_all_preds_positive: bool = False, dist_sync_on_step: bool = False) -> None:
         """
         Initializes binary top-L precision metric with ignore index support.
 
         Args:
             ignore_idx (int, optional): Ignored index in the target values. Defaults to -1.
             diag_shift (int, optional): Diagonal offset for predictions. Defaults to 4.
+            treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
             dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
         """
         
         super().__init__(dist_sync_on_step=dist_sync_on_step)
         self.ignore_idx = ignore_idx
         self.diag_shift = diag_shift
+        self.treat_all_preds_positive = treat_all_preds_positive
         self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
         self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
 
@@ -178,12 +180,16 @@ class BinaryTopLPrecision(Metric):
         target_ = target.view(B, -1)  # [B, L*L]
         target_ = torch.gather(target_, dim=1, index=idx)  # [B, L]
         
-        preds_ = torch.argmax(preds, dim=1)  # [B, L, L]
-        preds_ = preds_.view(B, -1)  # [B, L*L]
-        preds_ = torch.gather(preds_, dim=1, index=idx)  # [B, L]
-        
-        tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), val != -torch.inf).sum()
-        fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), val != -torch.inf).sum()
+        if self.treat_all_preds_positive:
+            tp = torch.logical_and(target_ == 1, val != -torch.inf).sum()
+            fp = torch.logical_and(target_ == 0, val != -torch.inf).sum()
+        else:
+            preds_ = torch.argmax(preds, dim=1)  # [B, L, L]
+            preds_ = preds_.view(B, -1)  # [B, L*L]
+            preds_ = torch.gather(preds_, dim=1, index=idx)  # [B, L]
+            
+            tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), val != -torch.inf).sum()
+            fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), val != -torch.inf).sum()
 
         self.tp += tp
         self.fp += fp
