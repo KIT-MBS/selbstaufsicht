@@ -1,9 +1,13 @@
 import math
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pytorch_lightning as pl
+import seaborn as sns
+import sklearn.metrics as skl_metrics
 import torch
 from torch import nn
-
-import pytorch_lightning as pl
 
 from selbstaufsicht.modules import Transmorpher2d, TransmorpherBlock2d
 
@@ -33,9 +37,11 @@ class MSAModel(pl.LightningModule):
             task_heads: Dict[str, nn.Module] = None,
             task_losses: Dict[str, nn.Module] = None,
             task_loss_weights: Dict[str, float] = None,
-            metrics: Dict[str, nn.ModuleDict] = None,
+            train_metrics: Dict[str, nn.ModuleDict] = None,
+            val_metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
             attn_chunk_size: int = 0,
+            fix_backbone: bool = False,
             device: Union[str, torch.device] = None,
             dtype: torch.dtype = None) -> None:
         """
@@ -57,12 +63,14 @@ class MSAModel(pl.LightningModule):
             pos_padding_token (int, optional): Numerical token that is used for padding in positional embedding in auxiliary input
             max_seqlen (int, optional): maximum sequence length for learned positional embedding
             h_params (Dict[str, Any], optional): Hyperparameters for logging. Defaults to None.
-            task_heads (Dict[str, nn.Module], optional): Head modules for upstream tasks. Defaults to None.
+            task_heads (nn.ModuleDict[str, nn.Module], optional): Head modules for upstream tasks. Defaults to None.
             task_losses (Dict[str, nn.Module], optional): Loss functions for upstream tasks. Defaults to None.
             task_loss_weights (Dict[str, float], optional): per task loss weights. Defaults to None.
-            metrics (Dict[str, nn.ModuleDict], optional): Metrics for upstream tasks. Defaults to None.
+            train_metrics (Dict[str, nn.ModuleDict], optional): Training metrics for upstream tasks. Defaults to None.
+            val_metrics (Dict[str, nn.ModuleDict], optional): Validation metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
             attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
+            fix_backbone (bool, optional): Fixes backbone parameters during downstream task. Defaults to False.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
 
@@ -90,15 +98,16 @@ class MSAModel(pl.LightningModule):
 
         self.task_heads = task_heads
         self.losses = task_losses
-        self.metrics = metrics
+        self.train_metrics = train_metrics
+        self.val_metrics = val_metrics
+        self.downstream_loss_device_flag = False
         if task_heads is not None:
             assert self.task_heads.keys() == self.losses.keys()
         self.lr = lr
         self.lr_warmup = lr_warmup
-        if need_attn:
-            raise NotImplementedError('Extracting attention maps not yet implemented')
         self.need_attn = need_attn
         self.attn_chunk_size = attn_chunk_size
+        self.fix_backbone = fix_backbone
         self.save_hyperparameters(h_params)
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
@@ -116,11 +125,9 @@ class MSAModel(pl.LightningModule):
 
         # NOTE feature dim = -1
         x = self.embedding(x) + self.positional_embedding(aux_features)
-        # TODO extract attention maps
-        latent = self.backbone(x, padding_mask, self.need_attn, self.attn_chunk_size)
-        return latent
-    
-    def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
+        return self.backbone(x, padding_mask, self.need_attn, self.attn_chunk_size)
+
+    def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]:
         """
         Performs a single training or validation step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
         whose latent representation output is then passed through the upstream task related head models.
@@ -131,13 +138,30 @@ class MSAModel(pl.LightningModule):
             batch_idx (int): Batch number.
 
         Returns:
-            torch.Tensor: Summed loss across all upstream tasks
+            Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]: Input, target, predictions, summed loss across all upstream tasks
         """
 
         x, y = batch_data
-        mode = "training" if self.training else "validation"
+        if self.training:
+            mode = "training"
+            metrics = self.train_metrics
+        else:
+            mode = "validation"
+            metrics = self.val_metrics
 
-        latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+        latent = None
+        if 'contact' in self.tasks:
+            if not self.downstream_loss_device_flag:
+                self.losses['contact'].weight = self.losses['contact'].weight.to(self.device)
+                self.downstream_loss_device_flag = True
+
+            # NOTE eval mode for all modules except contact head
+            with torch.set_grad_enabled(not self.fix_backbone):
+                latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+            x['attn_maps'] = attn_maps
+        else:
+            latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+
         if 'contrastive' in self.tasks:
             if x['msa'].size(0) == 1:
                 print('WARN: contrastive task is not really going to work with batch_size==1')
@@ -146,17 +170,108 @@ class MSAModel(pl.LightningModule):
         preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
-            for m in self.metrics[task]:
-                mvalue = self.metrics[task][m](preds[task], y[task])
-                self.log(f'{task}_{mode}_{m}', mvalue, on_step=self.training, on_epoch=True)
-        # TODO weights
+            for m in metrics[task]:
+                metrics[task][m](preds[task], y[task])
+                if m != 'confmat':
+                    self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         for task in self.tasks:
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
-        if self.training:
-            return loss
+        if 'contact' in self.tasks:
+            if mode == 'validation':
+                plt.figure()
+                fig = sns.heatmap(preds['contact'][0,1].cpu().numpy(), fmt='').get_figure()
+                plt.close(fig)
+
+                self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
+
+        for task in self.tasks:
+            preds[task] = preds[task].detach()
+        if 'contact' in self.tasks and not self.fix_backbone:
+            # TODO: Adapt to now interface, when only row_maps are returned
+            x['attn_maps'] = [(row_map.detach(), col_map.detach()) for row_map, col_map in x['attn_maps']]
+        out = {'input': x, 'preds': preds, 'target': y, 'loss': loss}
+        return out
+
+    def _create_confusion_matrix(self, conf_mat_metric: Any, mode: str) -> None:
+        """
+        Computes and plots confusion matrix.
+
+        Args:
+            conf_mat_metric (Any): Confusion matrix metric.
+            mode (str): Training or validation.
+        """
+
+        conf_mat = conf_mat_metric.compute()
+        num_total = conf_mat.sum()
+        annotations =  np.array([["TP\n%.2E\n(%.2f%%)" % (conf_mat[0, 0], 100. * conf_mat[0, 0] / num_total),
+                                  "FN\n%.2E\n(%.2f%%)" % (conf_mat[0, 1], 100. * conf_mat[0, 1] / num_total)],
+                                 ["FP\n%.2E\n(%.2f%%)" % (conf_mat[1, 0], 100. * conf_mat[1, 0] / num_total),
+                                  "TN\n%.2E\n(%.2f%%)" % (conf_mat[1, 1], 100. * conf_mat[1, 1] / num_total)]])
+        plt.figure(figsize = (10,7))
+        fig_ = sns.heatmap(conf_mat.numpy(), annot=annotations, cmap='coolwarm', fmt='').get_figure()
+        plt.close(fig_)
+
+        self.logger.experiment.add_figure("contact_%s_confmat" % mode, fig_, self.current_epoch)
+        conf_mat_metric.reset()
+
+    def _create_roc_curve(self, preds: List[torch.Tensor], targets: List[torch.Tensor], mode: str) -> None:
+        """
+        Computes and plots ROC curve.
+
+        Args:
+            preds (List[torch.Tensor]): Predictions [B, 2, L, L].
+            target (List[torch.Tensor]): Targets [B, L, L].
+            mode (str): Training or validation.
+        """
+
+        preds_ = torch.cat([torch.exp(tmp[:, 1, :, :]).flatten() for tmp in preds])
+        target_ = torch.cat([tmp.flatten() for tmp in targets])
+
+        preds_ = preds_[target_ != -1]
+        preds_[preds_ == -torch.inf] = torch.finfo(torch.float32).min
+        target_ = target_[target_ != -1]
+
+        preds_ = preds_.cpu().numpy()
+        target_ = target_.cpu().numpy()
+
+        fpr, tpr, threshold = skl_metrics.roc_curve(target_, preds_)
+        auc = skl_metrics.auc(fpr, tpr)
+
+        fig_ = plt.figure(figsize = (7,7))
+        plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % auc)
+        plt.legend(loc = 'lower right')
+        plt.plot([0, 1], [0, 1],'r--')
+        plt.xlim([0, 1])
+        plt.ylim([0, 1])
+        plt.ylabel('TPR')
+        plt.xlabel('FPR')
+        plt.close(fig_)
+
+        self.logger.experiment.add_figure("contact_%s_roc" % mode, fig_, self.current_epoch)
+
+
+    def _epoch_end(self, outputs: List[Any]) -> None:
+        """
+        Is invoked at the end of an epoch. Computes metrics for imbalanced datasets, if \"contact\" is in tasks.
+
+        Args:
+            outputs (List[Any]): Outputs from training/validation steps.
+        """
+
+        if 'contact' in self.tasks:
+            if self.training:
+                mode = "training"
+                metrics = self.train_metrics
+            else:
+                mode = "validation"
+                metrics = self.val_metrics
+
+            self._create_confusion_matrix(metrics['contact']['confmat'], mode)
+            if len(outputs) > 0:
+                self._create_roc_curve([tmp['preds']['contact'] for tmp in outputs], [tmp['target']['contact'] for tmp in outputs], mode)
 
     def training_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> torch.Tensor:
         """
@@ -173,7 +288,7 @@ class MSAModel(pl.LightningModule):
         """
 
         return self._step(batch_data, batch_idx)
-    
+
     def validation_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> None:
         """
         Performs a single validation step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
@@ -185,7 +300,27 @@ class MSAModel(pl.LightningModule):
             batch_idx (int): Batch number.
         """
 
-        self._step(batch_data, batch_idx)
+        return self._step(batch_data, batch_idx)
+
+    def training_epoch_end(self, outputs: List[Any]) -> None:
+        """
+        Is invoked at the end of a training epoch.
+
+        Args:
+            outputs (List[Any]): Outputs from training steps.
+        """
+
+        self._epoch_end(outputs)
+
+    def validation_epoch_end(self, outputs: List[Any]) -> None:
+        """
+        Is invoked at the end of a validation epoch.
+
+        Args:
+            outputs (List[Any]): Outputs from validation steps.
+        """
+
+        self._epoch_end(outputs)
 
     def configure_optimizers(self) -> Dict[str, Any]:
         """
@@ -219,7 +354,10 @@ class MSAModel(pl.LightningModule):
                     float: Multiplicative factor for lr scheduling.
                 """
 
-                return min((i + 1) / self.warmup, math.sqrt(self.warmup / (i + 1)))
+                if self.warmup > 0:
+                    return min((i + 1) / self.warmup, math.sqrt(self.warmup / (i + 1)))
+                else:
+                    return 1
 
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, inverse_square_root_rule(self.lr_warmup))
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}

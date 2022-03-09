@@ -4,6 +4,7 @@ from torch.distributions import Categorical
 import torch.testing as testing
 import pytest
 
+import numpy as np
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
@@ -12,7 +13,7 @@ from selbstaufsicht.transforms import SelfSupervisedCompose
 from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, _get_replace_mask, RandomMSAMasking, ExplicitPositionalEncoding, MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
-from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain
+from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
 
@@ -320,9 +321,9 @@ def test_subsampling_uniform(msa_sample):
 
     sampled_ref = MultipleSeqAlignment(
         [
-            SeqRecord(Seq("CCUACU."), id='seq3'),
-            SeqRecord(Seq("UCUCCUC"), id='seq4'),
             SeqRecord(Seq("ACUCCUA"), id='seq1'),
+            SeqRecord(Seq("AAU.CUA"), id='seq2'),
+            SeqRecord(Seq("UCUCCUC"), id='seq4'),
         ])
 
     for idx in range(len(sampled)):
@@ -333,22 +334,22 @@ def test_subsampling_fixed(msa_sample):
     sampler = MSASubsampling(2, True, 'fixed')
     sampled = sampler(*msa_sample)[0]['msa']
     sampled_contrastive = sampler(*msa_sample)[0]['contrastive']
-    
+
     sampled_ref = MultipleSeqAlignment(
         [
             SeqRecord(Seq("ACUCCUA"), id='seq1'),
             SeqRecord(Seq("AAU.CUA"), id='seq2'),
         ])
-    
+
     sampled_contrastive_ref = MultipleSeqAlignment(
         [
             SeqRecord(Seq("CCUACU."), id='seq3'),
             SeqRecord(Seq("UCUCCUC"), id='seq4'),
         ])
-    
+
     for idx in range(len(sampled)):
         assert sampled[idx].seq == sampled_ref[idx].seq
-        
+
     for idx in range(len(sampled_contrastive)):
         assert sampled_contrastive[idx].seq == sampled_contrastive_ref[idx].seq
 
@@ -547,27 +548,42 @@ def test_compose(msa_sample):
     transform_composition = SelfSupervisedCompose(transforms)
     sample, target = transform_composition(*msa_sample)
 
-    msa_ref = torch.tensor([[17, 5, 5, 4, 3, 5, 4, 1],
-                            [17, 4, 5, 4, 5, 5, 4, 5],
-                            [17, 3, 5, 4, 5, 5, 4, 3]])
+    msa_ref = torch.tensor([[17, 3, 5, 4, 5, 5, 4, 3],   # seq1
+                            [17, 3, 3, 4, 1, 5, 4, 3],   # seq2
+                            [17, 4, 5, 4, 5, 5, 4, 5]])  # seq4
+    print(sample['msa'])
 
     testing.assert_close(sample['msa'], msa_ref, rtol=0, atol=0)
 
 
 def test_distance_from_chain(bio_structure):
-    dfc = DistanceFromChain(2)
+    dfc = DistanceFromChain(3)
     x = None
     y = {'structure': bio_structure}
     x, y = dfc(x, y)
 
     distances_ref = torch.tensor([
-        [0., 1., 0.],
-        [1., 0., 1.],
-        [0., 1., 0.]
-    ])
-    
+        [0., 1., 0., torch.inf, 4.],
+        [1., 0., 1., torch.inf, 3.],
+        [0., 1., 0., torch.inf, 4.],
+        [torch.inf, torch.inf, torch.inf, torch.inf, torch.inf],
+        [4., 3., 4., torch.inf, 0.],
+    ], device=y['distances'].device)
+
     testing.assert_close(y['distances'], distances_ref)
-    
+
+    cfd = ContactFromDistance(1.5)
+    x, y = cfd(x, y)
+    contacts_ref = torch.tensor([
+        [1, 1, 1, -1, 0],
+        [1, 1, 1, -1, 0],
+        [1, 1, 1, -1, 0],
+        [-1, -1, -1, -1, -1],
+        [0, 0, 0, -1, 1],
+    ], device=y['distances'].device, dtype=torch.long)
+
+    testing.assert_close(y['contact'], contacts_ref)
+
 
 if __name__ == '__main__':
     pass

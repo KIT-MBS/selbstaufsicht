@@ -55,9 +55,18 @@ def bio_structure():
             [1, 0, 0],
             [0, 2, 0],
             [0, 0, 3]
-        ]
+        ],
+        [
+            [np.nan, np.nan, np.nan]
+        ],
+        [
+            [0, 0, -4],
+            [0, -5, 0],
+            [-6, 0, 0]
+        ],
+
     ]
-    
+
     s_id = 0
     chain = Chain.Chain(0)
     for r_i in range(len(atom_coords)):

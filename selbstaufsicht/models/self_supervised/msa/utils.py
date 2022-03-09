@@ -9,7 +9,7 @@ from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
-from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss
+from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryTopLPrecision, BinaryConfusionMatrix
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
 # NOTE mask and padding tokens can not be reconstructed
@@ -61,9 +61,9 @@ def get_tasks(tasks: List[str],
         ValueError: Unknown upstream task.
 
     Returns:
-        Tuple[transforms.SelfSupervisedCompose, Dict[str, nn.Module], Dict[str, nn.Module], Dict[str, ModuleDict]]:
+        Tuple[transforms.SelfSupervisedCompose, Dict[str, nn.Module], Dict[str, nn.Module], Dict[str, ModuleDict], Dict[str, ModuleDict]]:
         Composition of preprocessing transforms; head modules for upstream tasks;
-        loss functions for upstream tasks; further metrics for upstream tasks
+        loss functions for upstream tasks; further training/validation metrics for upstream tasks
     """
 
     if not set(tasks) <= {'inpainting', 'jigsaw', 'contrastive'}:
@@ -105,44 +105,48 @@ def get_tasks(tasks: List[str],
 
     transform = transforms.SelfSupervisedCompose(transformslist)
 
-    metrics = ModuleDict()
+    train_metrics = ModuleDict()
+    val_metrics = ModuleDict()
 
     task_heads = ModuleDict()
     task_losses = dict()
     if 'jigsaw' in tasks:
         if jigsaw_euclid_emb is not None:
             jigsaw_classes = jigsaw_euclid_emb.shape[1]
-            acc_metric = EmbeddedJigsawAccuracy(jigsaw_euclid_emb, ignore_value=jigsaw_padding_token)
+            train_acc_metric = EmbeddedJigsawAccuracy(jigsaw_euclid_emb, ignore_value=jigsaw_padding_token)
+            val_acc_metric = EmbeddedJigsawAccuracy(jigsaw_euclid_emb, ignore_value=jigsaw_padding_token)
             loss_fn = EmbeddedJigsawLoss(ignore_value=jigsaw_padding_token)
         else:
-            acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
+            train_acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
+            val_acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
             loss_fn = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
 
         head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear, euclid_emb=jigsaw_euclid_emb is not None)
         task_heads['jigsaw'] = head
         task_losses['jigsaw'] = loss_fn
-        metrics['jigsaw'] = ModuleDict({'acc': acc_metric})
+        train_metrics['jigsaw'] = ModuleDict({'acc': train_acc_metric})
+        val_metrics['jigsaw'] = ModuleDict({'acc': val_acc_metric})
     if 'inpainting' in tasks:
         # NOTE never predict mask token or padding token
         head = InpaintingHead(dim, len(rna2index) - 2)
         task_heads['inpainting'] = head
 
         task_losses['inpainting'] = CrossEntropyLoss()
-        metrics['inpainting'] = ModuleDict({'acc': Accuracy()})
+        train_metrics['inpainting'] = ModuleDict({'acc': Accuracy()})
+        val_metrics['inpainting'] = ModuleDict({'acc': Accuracy()})
     if 'contrastive' in tasks:
         head = ContrastiveHead(dim)
         task_heads['contrastive'] = head
         task_losses['contrastive'] = NT_Xent_Loss(simclr_temperature)
-        # TODO
-        metrics['contrastive'] = ModuleDict({})
+        train_metrics['contrastive'] = ModuleDict({})
+        val_metrics['contrastive'] = ModuleDict({})
 
-    return transform, task_heads, task_losses, metrics
+    return transform, task_heads, task_losses, train_metrics, val_metrics
 
 
-def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, threshold: float = 4.):
-    # TODO better subsampling
+def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., device=None):
     transformslist = [
-        MSASubsampling(subsample_depth, mode='uniform'),
+        MSASubsampling(subsample_depth, mode=subsample_mode),
         MSATokenize(rna2index)]
     if jigsaw_partitions > 0:
         transformslist.append(
@@ -152,11 +156,19 @@ def get_downstream_transforms(subsample_depth, jigsaw_partitions: int = 0, thres
                 num_classes=1)
         )
     transformslist.append(ExplicitPositionalEncoding())
-    transformslist.append(DistanceFromChain())
+    transformslist.append(DistanceFromChain(device=device))
     transformslist.append(ContactFromDistance(threshold))
     downstream_transform = transforms.SelfSupervisedCompose(transformslist)
 
     return downstream_transform
+
+
+def get_downstream_metrics():
+    train_metrics = ModuleDict()
+    val_metrics = ModuleDict()
+    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 'confmat': BinaryConfusionMatrix()})
+    val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 'confmat': BinaryConfusionMatrix()})
+    return train_metrics, val_metrics
 
 
 class MSACollator():

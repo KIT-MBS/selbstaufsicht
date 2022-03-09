@@ -89,8 +89,7 @@ class MSACropping():
 
 
 class RandomMSAMasking():
-    # TODO other tokens instead of mask token
-    def __init__(self, p: float, p_static: float, p_nonstatic: float, p_unchanged: float, mode: str, static_mask_token: int, 
+    def __init__(self, p: float, p_static: float, p_nonstatic: float, p_unchanged: float, mode: str, static_mask_token: int,
                  nonstatic_mask_tokens: List[int], contrastive: bool = False, start_token: bool = True) -> None:
         """
         Initializes random MSA masking transform.
@@ -131,13 +130,13 @@ class RandomMSAMasking():
                 (flattened tensor of masked tokens) [~p*E*L].
         """
 
-        masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.masking_type_distribution, 
+        masked_msa, mask, target = self.masking_fn(x['msa'], self.p, self.masking_type_distribution,
                                                    self.static_mask_token, self.nonstatic_mask_tokens)
         x['msa'] = masked_msa
         x['mask'] = mask
         y['inpainting'] = target
         if self.contrastive:
-            x['contrastive'], _, _ = self.masking_fn(x['contrastive'], self.p, self.masking_type_distribution, 
+            x['contrastive'], _, _ = self.masking_fn(x['contrastive'], self.p, self.masking_type_distribution,
                                                      self.static_mask_token, self.nonstatic_mask_tokens)
         return x, y
 
@@ -208,7 +207,7 @@ class RandomMSAShuffling():
 
         num_seq = x['msa'].size(0)
         if 'jigsaw' in y:
-            # TODO: ugly, only works for fixed subsampling mode
+            # NOTE: ugly, only works for fixed subsampling mode
             perm_sampling = y['jigsaw'][:num_seq]
         else:
             perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
@@ -276,7 +275,6 @@ class MSASubsampling():
         return x, y
 
 
-# TODO this is sort of a hacky way to fix the incorrect way of PE without having to touch everything
 class ExplicitPositionalEncoding():
     def __init__(self, max_seqlen=5000):
         """
@@ -322,44 +320,47 @@ class ExplicitPositionalEncoding():
                 raise
 
         return x, y
-    
+
 
 class DistanceFromChain():
-    def __init__(self, chunk_size: int = 600):
+    def __init__(self, chunk_size: int = 600, device=None):
         """
         Initializes distance-from-chain computation.
 
         Args:
             chunk_size (int, optional): Chunk size in residuum dimension. Defaults to 600.
         """
-        
+
+        self.device=device
         self.chunk_size = chunk_size
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
         """
         Takes a biopython structure containing a single chain and returns a distance map.
-        
+
         Args:
             structure (Bio.PDB.Structure): Molecular structure to generate distance map from.
-            
+
         Returns:
             torch.Tensor [L', L'] residue distance map
         """
         structure = y['structure']
-        # TODO missing residue check?
         assert len(structure) == 1
         assert len(structure[0]) == 1
 
-        if torch.cuda.is_available():
-            worker_info = torch.utils.data.get_worker_info()
-            if worker_info is None:
-                device = 'cuda'
+        if self.device is None:
+            if torch.cuda.is_available():
+                worker_info = torch.utils.data.get_worker_info()
+                if worker_info is None:
+                    device = 'cuda'
+                else:
+                    # only as many data loaders as GPUs are allowed
+                    assert worker_info.num_workers <= torch.cuda.device_count()
+                    device = 'cuda:%d' % worker_info.id
             else:
-                # only as many data loaders as GPUs are allowed
-                assert worker_info.num_workers <= torch.cuda.device_count()
-                device = 'cuda:%d' % worker_info.id
+                device = 'cpu'
         else:
-            device = 'cpu'
+            device = self.device
 
         chain = structure[0].get_list()[0]
         atom_coords = [[a.get_coord() for a in r] for r in chain]
@@ -367,7 +368,7 @@ class DistanceFromChain():
         num_atoms_max = max(nums_atoms)
         num_residues = len(atom_coords)
         num_chunks = int(math.ceil(num_residues / self.chunk_size))
-        
+
         distances = torch.zeros((num_residues, num_residues), device=device)
         atom_coords_t = torch.full((num_residues, num_atoms_max, 3), torch.inf, device=device)  # [R, A, 3]
         for idx in range(num_residues):
@@ -376,15 +377,16 @@ class DistanceFromChain():
 
         for idx in range(num_chunks):
             residues_slice = slice(idx * self.chunk_size, (idx + 1) * self.chunk_size)
-            
+
             atom_coords_t1 = atom_coords_t[residues_slice, :, :].view(-1, 1, num_atoms_max, 1, 3).expand(-1, num_residues, num_atoms_max, num_atoms_max, 3)  # [RC, R, A, A, 3]
             atom_coords_t2 = atom_coords_t.view(1, num_residues, 1, num_atoms_max, 3).expand(atom_coords_t1.shape[0], num_residues, num_atoms_max, num_atoms_max, 3)  # [RC, R, A, A, 3]
 
             distances_chunk = torch.linalg.vector_norm(atom_coords_t1 - atom_coords_t2, dim=-1)  # [RC, R, A, A]
-            distances_chunk = torch.nan_to_num(distances_chunk, nan=torch.inf)
+            distances_chunk = torch.nan_to_num(distances_chunk, nan=torch.inf, posinf=torch.inf)
             distances_chunk = torch.amin(distances_chunk, dim=(-1, -2))  # [RC, R]
             distances[residues_slice, :] = distances_chunk
 
+        del y['structure']
         y['distances'] = distances
         return x, y
 
@@ -397,7 +399,11 @@ class ContactFromDistance():
         self.threshold = threshold
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
-        y['distances'] = y['distances'] < self.threshold
+        contacts = torch.zeros_like(y['distances'], dtype = torch.long)
+        contacts[y['distances'] < self.threshold] = 1.
+        contacts[y['distances'] == torch.inf] = -1.
+
+        y['contact'] = contacts
         return x, y
 
 
@@ -421,9 +427,6 @@ def _jigsaw(msa: torch.Tensor, permutations: torch.Tensor, delimiter_token: int 
         torch.Tensor: Shuffled, tokenized MSA [E, L].
     """
 
-    # TODO relative leader and trailer?
-    # TODO minimum partition size?
-    # TODO optimize
     nres = msa.size(-1)
     assert permutations.size(0) == msa.size(0)
     npartitions = permutations.size(-1)
@@ -461,7 +464,7 @@ def _jigsaw(msa: torch.Tensor, permutations: torch.Tensor, delimiter_token: int 
     return jigsawed_msa
 
 
-def _get_replace_mask(mask: torch.Tensor, masking_type_sampling: torch.Tensor, static_mask_token: int, 
+def _get_replace_mask(mask: torch.Tensor, masking_type_sampling: torch.Tensor, static_mask_token: int,
                       nonstatic_mask_tokens: List[int]) -> torch.Tensor:
     """
     Creates replace mask, which randomly assigns a mask token to each token to be masked.
@@ -475,33 +478,33 @@ def _get_replace_mask(mask: torch.Tensor, masking_type_sampling: torch.Tensor, s
     Returns:
         torch.Tensor: Replace mask, which randomly assigns a mask token to each token to be masked.
     """
-    
+
     nonstatic_mask_tokens_t = torch.tensor(nonstatic_mask_tokens)
-    
+
     assert set(torch.unique(masking_type_sampling).tolist()).issubset({0, 1, 2})
     replace_mask = masking_type_sampling  # [0: unchanged, 1: static, 2: nonstatic]
     replace_mask *= mask
     # exploiting call-by-reference
     mask[replace_mask == 0] = False
     replace_mask -= 2  # [-2: unchanged, -1: static, 0: nonstatic]
-    
+
     # inserting nonstatic tokens
     num_nonstatic = replace_mask[replace_mask == 0].numel()
     nonstatic_sampling = torch.randint(0, len(nonstatic_mask_tokens), (num_nonstatic,))
     replace_mask[replace_mask == 0] = nonstatic_sampling  # [-2: unchanged, -1: static, 0: nonstatic_1, ..., n-1: nonstatic_n]
     # leveraging that tokens are non-negative
     replace_mask[replace_mask >= 0] = nonstatic_mask_tokens_t[nonstatic_sampling]  # [-2: unchanged, -1: static] + nonstatic_tokens
-    
+
     # inserting static token
     replace_mask[replace_mask == -1] = static_mask_token  # [-2: unchanged] + [static_token] + nonstatic_tokens
-    
+
     # discarding unchanged positions
     replace_mask = replace_mask[replace_mask != -2]  # [static_token] + nonstatic_tokens
-    
+
     return replace_mask
 
 
-def _block_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Distribution, static_mask_token: int, nonstatic_mask_tokens: List[int], 
+def _block_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Distribution, static_mask_token: int, nonstatic_mask_tokens: List[int],
                     start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out a contiguous block of columns in the given MSA, whose size is determined by the given probability/ratio.
@@ -525,7 +528,7 @@ def _block_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Dist
 
     mask = torch.zeros_like(msa, dtype=torch.bool)
     mask[:, begin:end] = True
-    
+
     masking_type_sampling = masking_type_distribution.sample(mask.size())
     replace_mask = _get_replace_mask(mask, masking_type_sampling, static_mask_token, nonstatic_mask_tokens)
 
@@ -534,7 +537,7 @@ def _block_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Dist
     return msa, mask, masked
 
 
-def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, masking_type_distribution: Distribution, static_mask_token: int, 
+def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, masking_type_distribution: Distribution, static_mask_token: int,
                              nonstatic_mask_tokens: List[int], start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out a given set of columns in the given MSA.
@@ -553,7 +556,7 @@ def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, maski
 
     mask = torch.zeros_like(msa, dtype=torch.bool)
     mask[:, col_indices + int(start_token)] = True
-    
+
     masking_type_sampling = masking_type_distribution.sample(mask.size())
     replace_mask = _get_replace_mask(mask, masking_type_sampling, static_mask_token, nonstatic_mask_tokens)
 
@@ -562,7 +565,7 @@ def _column_mask_msa_indexed(msa: torch.Tensor, col_indices: torch.Tensor, maski
     return msa, mask, masked
 
 
-def _column_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Distribution, static_mask_token: int, nonstatic_mask_tokens: List[int], 
+def _column_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Distribution, static_mask_token: int, nonstatic_mask_tokens: List[int],
                      start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out a random set of columns in the given MSA, whose size is determined by the given probability/ratio.
@@ -584,12 +587,11 @@ def _column_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Dis
     col_mask = torch.full((col_num,), p)
     col_mask = torch.bernoulli(col_mask).to(torch.bool)
     masked_col_indices = col_indices[col_mask]
-    return _column_mask_msa_indexed(msa, masked_col_indices, masking_type_distribution, static_mask_token, 
+    return _column_mask_msa_indexed(msa, masked_col_indices, masking_type_distribution, static_mask_token,
                                     nonstatic_mask_tokens, start_token=start_token)
 
 
-# TODO should seq start token be excluded from masking?
-def _token_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Distribution, static_mask_token: int, nonstatic_mask_tokens: List[int], 
+def _token_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Distribution, static_mask_token: int, nonstatic_mask_tokens: List[int],
                     start_token: bool = True) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Masks out random tokens uniformly sampled from the given MSA, according to the given probability/ratio.
@@ -610,7 +612,7 @@ def _token_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Dist
     mask = torch.full(msa.size(), p)
     mask[:, :int(start_token)] = 0.
     mask = torch.bernoulli(mask).to(torch.bool)
-    
+
     masking_type_sampling = masking_type_distribution.sample(mask.size())
     replace_mask = _get_replace_mask(mask, masking_type_sampling, static_mask_token, nonstatic_mask_tokens)
 
@@ -619,7 +621,7 @@ def _token_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Dist
     return msa, mask, masked
 
 
-def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, float, Distribution, int, List[int]], 
+def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, float, Distribution, int, List[int]],
                                                                Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     """
     Returns the masking function that corresponds to the given masking mode.
@@ -633,7 +635,7 @@ def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, flo
 
     Returns:
         Callable[[torch.Tensor, float, Distribution, int, List[int]], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]: Masking function
-        (tokenized MSA [E, L]; masking probability/ratio; distribution of conditional probabilities for each masking type; 
+        (tokenized MSA [E, L]; masking probability/ratio; distribution of conditional probabilities for each masking type;
         static-masking token; nonstatic-masking tokens -> masked MSA [E, L]; boolean masking mask [E, L]; masked tokens [~p*E*L])
     """
 
@@ -661,7 +663,7 @@ def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool 
 
     max_nseqs = len(msa)
     if max_nseqs > nseqs:
-        indices = torch.randperm(max_nseqs)[:nseqs]
+        indices = torch.cat((torch.tensor([0]), (torch.randperm(max_nseqs-1)+1)[:nseqs-1]), dim=0)
         msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
     return msa
 
@@ -841,6 +843,7 @@ def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool = 
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
+    # TODO ensure this works, when there are not 2*nseqs sequences in the msa
 
     if contrastive:
         return msa[nseqs:2 * nseqs]
