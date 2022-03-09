@@ -148,7 +148,7 @@ class ContactHead(nn.Module):
         self.cull_tokens = cull_tokens
         self.log_clamp_min = log_clamp_min
         self.l = nn.Conv2d(num_maps, 1, kernel_size=1, bias=False, **factory_kwargs)
-        self.f = nn.Sigmoid()
+        self.f = nn.LogSigmoid()
 
     def forward(self, latent, x) -> torch.Tensor:
         # TODO only tied axial attention for now
@@ -172,11 +172,9 @@ class ContactHead(nn.Module):
         out = out.masked_select(mask).reshape(B, self.num_maps, degapped_L, degapped_L)
         out = self.l(out)  # [B, 1, L, L]
         # NOTE this is some hackery to use the ignore_index of NLLLoss, since BCELoss does not have it
+        # Sigmoid([-x, x]) = [1 - Sigmoid(x), Sigmoid(x)]
+        out = torch.cat((-out, out), dim=1)  # [B, 2, L, L]
         out = self.f(out)
-        out = torch.cat((1. - out, out), dim=1)  # [B, 2, L, L]
-        # NOTE: This is crucial, since the gratient otherwise becomes NaN at some point
-        out = torch.clamp(out, min=self.log_clamp_min)
-        out = torch.log(out)
         out = (out + torch.transpose(out, -1, -2)) * 0.5
 
         return out
