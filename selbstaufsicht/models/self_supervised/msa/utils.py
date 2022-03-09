@@ -138,7 +138,6 @@ def get_tasks(tasks: List[str],
         head = ContrastiveHead(dim)
         task_heads['contrastive'] = head
         task_losses['contrastive'] = NT_Xent_Loss(simclr_temperature)
-        # TODO
         train_metrics['contrastive'] = ModuleDict({})
         val_metrics['contrastive'] = ModuleDict({})
 
@@ -146,7 +145,6 @@ def get_tasks(tasks: List[str],
 
 
 def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., device=None):
-    # TODO better subsampling
     transformslist = [
         MSASubsampling(subsample_depth, mode=subsample_mode),
         MSATokenize(rna2index)]

@@ -4,10 +4,8 @@ import numpy as np
 from scipy.linalg import ldl
 import torch
 
-# TODO token mapping should be part of dataset?
 # ambuguous RNA letters: GAUCRYWSMKHBVDN
 rna_letters = [letter for letter in '-.GAUCRYWSMKHBVDN']
-# TODO protein_letters = [letter for letter in '']
 
 rna2index = {letter: index for index, letter in enumerate(rna_letters)}
 rna2index['START_TOKEN'] = len(rna2index)
@@ -20,27 +18,6 @@ rna2index['PADDING_TOKEN'] = len(rna2index)
 nonstatic_mask_token_letters = [letter for letter in 'ACGU-']
 nonstatic_mask_tokens = [rna2index[letter] for letter in nonstatic_mask_token_letters]
 
-# rnaletter2tensor_encoded_ambiguity_dict = {
-#         '-': torch.tensor([1., 0., 0., 0., 0., 0.]),
-#         'G': torch.tensor([0., 1., 0., 0., 0., 0.]),
-#         'A': torch.tensor([0., 0., 1., 0., 0., 0.]),
-#         'U': torch.tensor([0., 0., 0., 1., 0., 0.]),
-#         'C': torch.tensor([0., 0., 0., 0., 1., 0.]),
-#         'R': torch.tensor([0., 1., 1., 0., 0., 0.])/2.,
-#         'Y': torch.tensor([0., 0., 0., 1., 1., 0.])/2.,
-#         'W': torch.tensor([0., 0., 1., 1., 0., 0.])/2.,
-#         'S': torch.tensor([0., 1., 0., 0., 1., 0.])/2.,
-#         'M': torch.tensor([0., 0., 1., 0., 1., 0.])/2.,
-#         'K': torch.tensor([0., 1., 0., 1., 0., 0.])/2.,
-#         'H': torch.tensor([0., 0., 1., 1., 1., 0.])/3.,
-#         'B': torch.tensor([0., 1., 0., 1., 1., 0.])/3.,
-#         'V': torch.tensor([0., 1., 1., 0., 1., 0.])/3.,
-#         'D': torch.tensor([0., 1., 1., 1., 0., 0.])/3.,
-#         'N': torch.tensor([0., 1., 1., 1., 1., 0.])/4.,
-#         mask_token: torch.tensor(),  # TODO
-#         delimiter_token: torch.tensor()  # TODO
-#         }
-
 
 def lehmer_encode(i: int, n: int) -> torch.Tensor:
     """
@@ -49,7 +26,7 @@ def lehmer_encode(i: int, n: int) -> torch.Tensor:
     Args:
         i (int): Lehmer index.
         n (int): Number of elements in the sequence to be permuted.
-        
+
     Example:
         >>> lehmer_encode(10,7)
         tensor([0, 1, 2, 4, 6, 3, 5], dtype=torch.int64)
@@ -101,13 +78,13 @@ def perm_metric(perm1: torch.Tensor, perm2: torch.Tensor) -> int:
     Returns:
         int: Number of transpositions.
     """
-    
+
     invperm2 = torch.argsort(perm2)
     perm0 = perm1[invperm2]
     seen = torch.zeros_like(perm0, dtype=torch.bool)
     n = seen.shape[0]
     dist = 0
-    
+
     for i in range(n):
         if seen[i]:
             continue
@@ -136,7 +113,7 @@ def perm_gram_matrix(perms: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Symmetric gram matrix [N, N], which contains the number of transpositions for all permutation pairs.
     """
-    
+
     n = perms.shape[0]
     ret = torch.zeros((n,n), dtype=torch.int64)
     for i in range(n-1):
@@ -160,7 +137,7 @@ def embed_finite_metric_space(d0: torch.Tensor, eps: float = 1e-4, dist_lower_bo
     Returns:
         torch.Tensor: Euclidean embedding of the discrete permutation metric [N, L]. All vector components are non-negative.
     """
-    
+
     n = d0.shape[0]
     X = cp.Variable((n-1, n-1), symmetric=True)
     z = cp.Variable((1,))
@@ -168,7 +145,7 @@ def embed_finite_metric_space(d0: torch.Tensor, eps: float = 1e-4, dist_lower_bo
     constraints += [ z >= 0 ]
     min_distance = torch.inf
     d0 = d0.numpy()
-    
+
     # define linear program
     for i in range(n-1):
         constraints += [ X[i, i] <= d0[i+1 ,0]**2 ]
@@ -210,12 +187,12 @@ def embed_finite_metric_space(d0: torch.Tensor, eps: float = 1e-4, dist_lower_bo
         delta_sq = (max_dist - dist_lower_bound)**2 * min_distance**2
         ind2 = torch.where(max_entries_cumsum >= delta_sq)[0]
         ret = ret[:,ind[ind2]]
-    
+
     # shift embedding into non-negative area of the vector space
     shift_vec = torch.amin(ret, dim=0)
     shift_vec *= -(shift_vec < 0).to(torch.int)
     ret += shift_vec
-    
+
     return ret
 
 
@@ -227,6 +204,6 @@ def data_loader_worker_init(worker_id: int, rng_seed: int) -> None:
         worker_id (int): Worker ID.
         rng_seed (int): Random number generator seed.
     """
-    
+
     np.random.seed(rng_seed)
     random.seed(rng_seed)

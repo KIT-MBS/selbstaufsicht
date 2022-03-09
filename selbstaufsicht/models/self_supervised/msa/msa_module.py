@@ -179,7 +179,14 @@ class MSAModel(pl.LightningModule):
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
-        
+        if 'contact' in self.tasks:
+            if mode == 'validation':
+                plt.figure()
+                fig = sns.heatmap(preds['contact'][0,1].cpu().numpy(), fmt='').get_figure()
+                plt.close(fig)
+
+                self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
+
         for task in self.tasks:
             preds[task] = preds[task].detach()
         if 'contact' in self.tasks and not self.fix_backbone:
@@ -187,7 +194,7 @@ class MSAModel(pl.LightningModule):
             x['attn_maps'] = [(row_map.detach(), col_map.detach()) for row_map, col_map in x['attn_maps']]
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss}
         return out
-    
+
     def _create_confusion_matrix(self, conf_mat_metric: Any, mode: str) -> None:
         """
         Computes and plots confusion matrix.
@@ -196,20 +203,20 @@ class MSAModel(pl.LightningModule):
             conf_mat_metric (Any): Confusion matrix metric.
             mode (str): Training or validation.
         """
-        
+
         conf_mat = conf_mat_metric.compute()
         num_total = conf_mat.sum()
-        annotations =  np.array([["TP\n%.2E\n(%.2f%%)" % (conf_mat[0, 0], 100. * conf_mat[0, 0] / num_total), 
+        annotations =  np.array([["TP\n%.2E\n(%.2f%%)" % (conf_mat[0, 0], 100. * conf_mat[0, 0] / num_total),
                                   "FN\n%.2E\n(%.2f%%)" % (conf_mat[0, 1], 100. * conf_mat[0, 1] / num_total)],
                                  ["FP\n%.2E\n(%.2f%%)" % (conf_mat[1, 0], 100. * conf_mat[1, 0] / num_total),
                                   "TN\n%.2E\n(%.2f%%)" % (conf_mat[1, 1], 100. * conf_mat[1, 1] / num_total)]])
         plt.figure(figsize = (10,7))
         fig_ = sns.heatmap(conf_mat.numpy(), annot=annotations, cmap='coolwarm', fmt='').get_figure()
         plt.close(fig_)
-        
+
         self.logger.experiment.add_figure("contact_%s_confmat" % mode, fig_, self.current_epoch)
         conf_mat_metric.reset()
-        
+
     def _create_roc_curve(self, preds: List[torch.Tensor], targets: List[torch.Tensor], mode: str) -> None:
         """
         Computes and plots ROC curve.
@@ -219,20 +226,20 @@ class MSAModel(pl.LightningModule):
             target (List[torch.Tensor]): Targets [B, L, L].
             mode (str): Training or validation.
         """
-        
+
         preds_ = torch.cat([torch.exp(tmp[:, 1, :, :]).flatten() for tmp in preds])
         target_ = torch.cat([tmp.flatten() for tmp in targets])
-        
+
         preds_ = preds_[target_ != -1]
         preds_[preds_ == -torch.inf] = torch.finfo(torch.float32).min
         target_ = target_[target_ != -1]
 
         preds_ = preds_.cpu().numpy()
         target_ = target_.cpu().numpy()
-        
+
         fpr, tpr, threshold = skl_metrics.roc_curve(target_, preds_)
         auc = skl_metrics.auc(fpr, tpr)
-        
+
         fig_ = plt.figure(figsize = (7,7))
         plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % auc)
         plt.legend(loc = 'lower right')
@@ -242,10 +249,10 @@ class MSAModel(pl.LightningModule):
         plt.ylabel('TPR')
         plt.xlabel('FPR')
         plt.close(fig_)
-        
+
         self.logger.experiment.add_figure("contact_%s_roc" % mode, fig_, self.current_epoch)
-        
-    
+
+
     def _epoch_end(self, outputs: List[Any]) -> None:
         """
         Is invoked at the end of an epoch. Computes metrics for imbalanced datasets, if \"contact\" is in tasks.
@@ -253,7 +260,7 @@ class MSAModel(pl.LightningModule):
         Args:
             outputs (List[Any]): Outputs from training/validation steps.
         """
-        
+
         if 'contact' in self.tasks:
             if self.training:
                 mode = "training"
@@ -261,7 +268,7 @@ class MSAModel(pl.LightningModule):
             else:
                 mode = "validation"
                 metrics = self.val_metrics
-            
+
             self._create_confusion_matrix(metrics['contact']['confmat'], mode)
             if len(outputs) > 0:
                 self._create_roc_curve([tmp['preds']['contact'] for tmp in outputs], [tmp['target']['contact'] for tmp in outputs], mode)
@@ -294,7 +301,7 @@ class MSAModel(pl.LightningModule):
         """
 
         return self._step(batch_data, batch_idx)
-    
+
     def training_epoch_end(self, outputs: List[Any]) -> None:
         """
         Is invoked at the end of a training epoch.
@@ -302,9 +309,9 @@ class MSAModel(pl.LightningModule):
         Args:
             outputs (List[Any]): Outputs from training steps.
         """
-        
+
         self._epoch_end(outputs)
-    
+
     def validation_epoch_end(self, outputs: List[Any]) -> None:
         """
         Is invoked at the end of a validation epoch.
@@ -312,7 +319,7 @@ class MSAModel(pl.LightningModule):
         Args:
             outputs (List[Any]): Outputs from validation steps.
         """
-        
+
         self._epoch_end(outputs)
 
     def configure_optimizers(self) -> Dict[str, Any]:

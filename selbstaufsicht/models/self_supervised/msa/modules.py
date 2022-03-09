@@ -171,7 +171,7 @@ class ContactHead(nn.Module):
         out = torch.cat([m[0].squeeze(dim=2) for m in out], dim=1) # [B, num_blocks * H, L, L]
         out = out.masked_select(mask).reshape(B, self.num_maps, degapped_L, degapped_L)
         out = self.l(out)  # [B, 1, L, L]
-        # TODO this is some hackery to use the ignore_index of NLLLoss, since BCELoss does not have it
+        # NOTE this is some hackery to use the ignore_index of NLLLoss, since BCELoss does not have it
         out = self.f(out)
         out = torch.cat((1. - out, out), dim=1)  # [B, 2, L, L]
         # NOTE: This is crucial, since the gratient otherwise becomes NaN at some point

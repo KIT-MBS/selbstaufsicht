@@ -4,7 +4,6 @@ from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms
 
 root = os.environ['DATA_PATH']
-# TODO check thresholds
 downstream_transform = get_downstream_transforms(subsample_depth=50, threshold=10., device='cpu')
 
 ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)

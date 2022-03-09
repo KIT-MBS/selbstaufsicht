@@ -15,7 +15,7 @@ def parse_args():
     epi = """DESCRIPTION: A simple script to convert UniRef XMLto fasta.
     The previous UniRef releases to the current release do not include fasta files, but instead only XML
     files for all UniRef sequences (+ all associated info). The script allows one to easily re-create
-    the fasta-formatted version of a prevoius UniRef release. 
+    the fasta-formatted version of a prevoius UniRef release.
     Use "-" to provide the input file STDIN. Example: gunzip -c uniref50.xml | unirefxml2fasta.py -
     """
     parser = argparse.ArgumentParser(
@@ -115,7 +115,6 @@ def main(args):
         outF.write(seq)
 
         # print status
-        # TODO better progress bar with tqdm
         if i % 2500 == 0:
             print("Entries processed: {}".format(i), end="\r")
         i += 1

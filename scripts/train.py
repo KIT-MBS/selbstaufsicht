@@ -133,7 +133,6 @@ def main():
     else:
         jigsaw_euclid_emb = None
 
-    # TODO should take token mapping?
     transform, task_heads, task_losses, train_metrics, val_metrics = get_tasks(tasks,
                                                                                args.feature_dim_head * args.num_heads,
                                                                                subsample_depth=args.subsampling_depth,
@@ -210,7 +209,6 @@ def main():
                         generator=data_loader_rng,
                         pin_memory=num_gpus > 0)
 
-    # TODO should pass padding token index here
     model = models.self_supervised.MSAModel(
         args.num_blocks,
         args.num_heads,

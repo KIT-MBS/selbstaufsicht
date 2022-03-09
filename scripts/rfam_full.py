@@ -46,7 +46,6 @@ with gzip.open(path + filename, 'rt', encoding='latin1') as f:
                 seq_records = [sr for sr in SeqIO.parse(ff, 'fasta')]
                 print(rfam_ids[i], len(a), len(seq_records))
                 if len(a) < len(seq_records):
-                    # TODO generate alignment
                     full_file_path = root + f'/Rfam/14.6/full/train/{rfam_ids[i]}.sto'
                     cm_path =  root + f'/Rfam/14.6/cms/{rfam_ids[i]}.cm'
                     if not os.path.isfile(full_file_path):
