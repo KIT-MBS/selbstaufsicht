@@ -231,7 +231,7 @@ class MSAModel(pl.LightningModule):
         target_ = torch.cat([tmp.flatten() for tmp in targets])
 
         preds_ = preds_[target_ != -1]
-        preds_[preds_ == -torch.inf] = torch.finfo(torch.float32).min
+        preds_[preds_ == -torch.inf] = torch.finfo(preds_.dtype).min
         target_ = target_[target_ != -1]
 
         preds_ = preds_.cpu().numpy()
