@@ -143,3 +143,69 @@ class BinaryFocalNLLLoss(nn.Module):
             loss /= self.weight[target_].sum()
         
         return loss
+    
+
+class DiceNLLLoss(nn.Module):
+    def __init__(self, epsilon: float = 1e-8, ignore_index: int = -1, reduction='mean'):
+        """
+        Initializes Dice Negative Log Likelihood Loss with ignore-index support.
+
+        Args:
+            epsilon (float, optional): Additive for numerical stabilization. Defaults to 1e-8.
+            ignore_index (int, optional): Target value which is ignored in comparison. Defaults to -1.
+            reduction (str, optional): Reduction mode: mean, sum. Defaults to \"mean\".
+        """
+        
+        super(DiceNLLLoss, self).__init__()
+        self.epsilon = epsilon
+        self.ignore_index = ignore_index
+        self.reduction = reduction
+    
+    def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        Computes DiceNLLLoss for given predictions and target data (cf. https://arxiv.org/abs/1707.03237).
+
+        Args:
+            preds (torch.Tensor): Predictions (one-hot-encoded with class-dim 1).
+            target (torch.Tensor): Target data.
+
+        Returns:
+            torch.Tensor: DiceNLLLoss.
+        """
+        
+        # check if shapes match (exclude class dim for preds due to one-hot encoding)
+        assert preds.shape[:1] + preds.shape[2:] == target.shape, "Shapes must match except for class-dim 1!"
+        
+        # check if there are two classes
+        assert preds.shape[1] == 2
+
+        # check if ignore_index is outside of class index range
+        assert not 0 <= self.ignore_index < 2, "Parameter \'ignore_index\' must not be in range [0, 2)!"
+        
+        # compute and apply ignore mask
+        mask = target != self.ignore_index
+        target_ = target.unsqueeze(0).expand(2, *(-1 for idx in range(target.ndim)))
+        target_[0, mask] = 1 - target_[0, mask]
+        target_[0, ~mask] = 0
+        target_[1, ~mask] = 0
+        preds_ = preds.permute(1, 0, *(idx for idx in range(2, preds.ndim)))
+        # TODO: Maybe add an option to the ContactHead, s.t. it returns Sigmoid output instead of LogSigmoid output
+        preds_ = torch.exp(preds_)
+        preds_[0, ~mask] = 0
+        preds_[1, ~mask] = 0
+        
+        # compute dice loss
+        image_dims = (idx for idx in range(1, target.ndim)
+        loss = (1 - 
+                (torch.sum(target_[1, :] * preds_[1, :], dim=image_dims) + self.epsilon) / 
+                (torch.sum(target_[1, :] + preds_[1, :], dim=image_dims) + self.epsilon) - 
+                (torch.sum(target_[0, :] * preds_[0, :], dim=image_dims) + self.epsilon) / 
+                (2 * torch.sum(mask, dim=image_dims) - torch.sum(target_[1, :] - preds_[1, :], dim=image_dims) + self.epsilon))
+        
+        # perform reduction, if needed
+        if self.reduction in ('sum', 'mean'):
+            loss = loss.sum()
+        if self.reduction == 'mean':
+            loss /= target.shape[0]
+        
+        return loss
