@@ -2,7 +2,7 @@ import torch
 import torch.testing as testing
 import pytest
 
-from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryTopLPrecision, BinaryConfusionMatrix, BinaryFocalNLLLoss
+from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryTopLPrecision, BinaryConfusionMatrix, BinaryFocalNLLLoss, DiceNLLLoss
 from selbstaufsicht.utils import lehmer_encode, perm_metric, perm_gram_matrix, embed_finite_metric_space
 
 
@@ -316,4 +316,35 @@ def test_binary_focal_nllloss():
                              [  0.,  0., 0., 0.],
                              [ el1, el2, 0., 0.],
                              [  0.,  0., 0., 0.]])
+    testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
+
+
+def test_dice_nllloss():
+    preds = torch.tensor([[[[1e-8,  1.0], 
+                            [ 1.0, 1e-8]], 
+                           [[ 1.0, 1e-8], 
+                            [1e-8,  1.0]]], 
+                          [[[ 0.1,  0.9], 
+                            [42.0, 42.0]], 
+                           [[ 0.9,  0.1], 
+                            [42.0, 42.0]]]])
+    preds = torch.log(preds)
+    target = torch.Tensor([[[ 1,  0], 
+                            [ 0,  1]], 
+                           [[ 0,  1], 
+                            [-1, -1]]])
+    
+    loss_metric = DiceNLLLoss(reduction='mean')
+    loss = loss_metric(preds, target)
+    loss_ref = torch.tensor(0.5875)
+    testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
+    
+    loss_metric = DiceNLLLoss(reduction='sum')
+    loss = loss_metric(preds, target)
+    loss_ref = torch.tensor(1.175)
+    testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
+    
+    loss_metric = DiceNLLLoss(reduction='none')
+    loss = loss_metric(preds, target)
+    loss_ref = torch.tensor([0.25, 0.925])
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)

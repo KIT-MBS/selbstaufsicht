@@ -184,7 +184,7 @@ class DiceNLLLoss(nn.Module):
         
         # compute and apply ignore mask
         mask = target != self.ignore_index
-        target_ = target.unsqueeze(0).expand(2, *(-1 for idx in range(target.ndim)))
+        target_ = target.unsqueeze(0).repeat(2, *(1 for idx in range(target.ndim)))
         target_[0, mask] = 1 - target_[0, mask]
         target_[0, ~mask] = 0
         target_[1, ~mask] = 0
@@ -195,7 +195,7 @@ class DiceNLLLoss(nn.Module):
         preds_[1, ~mask] = 0
         
         # compute dice loss
-        image_dims = (idx for idx in range(1, target.ndim)
+        image_dims = tuple(idx for idx in range(1, target.ndim))
         loss = (1 - 
                 (torch.sum(target_[1, :] * preds_[1, :], dim=image_dims) + self.epsilon) / 
                 (torch.sum(target_[1, :] + preds_[1, :], dim=image_dims) + self.epsilon) - 
