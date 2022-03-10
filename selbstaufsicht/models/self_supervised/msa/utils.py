@@ -9,7 +9,7 @@ from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
-from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryTopLPrecision, BinaryConfusionMatrix
+from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryTopLPrecision, BinaryTopLF1Score, BinaryConfusionMatrix
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
 # NOTE mask and padding tokens can not be reconstructed
@@ -167,9 +167,11 @@ def get_downstream_metrics():
     train_metrics = ModuleDict()
     val_metrics = ModuleDict()
     train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
-                                           'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 'confmat': BinaryConfusionMatrix()})
+                                           'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 
+                                           'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix()})
     val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
-                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 'confmat': BinaryConfusionMatrix()})
+                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 
+                                         'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix()})
     return train_metrics, val_metrics
 
 

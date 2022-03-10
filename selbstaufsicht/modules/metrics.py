@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 from torchmetrics import Metric
+from typing import Tuple
 
 
 class Accuracy(Metric):
@@ -157,14 +158,17 @@ class BinaryTopLPrecision(Metric):
         self.treat_all_preds_positive = treat_all_preds_positive
         self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
         self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
-
-    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
+        
+    def _compute_top_l(self, preds: torch.Tensor, target: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Updates internal metric states by comparing predicted and target values.
+        Computes top-L predictions and targets.
 
         Args:
             preds (torch.Tensor): Predictions [B, 2, L, L].
             target (torch.Tensor): Targets [B, L, L].
+            
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: top-L preds [B, L], top-L target [B, L], top-L ignore mask [B, L]
         """
         
         assert preds.shape[1] == 2
@@ -180,16 +184,31 @@ class BinaryTopLPrecision(Metric):
         target_ = target.view(B, -1)  # [B, L*L]
         target_ = torch.gather(target_, dim=1, index=idx)  # [B, L]
         
+        preds_ = torch.argmax(preds, dim=1)  # [B, L, L]
+        preds_ = preds_.view(B, -1)  # [B, L*L]
+        preds_ = torch.gather(preds_, dim=1, index=idx)  # [B, L]
+        
+        ignore_mask = val != -torch.inf  # [B, L]
+        
+        return preds_, target_, ignore_mask 
+
+    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
+        """
+        Updates internal metric states by comparing predicted and target values.
+
+        Args:
+            preds (torch.Tensor): Predictions [B, 2, L, L].
+            target (torch.Tensor): Targets [B, L, L].
+        """
+        
+        preds_, target_, ignore_mask = self._compute_top_l(preds, target)
+        
         if self.treat_all_preds_positive:
-            tp = torch.logical_and(target_ == 1, val != -torch.inf).sum()
-            fp = torch.logical_and(target_ == 0, val != -torch.inf).sum()
+            tp = torch.logical_and(target_ == 1, ignore_mask).sum()
+            fp = torch.logical_and(target_ == 0, ignore_mask).sum()
         else:
-            preds_ = torch.argmax(preds, dim=1)  # [B, L, L]
-            preds_ = preds_.view(B, -1)  # [B, L*L]
-            preds_ = torch.gather(preds_, dim=1, index=idx)  # [B, L]
-            
-            tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), val != -torch.inf).sum()
-            fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), val != -torch.inf).sum()
+            tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), ignore_mask).sum()
+            fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), ignore_mask).sum()
 
         self.tp += tp
         self.fp += fp
@@ -203,6 +222,50 @@ class BinaryTopLPrecision(Metric):
         """
         
         return self.tp.float() / (self.tp.float() + self.fp.float())
+    
+
+class BinaryTopLF1Score(BinaryTopLPrecision):
+    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, dist_sync_on_step: bool = False) -> None:
+        """
+        Initializes binary top-l F1 score metric with ignore index support.
+
+        Args:
+            ignore_idx (int, optional): Ignored index in the target values. Defaults to -1.
+            diag_shift (int, optional): Diagonal offset for predictions. Defaults to 4.
+            dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
+        """
+        
+        super().__init__(ignore_idx=ignore_idx, diag_shift=diag_shift, dist_sync_on_step=dist_sync_on_step)
+        self.add_state('fn', default=torch.tensor(0), dist_reduce_fx='sum')
+
+    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
+        """
+        Updates internal metric states by comparing predicted and target values.
+
+        Args:
+            preds (torch.Tensor): Predictions [B, 2, L, L].
+            target (torch.Tensor): Targets [B, L, L].
+        """
+        
+        preds_, target_, ignore_mask = self._compute_top_l(preds, target)
+        
+        tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), ignore_mask).sum()
+        fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), ignore_mask).sum()
+        fn = torch.logical_and(torch.logical_and(preds_ == 0, target_ == 1), ignore_mask).sum()
+        
+        self.tp += tp
+        self.fp += fp
+        self.fn += fn
+
+    def compute(self) -> torch.Tensor:
+        """
+        Computes binary F1 score.
+
+        Returns:
+            torch.Tensor: F1 score.
+        """
+        
+        return self.tp.float() / (self.tp.float() + 0.5 * (self.fp.float() + self.fn.float()))
 
 
 class BinaryConfusionMatrix(Metric):
