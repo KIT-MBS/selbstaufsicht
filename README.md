@@ -7,6 +7,7 @@ TODO:
 - separate, but weight-shared tasks
 - try LBFGS
 - try focal loss or dice loss?
+- investigate dataset/distribution/generalization issues
 - clean up dataset stuff
 - downstream optimizer
 - hyperparameter
