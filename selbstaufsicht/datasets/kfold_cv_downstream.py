@@ -48,7 +48,7 @@ class KFoldCVDownstream():
                 self.train_fold, self.val_fold = random_split(self.train_dataset, [train_size, val_size], self.data_loader_rng)
             else:
                 self.train_fold = self.train_dataset
-                self.valid_fold = None
+                self.val_fold = None
         else:
             self.splits = [split for split in KFold(self.num_folds, shuffle=self.shuffle, random_state=self.rng_seed).split(range(len(self.train_dataset)))]
     
