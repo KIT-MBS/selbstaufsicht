@@ -66,7 +66,7 @@ def main():
         dp_strategy = None
         checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
     h_params = checkpoint['hyper_parameters']
-    downstram_args = {'downstream__' + k: v for k, v in args.items()}
+    downstream_args = {'downstream__' + k: v for k, v in args.items()}
     h_params.update(downstream_args)
     
     if args.test and args.cv_num_folds >= 2:
