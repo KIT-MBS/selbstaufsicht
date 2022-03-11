@@ -155,7 +155,7 @@ class MSAModel(pl.LightningModule):
                 self.losses['contact'].weight = self.losses['contact'].weight.to(self.device)
                 self.downstream_loss_device_flag = True
 
-            # NOTE eval mode for all modules except contact head
+            # NOTE (un)frozen weights for all modules except contact head
             with torch.set_grad_enabled(not self.fix_backbone):
                 latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
             x['attn_maps'] = attn_maps
@@ -182,7 +182,7 @@ class MSAModel(pl.LightningModule):
         if 'contact' in self.tasks:
             if mode == 'validation':
                 plt.figure()
-                fig = sns.heatmap(preds['contact'][0,1].cpu().numpy(), fmt='').get_figure()
+                fig = sns.heatmap(preds['contact'][0, 1].cpu().numpy(), fmt='').get_figure()
                 plt.close(fig)
 
                 self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
@@ -206,11 +206,17 @@ class MSAModel(pl.LightningModule):
 
         conf_mat = conf_mat_metric.compute()
         num_total = conf_mat.sum()
-        annotations =  np.array([["TP\n%.2E\n(%.2f%%)" % (conf_mat[0, 0], 100. * conf_mat[0, 0] / num_total),
-                                  "FN\n%.2E\n(%.2f%%)" % (conf_mat[0, 1], 100. * conf_mat[0, 1] / num_total)],
-                                 ["FP\n%.2E\n(%.2f%%)" % (conf_mat[1, 0], 100. * conf_mat[1, 0] / num_total),
-                                  "TN\n%.2E\n(%.2f%%)" % (conf_mat[1, 1], 100. * conf_mat[1, 1] / num_total)]])
-        plt.figure(figsize = (10,7))
+        annotations = np.array([
+                                [
+                                    "TP\n%.2E\n(%.2f%%)" % (conf_mat[0, 0], 100. * conf_mat[0, 0] / num_total),
+                                    "FN\n%.2E\n(%.2f%%)" % (conf_mat[0, 1], 100. * conf_mat[0, 1] / num_total)
+                                ],
+                                [
+                                    "FP\n%.2E\n(%.2f%%)" % (conf_mat[1, 0], 100. * conf_mat[1, 0] / num_total),
+                                    "TN\n%.2E\n(%.2f%%)" % (conf_mat[1, 1], 100. * conf_mat[1, 1] / num_total)]
+                                ]
+                               )
+        plt.figure(figsize=(10, 7))
         fig_ = sns.heatmap(conf_mat.numpy(), annot=annotations, cmap='coolwarm', fmt='').get_figure()
         plt.close(fig_)
 
@@ -240,10 +246,10 @@ class MSAModel(pl.LightningModule):
         fpr, tpr, threshold = skl_metrics.roc_curve(target_, preds_)
         auc = skl_metrics.auc(fpr, tpr)
 
-        fig_ = plt.figure(figsize = (7,7))
-        plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % auc)
-        plt.legend(loc = 'lower right')
-        plt.plot([0, 1], [0, 1],'r--')
+        fig_ = plt.figure(figsize=(7, 7))
+        plt.plot(fpr, tpr, 'b', label='AUC = %0.2f' % auc)
+        plt.legend(loc='lower right')
+        plt.plot([0, 1], [0, 1], 'r--')
         plt.xlim([0, 1])
         plt.ylim([0, 1])
         plt.ylabel('TPR')
@@ -251,7 +257,6 @@ class MSAModel(pl.LightningModule):
         plt.close(fig_)
 
         self.logger.experiment.add_figure("contact_%s_roc" % mode, fig_, self.current_epoch)
-
 
     def _epoch_end(self, outputs: List[Any]) -> None:
         """
