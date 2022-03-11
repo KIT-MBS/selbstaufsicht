@@ -24,7 +24,7 @@ class KFoldCVDownstream():
         """
         
         assert num_folds > 0
-        assert 0 <= val_ratio < 1
+        assert 0 < val_ratio < 1
         
         self.num_folds = num_folds
         self.val_ratio = val_ratio
@@ -42,13 +42,9 @@ class KFoldCVDownstream():
         
         # setup splits
         if self.num_folds == 1:
-            if self.val_ratio > 0:
-                val_size = int(self.val_ratio * len(self.train_dataset))
-                train_size = len(self.train_dataset) - val_size
-                self.train_fold, self.val_fold = random_split(self.train_dataset, [train_size, val_size], self.data_loader_rng)
-            else:
-                self.train_fold = self.train_dataset
-                self.val_fold = None
+            val_size = int(self.val_ratio * len(self.train_dataset))
+            train_size = len(self.train_dataset) - val_size
+            self.train_fold, self.val_fold = random_split(self.train_dataset, [train_size, val_size], self.data_loader_rng)
         else:
             self.splits = [split for split in KFold(self.num_folds, shuffle=self.shuffle, random_state=self.rng_seed).split(range(len(self.train_dataset)))]
     
@@ -71,9 +67,6 @@ class KFoldCVDownstream():
                           generator=self.data_loader_rng, pin_memory=False)
 
     def val_dataloader(self) -> Union[DataLoader, None]:
-        if self.val_fold is not None:
-            return DataLoader(self.val_fold, batch_size=self.batch_size, shuffle=False, num_workers=0, 
-                            worker_init_fn=partial(data_loader_worker_init, rng_seed=self.rng_seed), 
-                            generator=self.data_loader_rng, pin_memory=False)
-        else:
-            return None
+        return DataLoader(self.val_fold, batch_size=self.batch_size, shuffle=False, num_workers=0, 
+                          worker_init_fn=partial(data_loader_worker_init, rng_seed=self.rng_seed), 
+                          generator=self.data_loader_rng, pin_memory=False)

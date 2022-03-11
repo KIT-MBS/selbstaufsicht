@@ -39,7 +39,7 @@ def main():
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
-    parser.add_argument('--validation-ratio', default=0.1, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled. 0 disables validation")
+    parser.add_argument('--validation-ratio', default=0.1, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
     parser.add_argument('--cv-num-folds', default=1, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--test', action='store_true', help="Runs checkpointed model on test dataset, after training is finished.")
     # Data parallelism
