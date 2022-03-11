@@ -277,7 +277,7 @@ class MSAModel(pl.LightningModule):
             else:
                 mode = "validation"
                 metrics = self.val_metrics
-            if outputs['test']:
+            if len(outputs) > 0 and outputs[0]['test']:
                 mode = "test"
                 metrics = self.test_metrics
 
