@@ -1,5 +1,7 @@
 import argparse
 from datetime import datetime
+import glob
+import os
 import random
 
 import numpy as np
@@ -194,7 +196,20 @@ def main():
         trainer.fit(model, train_dl, val_dl)
 
     if args.test:
-        trainer.test(model, test_dl, ckpt_path='best', verbose=True)
+        trainer = Trainer(gpus=1 if num_gpus > 0 else 0,
+                          logger=tb_logger,
+                          enable_progress_bar=not args.disable_progress_bar)
+        checkpoint_path = log_dir
+        if log_exp_name is not "":
+            checkpoint_path += '/%s' % log_exp_name
+        checkpoint_path += '/%s/checkpoints' % log_run_name
+        
+        # seaching for the latest file is a little bit hacky, but works
+        checkpoint_list = glob.glob('%s/*.ckpt')
+        latest_checkpoint = max(checkpoint_list, key=os.path.getctime)
+        checkpoint_path += '/%s' % latest_checkpoint
+
+        trainer.test(model, test_dl, ckpt_path=checkpoint_path, verbose=True)
     
 if __name__ == '__main__':
     main()
