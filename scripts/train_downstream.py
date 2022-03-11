@@ -200,7 +200,7 @@ def main():
                           logger=tb_logger,
                           enable_progress_bar=not args.disable_progress_bar)
         checkpoint_path = log_dir
-        if log_exp_name is not "":
+        if log_exp_name != "":
             checkpoint_path += '/%s' % log_exp_name
         checkpoint_path += '/%s/checkpoints' % log_run_name
         
