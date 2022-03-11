@@ -201,7 +201,7 @@ class MSAModel(pl.LightningModule):
         if 'contact' in self.tasks and not self.freeze_backbone:
             # TODO: Adapt to now interface, when only row_maps are returned
             x['attn_maps'] = [(row_map.detach(), col_map.detach()) for row_map, col_map in x['attn_maps']]
-        out = {'input': x, 'preds': preds, 'target': y, 'loss': loss}
+        out = {'input': x, 'preds': preds, 'target': y, 'loss': loss, 'test': test}
         return out
 
     def _create_confusion_matrix(self, conf_mat_metric: Any, mode: str) -> None:
@@ -277,6 +277,9 @@ class MSAModel(pl.LightningModule):
             else:
                 mode = "validation"
                 metrics = self.val_metrics
+            if outputs['test']:
+                mode = "test"
+                metrics = self.test_metrics
 
             self._create_confusion_matrix(metrics['contact']['confmat'], mode)
             if len(outputs) > 0:
