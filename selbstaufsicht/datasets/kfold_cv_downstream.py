@@ -1,4 +1,7 @@
+from functools import partial
+import os
 from sklearn.model_selection import KFold
+import torch
 from torch.utils.data import DataLoader, Subset, random_split
 
 from selbstaufsicht.datasets import CoCoNetDataset

@@ -1,7 +1,5 @@
 import argparse
 from datetime import datetime
-from functools import partial
-import os
 import random
 
 import numpy as np
@@ -124,8 +122,8 @@ def main():
                     dim_head = h_params['feature_dim_head'],
                     task_heads=task_heads,
                     task_losses=task_losses,
-                    alphabet_size=len(downstream_ds.token_mapping),
-                    padding_token=downstream_ds.token_mapping['PADDING_TOKEN'],
+                    alphabet_size=len(kfold_cv_downstream.train_dataset.token_mapping),
+                    padding_token=kfold_cv_downstream.train_dataset.token_mapping['PADDING_TOKEN'],
                     lr=args.learning_rate,
                     lr_warmup=args.learning_rate_warmup,
                     dropout=args.dropout,
@@ -139,8 +137,8 @@ def main():
                     feature_dim_head = h_params['feature_dim_head'],
                     task_heads=task_heads,
                     task_losses=task_losses,
-                    alphabet_size=len(downstream_ds.token_mapping),
-                    padding_token=downstream_ds.token_mapping['PADDING_TOKEN'],
+                    alphabet_size=len(kfold_cv_downstream.train_dataset.token_mapping),
+                    padding_token=kfold_cv_downstream.train_dataset.token_mapping['PADDING_TOKEN'],
                     lr=args.learning_rate,
                     lr_warmup=args.learning_rate_warmup,
                     dropout=args.dropout,
