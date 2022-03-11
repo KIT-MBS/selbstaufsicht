@@ -41,7 +41,7 @@ class MSAModel(pl.LightningModule):
             val_metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
             attn_chunk_size: int = 0,
-            fix_backbone: bool = False,
+            freeze_backbone: bool = False,
             device: Union[str, torch.device] = None,
             dtype: torch.dtype = None) -> None:
         """
@@ -70,7 +70,7 @@ class MSAModel(pl.LightningModule):
             val_metrics (Dict[str, nn.ModuleDict], optional): Validation metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
             attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
-            fix_backbone (bool, optional): Fixes backbone parameters during downstream task. Defaults to False.
+            freeze_backbone (bool, optional): Freezes backbone parameters during downstream task. Defaults to False.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
 
@@ -100,6 +100,7 @@ class MSAModel(pl.LightningModule):
         self.losses = task_losses
         self.train_metrics = train_metrics
         self.val_metrics = val_metrics
+        self.test_metrics = None
         self.downstream_loss_device_flag = False
         if task_heads is not None:
             assert self.task_heads.keys() == self.losses.keys()
@@ -107,7 +108,7 @@ class MSAModel(pl.LightningModule):
         self.lr_warmup = lr_warmup
         self.need_attn = need_attn
         self.attn_chunk_size = attn_chunk_size
-        self.fix_backbone = fix_backbone
+        self.freeze_backbone = freeze_backbone
         self.save_hyperparameters(h_params)
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
@@ -127,7 +128,7 @@ class MSAModel(pl.LightningModule):
         x = self.embedding(x) + self.positional_embedding(aux_features)
         return self.backbone(x, padding_mask, self.need_attn, self.attn_chunk_size)
 
-    def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]:
+    def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int, test: bool = False) -> Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]:
         """
         Performs a single training or validation step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
         whose latent representation output is then passed through the upstream task related head models.
@@ -136,18 +137,26 @@ class MSAModel(pl.LightningModule):
         Args:
             batch_data (Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]): Input data, Label data.
             batch_idx (int): Batch number.
+            test (bool, optional): Whether testing is enabled. Defaults to False.
 
         Returns:
             Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]: Input, target, predictions, summed loss across all upstream tasks
         """
 
         x, y = batch_data
+        
+        assert not (self.training and test)
+        
         if self.training:
             mode = "training"
             metrics = self.train_metrics
         else:
             mode = "validation"
             metrics = self.val_metrics
+        if test:
+            assert self.test_metrics is not None
+            mode = "test"
+            metrics = self.test_metrics
 
         latent = None
         if 'contact' in self.tasks:
@@ -156,7 +165,7 @@ class MSAModel(pl.LightningModule):
                 self.downstream_loss_device_flag = True
 
             # NOTE eval mode for all modules except contact head
-            with torch.set_grad_enabled(not self.fix_backbone):
+            with torch.set_grad_enabled(not self.freeze_backbone and self.training):
                 latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
             x['attn_maps'] = attn_maps
         else:
@@ -189,7 +198,7 @@ class MSAModel(pl.LightningModule):
 
         for task in self.tasks:
             preds[task] = preds[task].detach()
-        if 'contact' in self.tasks and not self.fix_backbone:
+        if 'contact' in self.tasks and not self.freeze_backbone:
             # TODO: Adapt to now interface, when only row_maps are returned
             x['attn_maps'] = [(row_map.detach(), col_map.detach()) for row_map, col_map in x['attn_maps']]
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss}
@@ -301,6 +310,19 @@ class MSAModel(pl.LightningModule):
         """
 
         return self._step(batch_data, batch_idx)
+    
+    def test_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> None:
+        """
+        Performs a single test step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
+        whose latent representation output is then passed through the upstream task related head models.
+        Eventually, using task specific loss function and further metrics, the obtained prediction results are evaluated against the corresponding label data.
+
+        Args:
+            batch_data (Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]): Input data, Label data.
+            batch_idx (int): Batch number.
+        """
+
+        return self._step(batch_data, batch_idx, test=True)
 
     def training_epoch_end(self, outputs: List[Any]) -> None:
         """
@@ -318,6 +340,16 @@ class MSAModel(pl.LightningModule):
 
         Args:
             outputs (List[Any]): Outputs from validation steps.
+        """
+
+        self._epoch_end(outputs)
+    
+    def test_epoch_end(self, outputs: List[Any]) -> None:
+        """
+        Is invoked at the end of a test epoch.
+
+        Args:
+            outputs (List[Any]): Outputs from test steps.
         """
 
         self._epoch_end(outputs)

@@ -23,7 +23,7 @@ def main():
     # Pre-trained model
     parser.add_argument('--checkpoint', type=str, help="Path to pre-trained model checkpoint")
     parser.add_argument('--re-init', action='store_true', help="Re-initializes model parameters")
-    parser.add_argument('--fix-backbone', action='store_true', help="Fixes backbone parameters")
+    parser.add_argument('--freeze-backbone', action='store_true', help="Freezes backbone parameters")
     # Contact prediction
     parser.add_argument('--distance-threshold', default=10., type=float, help="Minimum distance between two atoms in angström that is not considered as a contact")
     # Preprocessing
@@ -39,8 +39,9 @@ def main():
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
-    parser.add_argument('--validation-ratio', default=0.1, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
+    parser.add_argument('--validation-ratio', default=0.1, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled. 0 disables validation")
     parser.add_argument('--cv-num-folds', default=1, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
+    parser.add_argument('--test', action='store_true', help="Runs checkpointed model on test dataset, after training is finished.")
     # Data parallelism
     parser.add_argument('--num-gpus', default=-1, type=int, help="Number of GPUs per node. -1 refers to using all available GPUs. 0 refers to using the CPU.")
     parser.add_argument('--num-nodes', default=1, type=int, help="Number of nodes")
@@ -58,18 +59,28 @@ def main():
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
-        dp_strategy = DDPPlugin(find_unused_parameters=True)
+        dp_strategy = DDPPlugin(find_unused_parameters=args.freeze_backbone)
         # NOTE for some reason, load_from_checkpoint fails to infer the hyperparameters correctly from the checkpoint file
         checkpoint = torch.load(args.checkpoint)
     else:
         dp_strategy = None
         checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
     h_params = checkpoint['hyper_parameters']
-
-    learning_rate = 0.0001
+    downstram_args = {'downstream__' + k: v for k, v in args.items()}
+    hparams.update(downstream_args)
+    
+    if args.test and args.cv_num_folds >= 2:
+        raise ValueError("Testing only works with disabled cross validation!")
     
     downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold)
     kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform, num_folds=args.cv_num_folds, val_ratio=args.validation_ratio, batch_size=args.batch_size, shuffle=not args.disable_shuffle, rng_seed=args.rng_seed)
+    if args.test:
+        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root, 'test', transform=downstream_transform)
+        test_dl = DataLoader(test_dataset,
+                             batch_size=args.batch_size,
+                             shuffle=False,
+                             num_workers=0,
+                             pin_memory=False)
 
     dt_now = datetime.now()
     log_dir = h_params['log_dir'] if args.log_dir == "" else args.log_dir
@@ -77,7 +88,9 @@ def main():
     log_run_name = "downstream__" + h_params['log_run_name'] if args.log_run_name == "" else dt_now.strftime(args.log_run_name)
     if args.cv_num_folds >= 2:
         log_exp_name = log_run_name
-
+    hparams['downstream__log_dir'] = log_dir
+    hparams['downstream__log_exp_name'] = log_exp_name
+    
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
@@ -99,7 +112,11 @@ def main():
         tasks.append("contrastive")
         
     for fold_idx in range(args.cv_num_folds):
-        train_metrics, val_metrics = get_downstream_metrics()
+        if args.cv_num_folds >= 2:
+            log_run_name = 'fold_%d' % (fold_idx + 1)
+        hparams['downstream__log_run_name'] = log_run_name
+        
+        train_metrics, val_metrics, test_metrics = get_downstream_metrics()
         _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                         h_params['feature_dim_head'] * h_params['num_heads'],
                                         subsample_depth=h_params['subsampling_depth'],
@@ -128,7 +145,8 @@ def main():
                     lr_warmup=args.learning_rate_warmup,
                     dropout=args.dropout,
                     emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
-                    fix_backbone=args.fix_backbone)
+                    freeze_backbone=args.freeze_backbone,
+                    h_params=h_params)
         else:
             model = models.self_supervised.MSAModel.load_from_checkpoint(
                     checkpoint_path = args.checkpoint,
@@ -143,7 +161,8 @@ def main():
                     lr_warmup=args.learning_rate_warmup,
                     dropout=args.dropout,
                     emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
-                    fix_backbone=args.fix_backbone)
+                    freeze_backbone=args.freeze_backbone,
+                    h_params=h_params)
         model.tasks = ['contact']
         model.losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
         model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[kfold_cv_downstream.train_dataset.token_mapping[l] for l in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
@@ -151,14 +170,13 @@ def main():
         model.task_loss_weights = {'contact': 1.}
         model.train_metrics = train_metrics
         model.val_metrics = val_metrics
+        if args.test:
+            model.test_metrics = test_metrics
         
         kfold_cv_downstream.setup_fold_index(fold_idx)
 
         train_dl = kfold_cv_downstream.train_dataloader()
         val_dl = kfold_cv_downstream.val_dataloader()
-        
-        if args.cv_num_folds >= 2:
-            log_run_name = 'fold_%d' % (fold_idx + 1)
 
         tb_logger = TensorBoardLogger(save_dir=log_dir, name=log_exp_name, version=log_run_name)
         checkpoint_callback = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
@@ -175,5 +193,8 @@ def main():
                           callbacks=[checkpoint_callback])
         trainer.fit(model, train_dl, val_dl)
 
+    if args.test:
+        trainer.test(model, test_dl, ckpt_path='best', verbose=True)
+    
 if __name__ == '__main__':
     main()
