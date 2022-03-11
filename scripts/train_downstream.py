@@ -201,15 +201,16 @@ def main():
                           enable_progress_bar=not args.disable_progress_bar)
         checkpoint_path = log_dir
         if log_exp_name != "":
-            checkpoint_path += '/%s' % log_exp_name
-        checkpoint_path += '/%s/checkpoints' % log_run_name
+            checkpoint_path += '%s/' % log_exp_name
+        checkpoint_path += '%s/checkpoints/' % log_run_name
         
-        # seaching for the latest file is a little bit hacky, but works
-        checkpoint_list = glob.glob('%s/*.ckpt')
+        # seaching for the latest file is a little bit hacky, but should work
+        checkpoint_list = glob.glob('%s*.ckpt' % checkpoint_path)
         latest_checkpoint = max(checkpoint_list, key=os.path.getctime)
-        checkpoint_path += '/%s' % latest_checkpoint
+        
+        model.downstream_loss_device_flag = False
 
-        trainer.test(model, test_dl, ckpt_path=checkpoint_path, verbose=True)
+        trainer.test(model, test_dl, ckpt_path=latest_checkpoint, verbose=True)
     
 if __name__ == '__main__':
     main()
