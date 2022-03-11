@@ -67,7 +67,7 @@ def main():
         checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
     h_params = checkpoint['hyper_parameters']
     downstram_args = {'downstream__' + k: v for k, v in args.items()}
-    hparams.update(downstream_args)
+    h_params.update(downstream_args)
     
     if args.test and args.cv_num_folds >= 2:
         raise ValueError("Testing only works with disabled cross validation!")
@@ -88,8 +88,8 @@ def main():
     log_run_name = "downstream__" + h_params['log_run_name'] if args.log_run_name == "" else dt_now.strftime(args.log_run_name)
     if args.cv_num_folds >= 2:
         log_exp_name = log_run_name
-    hparams['downstream__log_dir'] = log_dir
-    hparams['downstream__log_exp_name'] = log_exp_name
+    h_params['downstream__log_dir'] = log_dir
+    h_params['downstream__log_exp_name'] = log_exp_name
     
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
@@ -114,7 +114,7 @@ def main():
     for fold_idx in range(args.cv_num_folds):
         if args.cv_num_folds >= 2:
             log_run_name = 'fold_%d' % (fold_idx + 1)
-        hparams['downstream__log_run_name'] = log_run_name
+        h_params['downstream__log_run_name'] = log_run_name
         
         train_metrics, val_metrics, test_metrics = get_downstream_metrics()
         _, task_heads, task_losses, _, _ = get_tasks(tasks,
