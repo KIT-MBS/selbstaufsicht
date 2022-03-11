@@ -59,14 +59,14 @@ def main():
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
-        dp_strategy = DDPPlugin(find_unused_parameters=args.freeze_backbone)
+        dp_strategy = DDPPlugin(find_unused_parameters=True)
         # NOTE for some reason, load_from_checkpoint fails to infer the hyperparameters correctly from the checkpoint file
         checkpoint = torch.load(args.checkpoint)
     else:
         dp_strategy = None
         checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
     h_params = checkpoint['hyper_parameters']
-    downstream_args = {'downstream__' + k: v for k, v in args.items()}
+    downstream_args = {'downstream__' + k: v for k, v in vars(args).items()}
     h_params.update(downstream_args)
     
     if args.test and args.cv_num_folds >= 2:
