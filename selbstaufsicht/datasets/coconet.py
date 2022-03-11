@@ -15,6 +15,7 @@ from Bio.PDB.PDBParser import PDBParser
 
 from ..utils import rna2index
 
+
 class CoCoNetDataset(Dataset):
     """
     CoCoNet: contact prediction dataset used in: https://doi.org/10.1093/nar/gkab1144
@@ -51,7 +52,6 @@ class CoCoNetDataset(Dataset):
         with open(pathlib.Path(self.root / 'coconet' / split_dir / pdb_index_chain), 'rt') as f:
             self.pdb_chains = [line.strip() for line in f]
 
-
         self.pdbs = []
         for msa, pdb_file, chain_id in zip(self.msas, self.pdb_filenames, self.pdb_chains):
             refseq = msa[0].seq
@@ -77,13 +77,13 @@ class CoCoNetDataset(Dataset):
 
                     # insert missing residues in the middle
                     dummy_atom = Atom(name='X',
-                            coord=np.array((np.nan, np.nan, np.nan), 'f'),
-                            bfactor=0.,
-                            occupancy=1.,
-                            altloc='',
-                            fullname='dummy',
-                            serial_number=0,
-                            element='C')
+                                      coord=np.array((np.nan, np.nan, np.nan), 'f'),
+                                      bfactor=0.,
+                                      occupancy=1.,
+                                      altloc='',
+                                      fullname='dummy',
+                                      serial_number=0,
+                                      element='C')
 
                     assert resids[-1][2] == ' '
                     for j, i in enumerate(range(firstid, lastid-1)):
