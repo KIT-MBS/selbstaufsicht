@@ -181,11 +181,22 @@ class MSAModel(pl.LightningModule):
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
         if 'contact' in self.tasks:
             if mode == 'validation':
+                attn_maps = torch.cat([m[0].squeeze(dim=2) for m in x['attn_maps']], dim=1)  # [B, num_blocks * H, L, L]
+                for i in range(attn_maps.size(1)):
+                    plt.figure()
+                    fig = sns.heatmap(attn_maps[0, i].cpu().numpy(), fmt='').get_figure()
+                    plt.close(fig)
+                    self.logger.experiment.add_figure(f'map_{i}', fig, self.current_epoch)
+
                 plt.figure()
                 fig = sns.heatmap(preds['contact'][0, 1].cpu().numpy(), fmt='').get_figure()
                 plt.close(fig)
-
                 self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
+
+                plt.figure()
+                fig = sns.heatmap(y[0].cpu().numpy(), fmt='').get_figure()
+                plt.close(fig)
+                self.logger.experiment.add_figure('contact_target', fig, self.current_epoch)
 
         for task in self.tasks:
             preds[task] = preds[task].detach()
