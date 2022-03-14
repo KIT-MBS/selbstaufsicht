@@ -171,8 +171,8 @@ def get_downstream_metrics():
     train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
                                            'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 
                                            'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix()})
-    val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
-                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 
+    val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(),
+                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True),
                                          'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix()})
     test_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
                                          'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 

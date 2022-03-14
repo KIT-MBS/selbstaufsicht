@@ -164,7 +164,7 @@ class MSAModel(pl.LightningModule):
                 self.losses['contact'].weight = self.losses['contact'].weight.to(self.device)
                 self.downstream_loss_device_flag = True
 
-            # NOTE eval mode for all modules except contact head
+            # NOTE (un)frozen weights for all modules except contact head
             with torch.set_grad_enabled(not self.freeze_backbone and self.training):
                 latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
             x['attn_maps'] = attn_maps
@@ -189,12 +189,47 @@ class MSAModel(pl.LightningModule):
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
         if 'contact' in self.tasks:
+            # NOTE invoke tensorboard with --samples_per_plugin images=batches to show more images
             if mode == 'validation':
-                plt.figure()
-                fig = sns.heatmap(preds['contact'][0,1].cpu().numpy(), fmt='').get_figure()
-                plt.close(fig)
+                # NOTE plot all attention heads
+                attn_maps = torch.cat([m[0].squeeze(dim=2) for m in x['attn_maps']], dim=1)  # [B, num_blocks * H, L, L]
+                for i in range(attn_maps.size(1)):
+                    plt.figure()
+                    fig = sns.heatmap(attn_maps[0, i].cpu().numpy(), fmt='').get_figure()
+                    plt.close(fig)
+                    self.logger.experiment.add_figure(f'map_{i}', fig, self.current_epoch)
 
+                # NOTE plot contact prediction scores
+                plt.figure()
+                fig = sns.heatmap(preds['contact'][0, 1].cpu().numpy(), fmt='').get_figure()
+                plt.close(fig)
                 self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
+                # NOTE plot contact predictions
+                plt.figure()
+                fig = sns.heatmap((preds['contact'][0, 1]>=0.5).float().cpu().numpy(), fmt='').get_figure()
+                plt.close(fig)
+                self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
+
+                # NOTE plot top L contact predictions
+                L = y['contact'].size(1)
+                preds_ = preds['contact'][0, 1]
+                topl_preds_ = torch.zeros_like(preds)
+                preds_ = torch.triu(preds_, 4) + torch.tril(torch.full_like(preds_, -torch.inf), self.diag_shift)
+                preds_ = preds_.view(L*L)
+                val, idx = torch.topk(preds_, L, dim=-1)  # [L]
+                topl_preds_[idx] = 1.
+                topl_preds_ = topl_preds_.view(L, L)
+
+                plt.figure()
+                fig = sns.heatmap(topl_preds_.cpu().numpy(), fmt='').get_figure()
+                plt.close(fig)
+                self.logger.experiment.add_figure('topl_contacts', fig, self.current_epoch)
+
+                # NOTE plot contact prediction targets
+                plt.figure()
+                fig = sns.heatmap(y['contact'][0].cpu().numpy(), fmt='').get_figure()
+                plt.close(fig)
+                self.logger.experiment.add_figure('contact_target', fig, self.current_epoch)
 
         for task in self.tasks:
             preds[task] = preds[task].detach()
@@ -215,11 +250,17 @@ class MSAModel(pl.LightningModule):
 
         conf_mat = conf_mat_metric.compute()
         num_total = conf_mat.sum()
-        annotations =  np.array([["TP\n%.2E\n(%.2f%%)" % (conf_mat[0, 0], 100. * conf_mat[0, 0] / num_total),
-                                  "FN\n%.2E\n(%.2f%%)" % (conf_mat[0, 1], 100. * conf_mat[0, 1] / num_total)],
-                                 ["FP\n%.2E\n(%.2f%%)" % (conf_mat[1, 0], 100. * conf_mat[1, 0] / num_total),
-                                  "TN\n%.2E\n(%.2f%%)" % (conf_mat[1, 1], 100. * conf_mat[1, 1] / num_total)]])
-        plt.figure(figsize = (10,7))
+        annotations = np.array([
+                                [
+                                    "TP\n%.2E\n(%.2f%%)" % (conf_mat[0, 0], 100. * conf_mat[0, 0] / num_total),
+                                    "FN\n%.2E\n(%.2f%%)" % (conf_mat[0, 1], 100. * conf_mat[0, 1] / num_total)
+                                ],
+                                [
+                                    "FP\n%.2E\n(%.2f%%)" % (conf_mat[1, 0], 100. * conf_mat[1, 0] / num_total),
+                                    "TN\n%.2E\n(%.2f%%)" % (conf_mat[1, 1], 100. * conf_mat[1, 1] / num_total)]
+                                ]
+                               )
+        plt.figure(figsize=(10, 7))
         fig_ = sns.heatmap(conf_mat.numpy(), annot=annotations, cmap='coolwarm', fmt='').get_figure()
         plt.close(fig_)
 
@@ -249,10 +290,10 @@ class MSAModel(pl.LightningModule):
         fpr, tpr, threshold = skl_metrics.roc_curve(target_, preds_)
         auc = skl_metrics.auc(fpr, tpr)
 
-        fig_ = plt.figure(figsize = (7,7))
-        plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % auc)
-        plt.legend(loc = 'lower right')
-        plt.plot([0, 1], [0, 1],'r--')
+        fig_ = plt.figure(figsize=(7, 7))
+        plt.plot(fpr, tpr, 'b', label='AUC = %0.2f' % auc)
+        plt.legend(loc='lower right')
+        plt.plot([0, 1], [0, 1], 'r--')
         plt.xlim([0, 1])
         plt.ylim([0, 1])
         plt.ylabel('TPR')
@@ -260,7 +301,6 @@ class MSAModel(pl.LightningModule):
         plt.close(fig_)
 
         self.logger.experiment.add_figure("contact_%s_roc" % mode, fig_, self.current_epoch)
-
 
     def _epoch_end(self, outputs: List[Any]) -> None:
         """
