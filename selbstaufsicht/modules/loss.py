@@ -188,11 +188,9 @@ class DiceNLLLoss(nn.Module):
         target_[0, mask] = 1 - target_[0, mask]
         target_[0, ~mask] = 0
         target_[1, ~mask] = 0
-        preds_ = preds.permute(1, 0, *(idx for idx in range(2, preds.ndim)))
         # TODO: Maybe add an option to the ContactHead, s.t. it returns Sigmoid output instead of LogSigmoid output
-        preds_ = torch.exp(preds_)
-        preds_[0, ~mask] = 0
-        preds_[1, ~mask] = 0
+        preds_ = torch.exp(preds)
+        preds_ = preds_.permute(1, 0, *(idx for idx in range(2, preds_.ndim))) * mask.unsqueeze(0).expand(2, *(-1 for idx in range(target.ndim)))
         
         # compute dice loss
         image_dims = tuple(idx for idx in range(1, target.ndim))
