@@ -1,4 +1,5 @@
 import torch
+from torch.nn import CrossEntropyLoss
 import torch.testing as testing
 import pytest
 
@@ -328,22 +329,45 @@ def test_binary_focal_nllloss():
     el = 0.5 * -torch.log(torch.tensor(0.1))
     
     loss_metric = BinaryFocalNLLLoss(gamma=0., reduction='mean')
+    loss_metric_ce = CrossEntropyLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='mean')
     loss = loss_metric(preds, target)
     loss_ref = 2 * el / (10 * 0.5)
+    loss_ref_ce = loss_metric_ce(preds, target)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
+    testing.assert_close(loss, loss_ref_ce, atol=1e-4, rtol=1e-3)
     
     loss_metric = BinaryFocalNLLLoss(gamma=0., reduction='sum')
+    loss_metric_ce = CrossEntropyLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='sum')
     loss = loss_metric(preds, target)
     loss_ref = 2 * el
+    loss_ref_ce = loss_metric_ce(preds, target)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
+    testing.assert_close(loss, loss_ref_ce, atol=1e-4, rtol=1e-3)
     
     loss_metric = BinaryFocalNLLLoss(gamma=0., reduction='none')
+    loss_metric_ce = CrossEntropyLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='none')
     loss = loss_metric(preds, target)
     loss_ref = torch.tensor([[ 0., 0., 0., 0.], 
                              [ 0., 0., 0., 0.],
                              [ el, el, 0., 0.],
                              [ 0., 0., 0., 0.]])
+    loss_ref_ce = loss_metric_ce(preds, target)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
+    testing.assert_close(loss, loss_ref_ce, atol=1e-4, rtol=1e-3)
+    
+    weight = torch.tensor([0.2, 0.8])
+    el1 = weight[0] * -torch.log(torch.tensor(0.1))
+    el2 = weight[1] * -torch.log(torch.tensor(0.1))
+    loss_metric = BinaryFocalNLLLoss(weight=weight, gamma=0., reduction='none')
+    loss_metric_ce = CrossEntropyLoss(weight=weight, ignore_index=-1, reduction='none')
+    loss = loss_metric(preds, target)
+    loss_ref = torch.tensor([[  0.,  0., 0., 0.], 
+                             [  0.,  0., 0., 0.],
+                             [ el1, el2, 0., 0.],
+                             [  0.,  0., 0., 0.]])
+    loss_ref_ce = loss_metric_ce(preds, target)
+    testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
+    testing.assert_close(loss, loss_ref_ce, atol=1e-4, rtol=1e-3)
     
     el *= 0.9 ** 42
     loss_metric = BinaryFocalNLLLoss(gamma=42., reduction='none')
@@ -352,17 +376,6 @@ def test_binary_focal_nllloss():
                              [ 0., 0., 0., 0.],
                              [ el, el, 0., 0.],
                              [ 0., 0., 0., 0.]])
-    testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
-    
-    weight = torch.tensor([0.2, 0.8])
-    el1 = weight[0] * -torch.log(torch.tensor(0.1))
-    el2 = weight[1] * -torch.log(torch.tensor(0.1))
-    loss_metric = BinaryFocalNLLLoss(weight=weight, gamma=0., reduction='none')
-    loss = loss_metric(preds, target)
-    loss_ref = torch.tensor([[  0.,  0., 0., 0.], 
-                             [  0.,  0., 0., 0.],
-                             [ el1, el2, 0., 0.],
-                             [  0.,  0., 0., 0.]])
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
 
 
