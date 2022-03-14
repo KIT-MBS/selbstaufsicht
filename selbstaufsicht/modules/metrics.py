@@ -1,5 +1,4 @@
 import torch
-from torch import nn
 
 from torchmetrics import Metric
 from typing import Tuple
@@ -24,7 +23,7 @@ class Accuracy(Metric):
         self.add_state("correct", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("ignore", default=torch.tensor(0), dist_reduce_fx="sum")
-    
+
     def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         """
         Updates internal metric states by evaluating given predictions and target data.
@@ -33,7 +32,7 @@ class Accuracy(Metric):
             preds (torch.Tensor): Predictions.
             target (torch.Tensor): Target data. If \"preds_one_hot\", it is expected to not contain class dim as \"preds\", but class indices.
         """
-        
+
         if self.preds_one_hot:
             # check if shapes match (exclude class dim for preds due to one-hot encoding)
             assert preds.shape[:self.class_dim] + (preds.shape[self.class_dim + 1:] if self.class_dim != -1 else ()) == target.shape, "Shapes must match except for \'class_dim\'!"
@@ -52,11 +51,11 @@ class Accuracy(Metric):
         else:
             preds_argmax = preds
         num_correct = (preds_argmax == target).sum()
-        
+
         self.correct += num_correct
         self.total += num_total
         self.ignore += num_ignore
-    
+
     def compute(self) -> torch.Tensor:
         """
         Computes accuracy for accumulated internal metric states.
@@ -64,7 +63,7 @@ class Accuracy(Metric):
         Returns:
             torch.Tensor: Accuracy.
         """
-        
+
         return self.correct.float() / (self.total - self.ignore)
 
 
@@ -112,14 +111,14 @@ class EmbeddedJigsawAccuracy(Accuracy):
 
     def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         """
-        Updates internal metric states by evaluating given predictions and target data by taking the closest permutation index from the Euclidean embedding 
+        Updates internal metric states by evaluating given predictions and target data by taking the closest permutation index from the Euclidean embedding
         for predictions, according to the L2 norm.
 
         Args:
             preds (torch.Tensor): Predictions.
             target (torch.Tensor): Target data.
         """
-        
+
         assert preds.shape == target.shape, "Shapes must match!"
 
         # necessary for pytorch lightning to push the tensor onto the correct cuda device
@@ -151,14 +150,14 @@ class BinaryTopLPrecision(Metric):
             treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
             dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
         """
-        
+
         super().__init__(dist_sync_on_step=dist_sync_on_step)
         self.ignore_idx = ignore_idx
         self.diag_shift = diag_shift
         self.treat_all_preds_positive = treat_all_preds_positive
         self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
         self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
-        
+
     def _compute_top_l(self, preds: torch.Tensor, target: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Computes top-L predictions and targets.
@@ -166,31 +165,31 @@ class BinaryTopLPrecision(Metric):
         Args:
             preds (torch.Tensor): Predictions [B, 2, L, L].
             target (torch.Tensor): Targets [B, L, L].
-            
+
         Returns:
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: top-L preds [B, L], top-L target [B, L], top-L ignore mask [B, L]
         """
-        
+
         assert preds.shape[1] == 2
         B, L, _ = target.shape
         preds_ = preds[:, 1, :, :].squeeze(1)  # [B, L, L]
         assert preds_.size() == target.size()
-        
+
         preds_ = torch.triu(preds_, self.diag_shift) + torch.tril(torch.full_like(preds_, -torch.inf), self.diag_shift)
         preds_[target == self.ignore_idx] = -torch.inf
         preds_ = preds_.view(B, -1)  # [B, L*L]
         val, idx = torch.topk(preds_, L, dim=-1)  # [B, L]
-        
+
         target_ = target.view(B, -1)  # [B, L*L]
         target_ = torch.gather(target_, dim=1, index=idx)  # [B, L]
-        
+
         preds_ = torch.argmax(preds, dim=1)  # [B, L, L]
         preds_ = preds_.view(B, -1)  # [B, L*L]
         preds_ = torch.gather(preds_, dim=1, index=idx)  # [B, L]
-        
+
         ignore_mask = val != -torch.inf  # [B, L]
-        
-        return preds_, target_, ignore_mask 
+
+        return preds_, target_, ignore_mask
 
     def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         """
@@ -200,9 +199,9 @@ class BinaryTopLPrecision(Metric):
             preds (torch.Tensor): Predictions [B, 2, L, L].
             target (torch.Tensor): Targets [B, L, L].
         """
-        
+
         preds_, target_, ignore_mask = self._compute_top_l(preds, target)
-        
+
         if self.treat_all_preds_positive:
             tp = torch.logical_and(target_ == 1, ignore_mask).sum()
             fp = torch.logical_and(target_ == 0, ignore_mask).sum()
@@ -220,9 +219,9 @@ class BinaryTopLPrecision(Metric):
         Returns:
             torch.Tensor: Top-L precision.
         """
-        
+
         return self.tp.float() / (self.tp.float() + self.fp.float())
-    
+
 
 class BinaryTopLF1Score(BinaryTopLPrecision):
     def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, dist_sync_on_step: bool = False) -> None:
@@ -234,7 +233,7 @@ class BinaryTopLF1Score(BinaryTopLPrecision):
             diag_shift (int, optional): Diagonal offset for predictions. Defaults to 4.
             dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
         """
-        
+
         super().__init__(ignore_idx=ignore_idx, diag_shift=diag_shift, dist_sync_on_step=dist_sync_on_step)
         self.add_state('fn', default=torch.tensor(0), dist_reduce_fx='sum')
 
@@ -246,13 +245,13 @@ class BinaryTopLF1Score(BinaryTopLPrecision):
             preds (torch.Tensor): Predictions [B, 2, L, L].
             target (torch.Tensor): Targets [B, L, L].
         """
-        
+
         preds_, target_, ignore_mask = self._compute_top_l(preds, target)
-        
+
         tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), ignore_mask).sum()
         fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), ignore_mask).sum()
         fn = torch.logical_and(torch.logical_and(preds_ == 0, target_ == 1), ignore_mask).sum()
-        
+
         self.tp += tp
         self.fp += fp
         self.fn += fn
@@ -264,7 +263,7 @@ class BinaryTopLF1Score(BinaryTopLPrecision):
         Returns:
             torch.Tensor: F1 score.
         """
-        
+
         return self.tp.float() / (self.tp.float() + 0.5 * (self.fp.float() + self.fn.float()))
 
 
@@ -276,7 +275,7 @@ class BinaryConfusionMatrix(Metric):
         Args:
             dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
         """
-        
+
         super().__init__(dist_sync_on_step=dist_sync_on_step)
         self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
         self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
@@ -292,12 +291,12 @@ class BinaryConfusionMatrix(Metric):
             preds (torch.Tensor): Predictions [B, 2, L, L].
             target (torch.Tensor): Targets [B, L, L].
         """
-        
+
         assert preds.shape[1] == 2
         preds_ = preds.permute(0, 2, 3, 1)  # [B, L, L, 2]
         preds_ = torch.argmax(preds_, dim=-1)  # [B, L, L]
         assert preds_.size() == target.size()
-        
+
         tp = torch.logical_and(preds_ == 1, target == 1).sum()
         fp = torch.logical_and(preds_ == 1, target == 0).sum()
         tn = torch.logical_and(preds_ == 0, target == 0).sum()
@@ -315,5 +314,5 @@ class BinaryConfusionMatrix(Metric):
         Returns:
             torch.Tensor: [[TP, FN], [FP, TN]]
         """
-        
+
         return torch.tensor([[self.tp, self.fn], [self.fp, self.tn]])

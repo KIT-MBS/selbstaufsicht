@@ -16,7 +16,7 @@ from pytorch_lightning.plugins import DDPPlugin
 from selbstaufsicht import models
 from selbstaufsicht import datasets
 from selbstaufsicht.modules import BinaryFocalNLLLoss, DiceNLLLoss
-from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, MSACollator, get_tasks, get_downstream_metrics
+from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
 from selbstaufsicht.utils import data_loader_worker_init
 
 
@@ -70,8 +70,6 @@ def main():
         checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
     h_params = checkpoint['hyper_parameters']
 
-    learning_rate = 0.0001
-
     root = os.environ['DATA_PATH']
     downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold)
     train_metrics, val_metrics = get_downstream_metrics()
@@ -103,25 +101,25 @@ def main():
     if h_params['task_contrastive']:
         tasks.append("contrastive")
     _, task_heads, task_losses, _, _ = get_tasks(tasks,
-                                       h_params['feature_dim_head'] * h_params['num_heads'],
-                                       subsample_depth=h_params['subsampling_depth'],
-                                       subsample_mode=h_params['subsampling_mode'],
-                                       crop_size=h_params['cropping_size'],
-                                       crop_mode=h_params['cropping_mode'],
-                                       masking=h_params['inpainting_masking_type'],
-                                       p_mask=h_params['inpainting_masking_p'],
-                                       jigsaw_partitions=h_params['jigsaw_partitions'],
-                                       jigsaw_classes=h_params['jigsaw_permutations'],
-                                       jigsaw_linear=not h_params['jigsaw_nonlinear'],
-                                       jigsaw_delimiter= jigsaw_delimiter,
-                                       jigsaw_euclid_emb=jigsaw_euclid_emb,
-                                       simclr_temperature=h_params['contrastive_temperature'])
+                                                 h_params['feature_dim_head'] * h_params['num_heads'],
+                                                 subsample_depth=h_params['subsampling_depth'],
+                                                 subsample_mode=h_params['subsampling_mode'],
+                                                 crop_size=h_params['cropping_size'],
+                                                 crop_mode=h_params['cropping_mode'],
+                                                 masking=h_params['inpainting_masking_type'],
+                                                 p_mask=h_params['inpainting_masking_p'],
+                                                 jigsaw_partitions=h_params['jigsaw_partitions'],
+                                                 jigsaw_classes=h_params['jigsaw_permutations'],
+                                                 jigsaw_linear=not h_params['jigsaw_nonlinear'],
+                                                 jigsaw_delimiter=jigsaw_delimiter,
+                                                 jigsaw_euclid_emb=jigsaw_euclid_emb,
+                                                 simclr_temperature=h_params['contrastive_temperature'])
 
     if args.re_init:
         model = models.self_supervised.MSAModel(
-                num_blocks = h_params['num_blocks'],
-                num_heads = h_params['num_heads'],
-                dim_head = h_params['feature_dim_head'],
+                num_blocks=h_params['num_blocks'],
+                num_heads=h_params['num_heads'],
+                dim_head=h_params['feature_dim_head'],
                 task_heads=task_heads,
                 task_losses=task_losses,
                 alphabet_size=len(downstream_ds.token_mapping),
@@ -134,10 +132,10 @@ def main():
                 )
     else:
         model = models.self_supervised.MSAModel.load_from_checkpoint(
-                checkpoint_path = args.checkpoint,
-                num_blocks = h_params['num_blocks'],
-                num_heads = h_params['num_heads'],
-                feature_dim_head = h_params['feature_dim_head'],
+                checkpoint_path=args.checkpoint,
+                num_blocks=h_params['num_blocks'],
+                num_heads=h_params['num_heads'],
+                feature_dim_head=h_params['feature_dim_head'],
                 task_heads=task_heads,
                 task_losses=task_losses,
                 alphabet_size=len(downstream_ds.token_mapping),
@@ -149,7 +147,7 @@ def main():
                 fix_backbone=args.fix_backbone
                 )
     model.tasks = ['contact']
-    model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[downstream_ds.token_mapping[l] for l in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
+    model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[downstream_ds.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
     model.need_attn = True
     model.task_loss_weights = {'contact': 1.}
     model.train_metrics = train_metrics
@@ -190,6 +188,7 @@ def main():
                       log_every_n_steps=args.log_every,
                       logger=tb_logger)
     trainer.fit(model, train_dl, test_dl)
+
 
 if __name__ == '__main__':
     main()
