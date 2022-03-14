@@ -180,7 +180,9 @@ class MSAModel(pl.LightningModule):
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
         if 'contact' in self.tasks:
+            # NOTE invoke tensorboard with --samples_per_plugin images=batches to show more images
             if mode == 'validation':
+                # NOTE plot all attention heads
                 attn_maps = torch.cat([m[0].squeeze(dim=2) for m in x['attn_maps']], dim=1)  # [B, num_blocks * H, L, L]
                 for i in range(attn_maps.size(1)):
                     plt.figure()
@@ -188,13 +190,35 @@ class MSAModel(pl.LightningModule):
                     plt.close(fig)
                     self.logger.experiment.add_figure(f'map_{i}', fig, self.current_epoch)
 
+                # NOTE plot contact prediction scores
                 plt.figure()
                 fig = sns.heatmap(preds['contact'][0, 1].cpu().numpy(), fmt='').get_figure()
                 plt.close(fig)
                 self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
+                # NOTE plot contact predictions
+                plt.figure()
+                fig = sns.heatmap((preds['contact'][0, 1]>=0.5).float().cpu().numpy(), fmt='').get_figure()
+                plt.close(fig)
+                self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
+
+                # NOTE plot top L contact predictions
+                L = y['contact'].size(1)
+                preds_ = preds['contact'][0, 1]
+                topl_preds_ = torch.zeros_like(preds)
+                preds_ = torch.triu(preds_, 4) + torch.tril(torch.full_like(preds_, -torch.inf), self.diag_shift)
+                preds_ = preds_.view(L*L)
+                val, idx = torch.topk(preds_, L, dim=-1)  # [L]
+                topl_preds_[idx] = 1.
+                topl_preds_ = topl_preds_.view(L, L)
 
                 plt.figure()
-                fig = sns.heatmap(y[0].cpu().numpy(), fmt='').get_figure()
+                fig = sns.heatmap(topl_preds_.cpu().numpy(), fmt='').get_figure()
+                plt.close(fig)
+                self.logger.experiment.add_figure('topl_contacts', fig, self.current_epoch)
+
+                # NOTE plot contact prediction targets
+                plt.figure()
+                fig = sns.heatmap(y['contact'][0].cpu().numpy(), fmt='').get_figure()
                 plt.close(fig)
                 self.logger.experiment.add_figure('contact_target', fig, self.current_epoch)
 
