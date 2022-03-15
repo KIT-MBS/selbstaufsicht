@@ -31,8 +31,7 @@ class CoCoNetDataset(Dataset):
             if not os.path.isfile(root + '/coconet/README.md'):
                 sp.call(['git', 'clone', 'https://github.com/KIT-MBS/coconet.git', f'{root}/coconet/'])
 
-        # NOTE this is intentionally swapped. in our case we want a large test set and a small train set
-        split_dir = 'RNA_DATASET' if split == 'test' else 'RNA_TESTSET'
+        split_dir = 'RNA_DATASET' if split == 'train' else 'RNA_TESTSET'
         msa_index_filename = 'CCNListOfMSAFiles.txt'
 
         with open(pathlib.Path(self.root / 'coconet' / split_dir / msa_index_filename), 'rt') as f:

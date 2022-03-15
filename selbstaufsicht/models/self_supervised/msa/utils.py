@@ -166,13 +166,18 @@ def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', 
 def get_downstream_metrics():
     train_metrics = ModuleDict()
     val_metrics = ModuleDict()
-    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(),
-                                           'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True),
+    test_metrics = ModuleDict()
+    
+    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
+                                           'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 
                                            'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix()})
     val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(),
                                          'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True),
                                          'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix()})
-    return train_metrics, val_metrics
+    test_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
+                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 
+                                         'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix()})
+    return train_metrics, val_metrics, test_metrics
 
 
 class MSACollator():
