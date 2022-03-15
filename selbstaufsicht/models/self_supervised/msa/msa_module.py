@@ -151,7 +151,7 @@ class MSAModel(pl.LightningModule):
 
         latent = None
         if 'contact' in self.tasks:
-            if not self.downstream_loss_device_flag:
+            if not self.downstream_loss_device_flag  and hasattr(self.losses['contact'], 'weight'):
                 self.losses['contact'].weight = self.losses['contact'].weight.to(self.device)
                 self.downstream_loss_device_flag = True
 
