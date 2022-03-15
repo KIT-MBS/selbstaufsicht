@@ -16,6 +16,7 @@ from pytorch_lightning.plugins import DDPPlugin
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
+from selbstaufsicht.modules import BinaryFocalNLLLoss, DiceNLLLoss
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
 from selbstaufsicht.utils import data_loader_worker_init
 
@@ -36,7 +37,9 @@ def main():
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=1000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
+    parser.add_argument('--loss', default='nll', type=str, help="Loss function: nll, focal_nll, dice_nll")
     parser.add_argument('--loss-contact-weight', default=0.5, type=float, help="Weight that is used to rescale loss for contacts. Weight for no-contacts equals 1 minus the set value.")
+    parser.add_argument('--loss-focal-gamma', default=2., type=float, help="Exponential weight used for focal loss.")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
@@ -136,9 +139,9 @@ def main():
 
         if args.re_init:
             model = models.self_supervised.MSAModel(
-                    num_blocks = h_params['num_blocks'],
-                    num_heads = h_params['num_heads'],
-                    dim_head = h_params['feature_dim_head'],
+                    num_blocks=h_params['num_blocks'],
+                    num_heads=h_params['num_heads'],
+                    dim_head=h_params['feature_dim_head'],
                     task_heads=task_heads,
                     task_losses=task_losses,
                     alphabet_size=len(kfold_cv_downstream.train_dataset.token_mapping),
@@ -151,10 +154,10 @@ def main():
                     h_params=h_params)
         else:
             model = models.self_supervised.MSAModel.load_from_checkpoint(
-                    checkpoint_path = args.checkpoint,
-                    num_blocks = h_params['num_blocks'],
-                    num_heads = h_params['num_heads'],
-                    feature_dim_head = h_params['feature_dim_head'],
+                    checkpoint_path=args.checkpoint,
+                    num_blocks=h_params['num_blocks'],
+                    num_heads=h_params['num_heads'],
+                    feature_dim_head=h_params['feature_dim_head'],
                     task_heads=task_heads,
                     task_losses=task_losses,
                     alphabet_size=len(kfold_cv_downstream.train_dataset.token_mapping),
@@ -166,7 +169,6 @@ def main():
                     freeze_backbone=args.freeze_backbone,
                     h_params=h_params)
         model.tasks = ['contact']
-        model.losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
         model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[kfold_cv_downstream.train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
         model.need_attn = True
         model.task_loss_weights = {'contact': 1.}
@@ -174,6 +176,15 @@ def main():
         model.val_metrics = val_metrics
         if args.test:
             model.test_metrics = test_metrics
+        
+        if args.loss == 'nll':
+            model.losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
+        elif args.loss == 'focal_nll':
+            model.losses['contact'] = BinaryFocalNLLLoss(gamma=args.loss_focal_gamma, weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
+        elif args.loss == 'dice_nll':
+            model.losses['contact'] = DiceNLLLoss(ignore_index=-1)
+        else:
+            raise ValueError("Unknown loss: %s" % args.loss)
         
         kfold_cv_downstream.setup_fold_index(fold_idx)
 
