@@ -204,9 +204,9 @@ class MSAModel(pl.LightningModule):
                 # NOTE plot top L contact predictions
                 L = y['contact'].size(1)
                 preds_ = preds['contact'][0, 1]
-                topl_preds_ = torch.zeros_like(preds)
-                preds_ = torch.triu(preds_, 4) + torch.tril(torch.full_like(preds_, -torch.inf), self.diag_shift)
+                preds_ = torch.triu(preds_, 4) + torch.tril(torch.full_like(preds_, -torch.inf), 4)
                 preds_ = preds_.view(L*L)
+                topl_preds_ = torch.zeros_like(preds_)
                 val, idx = torch.topk(preds_, L, dim=-1)  # [L]
                 topl_preds_[idx] = 1.
                 topl_preds_ = topl_preds_.view(L, L)
