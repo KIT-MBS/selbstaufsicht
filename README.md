@@ -2,12 +2,12 @@
 Self-Supervised Learning for Applications in Bioinformatics.
 
 TODO:
-- per sequence contrastive
-- implement cross validation akin to coconet
-- separate, but weight-shared tasks
-- try LBFGS
-- try focal loss or dice loss?
+- ~~try focal loss or dice loss~~  (focal loss slightly better than pure cross entropy, dice loss worse)
+- ~~implement cross validation akin to coconet~~
+- try LBFGS with frozen backbone
 - investigate dataset/distribution/generalization issues
+- per sequence contrastive
+- separate, but weight-shared tasks
 - clean up dataset stuff
 - downstream optimizer
 - hyperparameter
