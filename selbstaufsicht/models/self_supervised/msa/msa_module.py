@@ -319,7 +319,7 @@ class MSAModel(pl.LightningModule):
         conf_mat = conf_mat.numpy()
         x_range = np.arange(num_msa)
         
-        df = pd.DataFrame(np.c_[conf_mat[0, 0], conf_mat[1, 0], conf_mat[1, 1], conf_mat[0, 1]], index=X, columns=["TP", "FP", "TN", "FN"])
+        df = pd.DataFrame(np.c_[conf_mat[0, 0], conf_mat[1, 0], conf_mat[1, 1], conf_mat[0, 1]], index=x_range, columns=["TP", "FP", "TN", "FN"])
         ax = df.plot.bar(figsize=(N*0.8, 7), rot=0, color=['red', 'royalblue', 'lime', 'fuchsia'])
         fig = ax.get_figure()
         plt.legend(loc='upper right')

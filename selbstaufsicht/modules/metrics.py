@@ -329,4 +329,10 @@ class BinaryConfusionMatrix(Metric):
             torch.Tensor: [[TP, FN], [FP, TN]]
         """
 
-        return torch.tensor([[self.tp, self.fn], [self.fp, self.tn]])
+        if self.reduce:
+            return torch.tensor([[self.tp, self.fn], [self.fp, self.tn]])
+        else:
+            if isinstance(self.tp, list):
+                return torch.tensor([[torch.stack(self.tp), torch.stack(self.fn)], [torch.stack(self.fp), torch.stack(self.tn)]])
+            else:
+                return torch.tensor([[self.tp.cpu().numpy(), self.fn.cpu().numpy()], [self.fp.cpu().numpy(), self.tn.cpu().numpy()]])
