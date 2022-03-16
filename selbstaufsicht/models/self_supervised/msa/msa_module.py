@@ -313,7 +313,7 @@ class MSAModel(pl.LightningModule):
         """
 
         conf_mat = conf_mat_metric.compute()
-        num_msa = conf_mat.shape[0]
+        num_msa = conf_mat.shape[2]
         num_total_per_msa = conf_mat.sum(dim=(0, 1))
         conf_mat = conf_mat / num_total_per_msa
         conf_mat = conf_mat.numpy()
