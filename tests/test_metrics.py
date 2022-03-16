@@ -310,6 +310,14 @@ def test_binary_confusion_matrix():
     confmat_ref = torch.tensor([[1, 4], [2, 3]])
     testing.assert_close(confmat, confmat_ref, rtol=0, atol=0)
     
+    confmat_metric = BinaryConfusionMatrix(reduce=False)
+    confmat_metric(preds[:1], target[:1])
+    confmat_metric(preds[1:], target[1:])
+    confmat = confmat_metric.compute()
+    
+    confmat_ref = torch.tensor([[[1, 0], [3, 1]], [[2, 0], [3, 0]]])
+    testing.assert_close(confmat, confmat_ref, rtol=0, atol=0)
+    
     
 def test_binary_focal_nllloss():
     preds = torch.tensor([[[  1e-8,  1e-8,   1.0,   1.0],

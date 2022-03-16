@@ -268,19 +268,27 @@ class BinaryTopLF1Score(BinaryTopLPrecision):
 
 
 class BinaryConfusionMatrix(Metric):
-    def __init__(self, dist_sync_on_step: bool = False) -> None:
+    def __init__(self, reduce: bool = True, dist_sync_on_step: bool = False) -> None:
         """
         Initializes confusion matrix metric for binary classification with ignore index support.
 
         Args:
+            reduce (bool, optional): Whether metric states are reduced by summing up or not. Defaults to True.
             dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
         """
 
         super().__init__(dist_sync_on_step=dist_sync_on_step)
-        self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
-        self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
-        self.add_state('tn', default=torch.tensor(0), dist_reduce_fx='sum')
-        self.add_state('fn', default=torch.tensor(0), dist_reduce_fx='sum')
+        self.reduce = reduce
+        if self.reduce:
+            self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
+            self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
+            self.add_state('tn', default=torch.tensor(0), dist_reduce_fx='sum')
+            self.add_state('fn', default=torch.tensor(0), dist_reduce_fx='sum')
+        else:
+            self.add_state('tp', default=[], dist_reduce_fx='cat')
+            self.add_state('fp', default=[], dist_reduce_fx='cat')
+            self.add_state('tn', default=[], dist_reduce_fx='cat')
+            self.add_state('fn', default=[], dist_reduce_fx='cat')
 
     def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         """
@@ -301,11 +309,17 @@ class BinaryConfusionMatrix(Metric):
         fp = torch.logical_and(preds_ == 1, target == 0).sum()
         tn = torch.logical_and(preds_ == 0, target == 0).sum()
         fn = torch.logical_and(preds_ == 0, target == 1).sum()
-
-        self.tp += tp
-        self.fp += fp
-        self.tn += tn
-        self.fn += fn
+        
+        if self.reduce:
+            self.tp += tp
+            self.fp += fp
+            self.tn += tn
+            self.fn += fn
+        else:
+            self.tp.append(tp)
+            self.fp.append(fp)
+            self.tn.append(tn)
+            self.fn.append(fn)
 
     def compute(self) -> torch.Tensor:
         """

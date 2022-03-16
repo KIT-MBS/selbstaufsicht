@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 import pytorch_lightning as pl
 import seaborn as sns
 import sklearn.metrics as skl_metrics
@@ -245,7 +246,7 @@ class MSAModel(pl.LightningModule):
 
         Args:
             conf_mat_metric (Any): Confusion matrix metric.
-            mode (str): Training or validation.
+            mode (str): Training or validation or test.
         """
 
         conf_mat = conf_mat_metric.compute()
@@ -274,7 +275,7 @@ class MSAModel(pl.LightningModule):
         Args:
             preds (List[torch.Tensor]): Predictions [B, 2, L, L].
             target (List[torch.Tensor]): Targets [B, L, L].
-            mode (str): Training or validation.
+            mode (str): Training or validation or test.
         """
 
         preds_ = torch.cat([torch.exp(tmp[:, 1, :, :]).flatten() for tmp in preds])
@@ -301,6 +302,32 @@ class MSAModel(pl.LightningModule):
         plt.close(fig_)
 
         self.logger.experiment.add_figure("contact_%s_roc" % mode, fig_, self.current_epoch)
+    
+    def _create_correctness_histogram(self, conf_mat_metric: Any, mode: str) -> None:
+        """
+        Computes and plots correctness histogram, i.e., TP, FP, TN, FN per MSA.
+
+        Args:
+            conf_mat_metric (Any): Confusion matrix metric (unreduced).
+            mode (str): Training or validation or test.
+        """
+
+        conf_mat = conf_mat_metric.compute()
+        num_msa = conf_mat.shape[0]
+        num_total_per_msa = conf_mat.sum(dim=(0, 1))
+        conf_mat = conf_mat / num_total_per_msa
+        conf_mat = conf_mat.numpy()
+        x_range = np.arange(num_msa)
+        
+        df = pd.DataFrame(np.c_[conf_mat[0, 0], conf_mat[1, 0], conf_mat[1, 1], conf_mat[0, 1]], index=X, columns=["TP", "FP", "TN", "FN"])
+        ax = df.plot.bar(figsize=(N*0.8, 7), rot=0, color=['red', 'royalblue', 'lime', 'fuchsia'])
+        fig = ax.get_figure()
+        plt.legend(loc='upper right')
+        
+        plt.close(fig)
+
+        self.logger.experiment.add_figure("contact_%s_correctness_histogram" % mode, fig, self.current_epoch)
+        conf_mat_metric.reset()
 
     def _epoch_end(self, outputs: List[Any]) -> None:
         """
@@ -322,6 +349,7 @@ class MSAModel(pl.LightningModule):
                 metrics = self.test_metrics
 
             self._create_confusion_matrix(metrics['contact']['confmat'], mode)
+            self._create_correctness_histogram(metrics['contact']['confmat_unreduced'], mode)
             if len(outputs) > 0:
                 self._create_roc_curve([tmp['preds']['contact'] for tmp in outputs], [tmp['target']['contact'] for tmp in outputs], mode)
 
