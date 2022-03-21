@@ -231,8 +231,15 @@ class BinaryTopLPrecision(Metric):
             torch.Tensor: Top-L precision.
         """
         
-        if self.reduce or not self.reduce and isinstance(self.tp, torch.Tensor):
+        if self.reduce:
             return self.tp.float() / (self.tp.float() + self.fp.float())
+        else:
+            if isinstance(self.tp, torch.Tensor):
+                return self.tp.float() / (self.tp.float() + self.fp.float())
+            elif isinstance(self.tp, list):
+                tp_stack = torch.stack(self.tp).float()
+                fp_stack = torch.stack(self.fp).float()
+                return tp_stack / (tp_stack + fp_stack)
 
 
 class BinaryTopLF1Score(BinaryTopLPrecision):
@@ -346,3 +353,5 @@ class BinaryConfusionMatrix(Metric):
         else:
             if isinstance(self.tp, torch.Tensor):
                 return torch.tensor(np.array([[self.tp.cpu().numpy(), self.fn.cpu().numpy()], [self.fp.cpu().numpy(), self.tn.cpu().numpy()]]))
+            elif isinstance(self.tp, list):
+                return torch.tensor([[self.tp, self.fn], [self.fp, self.tn]])
