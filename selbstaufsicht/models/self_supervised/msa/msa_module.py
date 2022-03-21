@@ -345,7 +345,7 @@ class MSAModel(pl.LightningModule):
         x_range = np.arange(num_msa)
         
         fig_ = plt.figure(figsize=(num_msa, 7))
-        plt.bar(x_range, top_l_precision, 'r', label="Top-L precision")
+        plt.bar(x_range, top_l_precision, color='r', label="Top-L precision")
         plt.plot([min(x_range), max(x_range)], [top_l_precision_mean, top_l_precision_mean], color='b', linewidth=3., label="Mean")
         plt.legend(loc='upper right')
         plt.close(fig_)
