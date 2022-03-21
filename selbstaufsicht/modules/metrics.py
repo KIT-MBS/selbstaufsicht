@@ -141,7 +141,7 @@ class EmbeddedJigsawAccuracy(Accuracy):
 
 
 class BinaryTopLPrecision(Metric):
-    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, treat_all_preds_positive: bool = False, dist_sync_on_step: bool = False) -> None:
+    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, treat_all_preds_positive: bool = False, reduce: bool = True, dist_sync_on_step: bool = False) -> None:
         """
         Initializes binary top-L precision metric with ignore index support.
 
@@ -149,6 +149,7 @@ class BinaryTopLPrecision(Metric):
             ignore_idx (int, optional): Ignored index in the target values. Defaults to -1.
             diag_shift (int, optional): Diagonal offset for predictions. Defaults to 4.
             treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
+            reduce (bool, optional): Whether metric states are reduced by summing up or not. Defaults to True.
             dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
         """
 
@@ -156,8 +157,13 @@ class BinaryTopLPrecision(Metric):
         self.ignore_idx = ignore_idx
         self.diag_shift = diag_shift
         self.treat_all_preds_positive = treat_all_preds_positive
-        self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
-        self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
+        self.reduce = reduce
+        if self.reduce:
+            self.add_state('tp', default=torch.tensor(0), dist_reduce_fx='sum')
+            self.add_state('fp', default=torch.tensor(0), dist_reduce_fx='sum')
+        else:
+            self.add_state('tp', default=[], dist_reduce_fx='cat')
+            self.add_state('fp', default=[], dist_reduce_fx='cat')
 
     def _compute_top_l(self, preds: torch.Tensor, target: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -210,8 +216,12 @@ class BinaryTopLPrecision(Metric):
             tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), ignore_mask).sum()
             fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), ignore_mask).sum()
 
-        self.tp += tp
-        self.fp += fp
+        if self.reduce:
+            self.tp += tp
+            self.fp += fp
+        else:
+            self.tp.append(tp)
+            self.fp.append(fp)
 
     def compute(self) -> torch.Tensor:
         """
@@ -220,8 +230,9 @@ class BinaryTopLPrecision(Metric):
         Returns:
             torch.Tensor: Top-L precision.
         """
-
-        return self.tp.float() / (self.tp.float() + self.fp.float())
+        
+        if self.reduce or not self.reduce and isinstance(self.tp, torch.Tensor):
+            return self.tp.float() / (self.tp.float() + self.fp.float())
 
 
 class BinaryTopLF1Score(BinaryTopLPrecision):

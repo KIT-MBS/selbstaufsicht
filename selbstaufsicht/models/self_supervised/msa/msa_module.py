@@ -182,7 +182,7 @@ class MSAModel(pl.LightningModule):
         for task in self.tasks:
             for m in metrics[task]:
                 metrics[task][m](preds[task], y[task])
-                if 'confmat' not in m:
+                if 'confmat' not in m and 'unreduced' not in m:
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         for task in self.tasks:
@@ -328,6 +328,30 @@ class MSAModel(pl.LightningModule):
 
         self.logger.experiment.add_figure("contact_%s_correctness_histogram" % mode, fig, self.current_epoch)
         conf_mat_metric.reset()
+        
+    def _create_topLprec_histogram(self, top_l_precision_metric: Any, mode: str) -> None:
+        """
+        Computes and plots top-L precision histogram, i.e., top-L precision per MSA.
+
+        Args:
+            top_l_precision_metric (Any): Top-L precision metric (unreduced).
+            mode (str): Training or validation or test.
+        """
+
+        top_l_precision = top_l_precision_metric.compute()
+        num_msa = top_l_precision.shape[0]
+        top_l_precision = top_l_precision.cpu().numpy()
+        top_l_precision_mean = top_l_precision.mean()
+        x_range = np.arange(num_msa)
+        
+        fig_ = plt.figure(figsize=(num_msa, 7))
+        plt.bar(x_range, top_l_precision, 'r', label="Top-L precision")
+        plt.plot([min(x_range), max(x_range)], [top_l_precision_mean, top_l_precision_mean], color='b', linewidth=3., label="Mean")
+        plt.legend(loc='upper right')
+        plt.close(fig_)
+
+        self.logger.experiment.add_figure("contact_%s_topLPrec_histogram" % mode, fig_, self.current_epoch)
+        top_l_precision_metric.reset()
 
     def _epoch_end(self, outputs: List[Any]) -> None:
         """
@@ -350,6 +374,7 @@ class MSAModel(pl.LightningModule):
 
             self._create_confusion_matrix(metrics['contact']['confmat'], mode)
             self._create_correctness_histogram(metrics['contact']['confmat_unreduced'], mode)
+            self._create_topLprec_histogram(metrics['contact']['topLprec_unreduced'], mode)
             if len(outputs) > 0:
                 self._create_roc_curve([tmp['preds']['contact'] for tmp in outputs], [tmp['target']['contact'] for tmp in outputs], mode)
 

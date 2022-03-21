@@ -170,12 +170,15 @@ def get_downstream_metrics():
     
     train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
                                            'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 
+                                           'topLprec_unreduced': BinaryTopLPrecision(reduce=False), 
                                            'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix(), 'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
     val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(),
                                          'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True),
+                                         'topLprec_unreduced': BinaryTopLPrecision(reduce=False),
                                          'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix(), 'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
     test_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
-                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 
+                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True),
+                                         'topLprec_unreduced': BinaryTopLPrecision(reduce=False),
                                          'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix(), 'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
     return train_metrics, val_metrics, test_metrics
 
