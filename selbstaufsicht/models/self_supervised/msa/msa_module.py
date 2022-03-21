@@ -182,7 +182,7 @@ class MSAModel(pl.LightningModule):
         for task in self.tasks:
             for m in metrics[task]:
                 metrics[task][m](preds[task], y[task])
-                if m != 'confmat':
+                if 'confmat' not in m:
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         for task in self.tasks:

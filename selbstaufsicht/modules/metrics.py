@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 from torchmetrics import Metric
@@ -332,7 +333,5 @@ class BinaryConfusionMatrix(Metric):
         if self.reduce:
             return torch.tensor([[self.tp, self.fn], [self.fp, self.tn]])
         else:
-            if isinstance(self.tp, list):
-                return torch.tensor([[torch.stack(self.tp), torch.stack(self.fn)], [torch.stack(self.fp), torch.stack(self.tn)]])
-            else:
-                return torch.tensor([[self.tp.cpu().numpy(), self.fn.cpu().numpy()], [self.fp.cpu().numpy(), self.tn.cpu().numpy()]])
+            if isinstance(self.tp, torch.Tensor):
+                return torch.tensor(np.array([[self.tp.cpu().numpy(), self.fn.cpu().numpy()], [self.fp.cpu().numpy(), self.tn.cpu().numpy()]]))
