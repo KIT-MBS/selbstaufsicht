@@ -179,7 +179,7 @@ class ContactHead(nn.Module):
         mask = mask.reshape((B, 1, L, L)).expand((B, self.num_maps, L, L))
 
         out = x['attn_maps']
-        out = torch.cat([m[0].squeeze(dim=2) for m in out], dim=1)  # [B, num_blocks * H, L, L]
+        out = torch.cat([m.squeeze(dim=2) for m in out], dim=1)  # [B, num_blocks * H, L, L]
         out = out.masked_select(mask).reshape(B, self.num_maps, degapped_L, degapped_L)
         out = self.proj(out)  # [B, 1, L, L]
         out = (out + torch.transpose(out, -1, -2)) * 0.5
