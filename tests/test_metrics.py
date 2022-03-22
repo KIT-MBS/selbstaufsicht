@@ -3,7 +3,7 @@ from torch.nn import CrossEntropyLoss
 import torch.testing as testing
 import pytest
 
-from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryFocalNLLLoss, DiceNLLLoss, BinaryTopLPrecision, BinaryTopLF1Score, BinaryConfusionMatrix
+from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss, BinaryTopLPrecision, BinaryTopLF1Score, BinaryConfusionMatrix
 from selbstaufsicht.utils import lehmer_encode, perm_metric, perm_gram_matrix, embed_finite_metric_space
 
 
@@ -311,100 +311,122 @@ def test_binary_confusion_matrix():
     testing.assert_close(confmat, confmat_ref, rtol=0, atol=0)
     
     
-def test_binary_focal_nllloss():
-    preds = torch.tensor([[[  1e-8,  1e-8,   1.0,   1.0],
-                           [   1.0,   1.0,  1e-8,  1e-8]], 
-                          [[   1.0,   1.0,  1e-8,  1e-8],
-                           [  1e-8,  1e-8,   1.0,   1.0]],
-                          [[   0.1,   0.9,  42.0,  42.0],
-                           [   0.9,   0.1,  42.0,  42.0]],
-                          [[  42.0,  42.0,  42.0,  42.0],
-                           [  42.0,  42.0,  42.0,  42.0]]])
-    preds = torch.log(preds)
-    target = torch.tensor([[  1,  1,  0,  0], 
-                           [  0,  0,  1,  1],
-                           [  0,  1, -1, -1],
-                           [ -1, -1, -1, -1]])
+def test_sigmoid_cross_entropy_loss():
+    preds = torch.tensor([[[-10.0, -10.0,  10.0,  10.0],
+                           [ 10.0,  10.0, -10.0, -10.0]], 
+                          [[ 10.0,  10.0, -10.0, -10.0],
+                           [-10.0, -10.0,  10.0,  10.0]],
+                          [[ -2.0,   2.0,  42.0,  42.0],
+                           [  2.0,  -2.0,  42.0,  42.0]],
+                          [[ 42.0,  42.0,  42.0,  42.0],
+                           [ 42.0,  42.0,  42.0,  42.0]]])
+    preds_log = torch.nn.functional.logsigmoid(preds)
+    target = torch.tensor([[ 1,  1,  0,  0], 
+                           [ 0,  0,  1,  1],
+                           [ 0,  1, -1, -1],
+                           [-1, -1, -1, -1]])
     
-    el = 0.5 * -torch.log(torch.tensor(0.1))
+    loss_metric = SigmoidCrossEntropyLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='none')
+    loss_metric_nll = torch.nn.NLLLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='none')
     
-    loss_metric = BinaryFocalNLLLoss(gamma=0., reduction='mean')
-    loss_metric_ce = CrossEntropyLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='mean')
+    loss = loss_metric(preds, target)
+    loss_ref_nll = loss_metric_nll(preds_log, target)
+    testing.assert_close(loss, loss_ref_nll, atol=1e-4, rtol=1e-3)
+    
+    
+def test_binary_focal_loss():
+    preds = torch.tensor([[[-10.0, -10.0,  10.0,  10.0],
+                           [ 10.0,  10.0, -10.0, -10.0]], 
+                          [[ 10.0,  10.0, -10.0, -10.0],
+                           [-10.0, -10.0,  10.0,  10.0]],
+                          [[ -2.0,   2.0,  42.0,  42.0],
+                           [  2.0,  -2.0,  42.0,  42.0]],
+                          [[ 42.0,  42.0,  42.0,  42.0],
+                           [ 42.0,  42.0,  42.0,  42.0]]])
+    preds_log = torch.nn.functional.logsigmoid(preds)
+    target = torch.tensor([[ 1,  1,  0,  0], 
+                           [ 0,  0,  1,  1],
+                           [ 0,  1, -1, -1],
+                           [-1, -1, -1, -1]])
+    
+    el = 0.5 * -torch.nn.functional.logsigmoid(torch.tensor(-2.0))
+    
+    loss_metric = BinaryFocalLoss(gamma=0., reduction='mean')
+    loss_metric_nll = torch.nn.NLLLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='mean')
     loss = loss_metric(preds, target)
     loss_ref = 2 * el / (10 * 0.5)
-    loss_ref_ce = loss_metric_ce(preds, target)
+    loss_ref_nll = loss_metric_nll(preds_log, target)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
-    testing.assert_close(loss, loss_ref_ce, atol=1e-4, rtol=1e-3)
+    testing.assert_close(loss, loss_ref_nll, atol=1e-4, rtol=1e-3)
     
-    loss_metric = BinaryFocalNLLLoss(gamma=0., reduction='sum')
-    loss_metric_ce = CrossEntropyLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='sum')
+    loss_metric = BinaryFocalLoss(gamma=0., reduction='sum')
+    loss_metric_nll = torch.nn.NLLLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='sum')
     loss = loss_metric(preds, target)
     loss_ref = 2 * el
-    loss_ref_ce = loss_metric_ce(preds, target)
+    loss_ref_nll = loss_metric_nll(preds_log, target)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
-    testing.assert_close(loss, loss_ref_ce, atol=1e-4, rtol=1e-3)
+    testing.assert_close(loss, loss_ref_nll, atol=1e-4, rtol=1e-3)
     
-    loss_metric = BinaryFocalNLLLoss(gamma=0., reduction='none')
-    loss_metric_ce = CrossEntropyLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='none')
+    loss_metric = BinaryFocalLoss(gamma=0., reduction='none')
+    loss_metric_nll = torch.nn.NLLLoss(weight=torch.tensor([0.5, 0.5]), ignore_index=-1, reduction='none')
     loss = loss_metric(preds, target)
-    loss_ref = torch.tensor([[ 0., 0., 0., 0.], 
-                             [ 0., 0., 0., 0.],
-                             [ el, el, 0., 0.],
-                             [ 0., 0., 0., 0.]])
-    loss_ref_ce = loss_metric_ce(preds, target)
+    loss_ref = torch.tensor([[0., 0., 0., 0.], 
+                             [0., 0., 0., 0.],
+                             [el, el, 0., 0.],
+                             [0., 0., 0., 0.]])
+    loss_ref_nll = loss_metric_nll(preds_log, target)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
-    testing.assert_close(loss, loss_ref_ce, atol=1e-4, rtol=1e-3)
+    testing.assert_close(loss, loss_ref_nll, atol=1e-4, rtol=1e-3)
     
     weight = torch.tensor([0.2, 0.8])
-    el1 = weight[0] * -torch.log(torch.tensor(0.1))
-    el2 = weight[1] * -torch.log(torch.tensor(0.1))
-    loss_metric = BinaryFocalNLLLoss(weight=weight, gamma=0., reduction='none')
-    loss_metric_ce = CrossEntropyLoss(weight=weight, ignore_index=-1, reduction='none')
+    el1 = weight[0] * -torch.nn.functional.logsigmoid(torch.tensor(-2.0))
+    el2 = weight[1] * -torch.nn.functional.logsigmoid(torch.tensor(-2.0))
+    loss_metric = BinaryFocalLoss(weight=weight, gamma=0., reduction='none')
+    loss_metric_nll = torch.nn.NLLLoss(weight=weight, ignore_index=-1, reduction='none')
     loss = loss_metric(preds, target)
-    loss_ref = torch.tensor([[  0.,  0., 0., 0.], 
-                             [  0.,  0., 0., 0.],
-                             [ el1, el2, 0., 0.],
-                             [  0.,  0., 0., 0.]])
-    loss_ref_ce = loss_metric_ce(preds, target)
+    loss_ref = torch.tensor([[ 0.,  0., 0., 0.], 
+                             [ 0.,  0., 0., 0.],
+                             [el1, el2, 0., 0.],
+                             [ 0.,  0., 0., 0.]])
+    loss_ref_nll = loss_metric_nll(preds_log, target)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
-    testing.assert_close(loss, loss_ref_ce, atol=1e-4, rtol=1e-3)
+    testing.assert_close(loss, loss_ref_nll, atol=1e-4, rtol=1e-3)
     
-    el *= 0.9 ** 42
-    loss_metric = BinaryFocalNLLLoss(gamma=42., reduction='none')
+    el *= torch.sigmoid(torch.tensor([2.0])).item() ** 42
+    loss_metric = BinaryFocalLoss(gamma=42., reduction='none')
     loss = loss_metric(preds, target)
-    loss_ref = torch.tensor([[ 0., 0., 0., 0.], 
-                             [ 0., 0., 0., 0.],
-                             [ el, el, 0., 0.],
-                             [ 0., 0., 0., 0.]])
+    loss_ref = torch.tensor([[0., 0., 0., 0.], 
+                             [0., 0., 0., 0.],
+                             [el, el, 0., 0.],
+                             [0., 0., 0., 0.]])
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
 
 
-def test_dice_nllloss():
-    preds = torch.tensor([[[[1e-8,  1.0], 
-                            [ 1.0, 1e-8]], 
-                           [[ 1.0, 1e-8], 
-                            [1e-8,  1.0]]], 
-                          [[[ 0.1,  0.9], 
-                            [42.0, 42.0]], 
-                           [[ 0.9,  0.1], 
-                            [42.0, 42.0]]]])
-    preds = torch.log(preds)
+def test_dice_loss():
+    preds = torch.tensor([[[[-10.0,  10.0], 
+                            [ 10.0, -10.0]], 
+                           [[ 10.0, -10.0], 
+                            [-10.0,  10.0]]], 
+                          [[[ -2.0,   2.0], 
+                            [ 42.0,  42.0]], 
+                           [[  2.0,  -2.0], 
+                            [ 42.0,  42.0]]]])
     target = torch.Tensor([[[ 1,  0], 
                             [ 0,  1]], 
                            [[ 0,  1], 
                             [-1, -1]]])
     
-    loss_metric = DiceNLLLoss(reduction='mean')
+    loss_metric = DiceLoss(reduction='mean')
     loss = loss_metric(preds, target)
-    loss_ref = torch.tensor(0.5875)
+    loss_ref = torch.tensor(0.5803)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
     
-    loss_metric = DiceNLLLoss(reduction='sum')
+    loss_metric = DiceLoss(reduction='sum')
     loss = loss_metric(preds, target)
-    loss_ref = torch.tensor(1.175)
+    loss_ref = torch.tensor(1.1606)
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
     
-    loss_metric = DiceNLLLoss(reduction='none')
+    loss_metric = DiceLoss(reduction='none')
     loss = loss_metric(preds, target)
-    loss_ref = torch.tensor([0.25, 0.925])
+    loss_ref = torch.tensor([0.25, 0.9106])
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)

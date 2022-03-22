@@ -160,7 +160,6 @@ class ContactHead(nn.Module):
             self.proj = nn.Sequential(*layers)
         else:
             raise ValueError(f"Expected num_layers >= 1, got {num_layers}")
-        self.final_activation = nn.LogSigmoid()
 
     def forward(self, latent, x) -> torch.Tensor:
         # TODO only tied axial attention for now
@@ -183,11 +182,9 @@ class ContactHead(nn.Module):
         out = torch.cat([m[0].squeeze(dim=2) for m in out], dim=1)  # [B, num_blocks * H, L, L]
         out = out.masked_select(mask).reshape(B, self.num_maps, degapped_L, degapped_L)
         out = self.proj(out)  # [B, 1, L, L]
-        # NOTE this is some hackery to use the ignore_index of NLLLoss, since BCELoss does not have it
-        # Sigmoid([-x, x]) = [1 - Sigmoid(x), Sigmoid(x)]
+        out = (out + torch.transpose(out, -1, -2)) * 0.5
+        # NOTE Sigmoid is symmetrical
         out = torch.cat((-out, out), dim=1)  # [B, 2, L, L]
-        out = self.final_activation(out)
-        out = (out + torch.transpose(out, -1, -2)) * 0.5  # symmetrize output
 
         return out
 

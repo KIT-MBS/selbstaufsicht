@@ -181,7 +181,11 @@ class MSAModel(pl.LightningModule):
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
             for m in metrics[task]:
-                metrics[task][m](preds[task], y[task])
+                # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly
+                if task == 'contact':
+                    metrics[task][m](torch.sigmoid(preds[task]), y[task])
+                else:
+                    metrics[task][m](preds[task], y[task])
                 if 'confmat' not in m and 'unreduced' not in m:
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
