@@ -125,7 +125,7 @@ class AxialSelfAttention2d(nn.Module):
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
                 need_attn_maps: bool = True,
-                attn_chunk_size: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+                attn_chunk_size: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Performs axial self-attention on 2D data.
 
@@ -137,8 +137,8 @@ class AxialSelfAttention2d(nn.Module):
 
         Returns:
             Union[torch.Tensor,
-                Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: Output batch_data [B, E, L, D];
-                row attention maps [B, H, E, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
+                Tuple[torch.Tensor, torch.Tensor]]: Output batch_data [B, E, L, D];
+                row attention maps [B, H, E, L, L] (optional).
         """
 
         # TODO: Implement attn chunking
@@ -196,7 +196,7 @@ class AxialSelfAttention2d(nn.Module):
         out = self.norm2(out)
 
         if need_attn_maps:
-            return out, (row_attn, col_attn)
+            return out, row_attn
         return out
 
 
@@ -502,7 +502,7 @@ class TiedAxialSelfAttention2d(nn.Module):
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
                 need_attn_maps: bool = True,
-                attn_chunk_size: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+                attn_chunk_size: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Performs tied axial self-attention on 2D data.
 
@@ -513,8 +513,8 @@ class TiedAxialSelfAttention2d(nn.Module):
             attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
-            Output data [B, E, L, D]; row attention maps [B, H, 1, L, L] (optional); column attention maps [B, H, E, E, L] (optional).
+            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+            Output data [B, E, L, D]; row attention maps [B, H, 1, L, L] (optional).
         """
 
         B, E, L, D = x.size()
@@ -572,7 +572,7 @@ class TiedAxialSelfAttention2d(nn.Module):
         out = self.norm2(out)
 
         if need_attn_maps:
-            return out, (row_attn_maps, col_attn_maps)
+            return out, row_attn_maps
         return out
 
 
@@ -596,7 +596,7 @@ class Transmorpher2d(nn.Module):
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
                 need_attn_maps: bool = False,
-                attn_chunk_size: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
+                attn_chunk_size: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         """
         Passes input data through the self-attention based backbone, resulting in a latent representation.
 
@@ -607,8 +607,8 @@ class Transmorpher2d(nn.Module):
             attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]]:
-            Output data [B, E, L, D]; list of blocks' attention maps (optional).
+            Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
+            Output data [B, E, L, D]; list of blocks' row attention maps (optional).
         """
 
         out = x
@@ -675,7 +675,7 @@ class TransmorpherBlock2d(nn.Module):
                 x: torch.Tensor,
                 padding_mask: torch.Tensor = None,
                 need_attn_maps: bool = False,
-                attn_chunk_size: int = 0) -> Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:
+                attn_chunk_size: int = 0) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Passes input data through the self-attention based block, resulting in a latent representation.
 
@@ -686,7 +686,7 @@ class TransmorpherBlock2d(nn.Module):
             attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
 
         Returns:
-            Union[torch.Tensor, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: Output data [B, E, L, D]; attention maps (optional).
+            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Output data [B, E, L, D]; row attention maps (optional).
         """
 
         out = self.attn(x, padding_mask=padding_mask, need_attn_maps=need_attn_maps, attn_chunk_size=attn_chunk_size)

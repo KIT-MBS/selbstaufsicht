@@ -16,7 +16,7 @@ from pytorch_lightning.plugins import DDPPlugin
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
-from selbstaufsicht.modules import BinaryFocalNLLLoss, DiceNLLLoss
+from selbstaufsicht.modules import SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
 from selbstaufsicht.utils import data_loader_worker_init
 
@@ -37,7 +37,7 @@ def main():
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=1000, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
-    parser.add_argument('--loss', default='nll', type=str, help="Loss function: nll, focal_nll, dice_nll")
+    parser.add_argument('--loss', default='cross-entropy', type=str, help="Loss function: cross-entropy, focal, dice")
     parser.add_argument('--loss-contact-weight', default=0.5, type=float, help="Weight that is used to rescale loss for contacts. Weight for no-contacts equals 1 minus the set value.")
     parser.add_argument('--loss-focal-gamma', default=2., type=float, help="Exponential weight used for focal loss.")
     parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
@@ -176,13 +176,13 @@ def main():
         model.val_metrics = val_metrics
         if args.test:
             model.test_metrics = test_metrics
-        
-        if args.loss == 'nll':
-            model.losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
-        elif args.loss == 'focal_nll':
-            model.losses['contact'] = BinaryFocalNLLLoss(gamma=args.loss_focal_gamma, weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
-        elif args.loss == 'dice_nll':
-            model.losses['contact'] = DiceNLLLoss(ignore_index=-1)
+            
+        if args.loss == 'cross-entropy':
+            model.losses['contact'] = SigmoidCrossEntropyLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
+        elif args.loss == 'focal':
+            model.losses['contact'] = BinaryFocalLoss(gamma=args.loss_focal_gamma, weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
+        elif args.loss == 'dice':
+            model.losses['contact'] = DiceLoss(ignore_index=-1)
         else:
             raise ValueError("Unknown loss: %s" % args.loss)
         

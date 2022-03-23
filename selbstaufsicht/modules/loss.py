@@ -79,7 +79,38 @@ class EmbeddedJigsawLoss(nn.Module):
         return loss
 
 
-class BinaryFocalNLLLoss(nn.Module):
+class SigmoidCrossEntropyLoss(nn.NLLLoss):
+    def __init__(self, weight: torch.Tensor = None, ignore_index: int = -1, reduction='mean'):
+        """
+        Initializes Sigmoid Cross Entropy Loss with ignore-index support. 
+        This replaces the softmax operation of usual cross entropy loss by sigmoid.
+
+        Args:
+            weight (torch.Tensor, optional): Weights, by which each class is re-scaled in the loss computation. Defaults to None.
+            ignore_index (int, optional): Target value which is ignored in comparison. Defaults to -1.
+            reduction (str, optional): Reduction mode: mean, sum. Defaults to \"mean\".
+        """
+        
+        super(SigmoidCrossEntropyLoss, self).__init__(weight=weight, ignore_index=ignore_index, reduction=reduction)
+        self.log_sigmoid = torch.nn.LogSigmoid()
+    
+    def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        Computes SigmoidCrossEntropyLoss for given predictions and target data.
+
+        Args:
+            preds (torch.Tensor): Predictions (one-hot-encoded with class-dim 1).
+            target (torch.Tensor): Target data.
+
+        Returns:
+            torch.Tensor: SigmoidCrossEntropyLoss.
+        """
+        
+        preds_ = self.log_sigmoid(preds)
+        return super().forward(preds_, target)
+
+
+class BinaryFocalLoss(nn.Module):
     def __init__(self, gamma: float = 2., weight: torch.Tensor = None, ignore_index: int = -1, reduction='mean'):
         """
         Initializes Binary Focal Negative Log Likelihood Loss with ignore-index support.
@@ -91,7 +122,7 @@ class BinaryFocalNLLLoss(nn.Module):
             reduction (str, optional): Reduction mode: mean, sum. Defaults to \"mean\".
         """
         
-        super(BinaryFocalNLLLoss, self).__init__()
+        super(BinaryFocalLoss, self).__init__()
         self.gamma = gamma
         if weight is None:
             self.weight = torch.tensor([0.5, 0.5])
@@ -105,14 +136,14 @@ class BinaryFocalNLLLoss(nn.Module):
     
     def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
-        Computes BinaryFocalNLLLoss for given predictions and target data (cf. https://arxiv.org/abs/1708.02002v2).
+        Computes BinaryFocalLoss for given predictions and target data (cf. https://arxiv.org/abs/1708.02002v2).
 
         Args:
             preds (torch.Tensor): Predictions (one-hot-encoded with class-dim 1).
             target (torch.Tensor): Target data.
 
         Returns:
-            torch.Tensor: BinaryFocalNLLLoss.
+            torch.Tensor: BinaryFocalLoss.
         """
         
         # check if shapes match (exclude class dim for preds due to one-hot encoding)
@@ -127,13 +158,17 @@ class BinaryFocalNLLLoss(nn.Module):
         # compute and apply ignore mask
         mask = target != self.ignore_index
         target_ = target[mask]
-        preds_ = preds.permute(0, *(idx for idx in range(2, preds.ndim)), 1)
+        preds_ = torch.sigmoid(preds)
+        preds_ = preds_.permute(0, *(idx for idx in range(2, preds_.ndim)), 1)
         preds_ = preds_[mask, :]
+        preds_log = nn.functional.logsigmoid(preds)
+        preds_log = preds_log.permute(0, *(idx for idx in range(2, preds_log.ndim)), 1)
+        preds_log = preds_log[mask, :]
         
         # compute focal loss
         loss = torch.zeros(target.shape, device=target.device)
-        loss[mask] = -(self.weight[0] * (torch.exp(preds_[:, 1])) ** self.gamma * (1 - target_) * preds_[:, 0] + 
-                       self.weight[1] * (torch.exp(preds_[:, 0])) ** self.gamma * target_ * preds_[:, 1])
+        loss[mask] = -(self.weight[0] * preds_[:, 1] ** self.gamma * (1 - target_) * preds_log[:, 0] + 
+                       self.weight[1] * preds_[:, 0] ** self.gamma * target_ * preds_log[:, 1])
         
         # perform reduction, if needed
         if self.reduction in ('sum', 'mean'):
@@ -145,7 +180,7 @@ class BinaryFocalNLLLoss(nn.Module):
         return loss
     
 
-class DiceNLLLoss(nn.Module):
+class DiceLoss(nn.Module):
     def __init__(self, epsilon: float = 1e-8, ignore_index: int = -1, reduction='mean'):
         """
         Initializes Dice Negative Log Likelihood Loss with ignore-index support.
@@ -156,21 +191,21 @@ class DiceNLLLoss(nn.Module):
             reduction (str, optional): Reduction mode: mean, sum. Defaults to \"mean\".
         """
         
-        super(DiceNLLLoss, self).__init__()
+        super(DiceLoss, self).__init__()
         self.epsilon = epsilon
         self.ignore_index = ignore_index
         self.reduction = reduction
     
     def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
-        Computes DiceNLLLoss for given predictions and target data (cf. https://arxiv.org/abs/1707.03237).
+        Computes DiceLoss for given predictions and target data (cf. https://arxiv.org/abs/1707.03237).
 
         Args:
             preds (torch.Tensor): Predictions (one-hot-encoded with class-dim 1).
             target (torch.Tensor): Target data.
 
         Returns:
-            torch.Tensor: DiceNLLLoss.
+            torch.Tensor: DiceLoss.
         """
         
         # check if shapes match (exclude class dim for preds due to one-hot encoding)
@@ -188,8 +223,7 @@ class DiceNLLLoss(nn.Module):
         target_[0, mask] = 1 - target_[0, mask]
         target_[0, ~mask] = 0
         target_[1, ~mask] = 0
-        # TODO: Maybe add an option to the ContactHead, s.t. it returns Sigmoid output instead of LogSigmoid output
-        preds_ = torch.exp(preds)
+        preds_ = torch.sigmoid(preds)
         preds_ = preds_.permute(1, 0, *(idx for idx in range(2, preds_.ndim))) * mask.unsqueeze(0).expand(2, *(-1 for idx in range(target.ndim)))
         
         # compute dice loss

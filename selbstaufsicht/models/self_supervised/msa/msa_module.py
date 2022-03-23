@@ -181,7 +181,11 @@ class MSAModel(pl.LightningModule):
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
             for m in metrics[task]:
-                metrics[task][m](preds[task], y[task])
+                # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly
+                if task == 'contact':
+                    metrics[task][m](torch.sigmoid(preds[task]), y[task])
+                else:
+                    metrics[task][m](preds[task], y[task])
                 if 'confmat' not in m and 'unreduced' not in m:
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
@@ -193,7 +197,7 @@ class MSAModel(pl.LightningModule):
             # NOTE invoke tensorboard with --samples_per_plugin images=batches to show more images
             if mode == 'validation':
                 # NOTE plot all attention heads
-                attn_maps = torch.cat([m[0].squeeze(dim=2) for m in x['attn_maps']], dim=1)  # [B, num_blocks * H, L, L]
+                attn_maps = torch.cat([m.squeeze(dim=2) for m in x['attn_maps']], dim=1)  # [B, num_blocks * H, L, L]
                 for i in range(attn_maps.size(1)):
                     plt.figure()
                     fig = sns.heatmap(attn_maps[0, i].cpu().numpy(), fmt='').get_figure()
@@ -235,8 +239,7 @@ class MSAModel(pl.LightningModule):
         for task in self.tasks:
             preds[task] = preds[task].detach()
         if 'contact' in self.tasks and not self.freeze_backbone:
-            # TODO: Adapt to now interface, when only row_maps are returned
-            x['attn_maps'] = [(row_map.detach(), col_map.detach()) for row_map, col_map in x['attn_maps']]
+            x['attn_maps'] = [row_map.detach() for row_map in x['attn_maps']]
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss, 'test': test}
         return out
 
