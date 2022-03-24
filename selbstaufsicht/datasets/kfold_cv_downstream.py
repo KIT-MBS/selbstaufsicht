@@ -10,7 +10,7 @@ from selbstaufsicht.utils import data_loader_worker_init
 
 
 class KFoldCVDownstream():
-    def __init__(self, transform, num_folds: int = 1, val_ratio: float = 0.1, batch_size: int = 1, shuffle: bool = True, rng_seed: int = 42) -> None:
+    def __init__(self, transform, num_folds: int = 1, val_ratio: float = 0.1, batch_size: int = 1, shuffle: bool = True, rng_seed: int = 42, discard_train_size_based=True) -> None:
         """
         Initializes K-fold cross validation for the downstream task.
 
@@ -21,6 +21,7 @@ class KFoldCVDownstream():
             batch_size (int, optional): Batch size. Defaults to 1.
             shuffle (bool, optional): Whether data is shuffled. Defaults to True.
             rng_seed (int, optional): DataLoader/Shuffling RNG seed. Defaults to 42.
+            discard_train_size_based (bool, optional): Whether training data is discarded, if it contravenes size criteria. Defaults to True.
         """
         
         assert num_folds > 0
@@ -38,7 +39,7 @@ class KFoldCVDownstream():
         
         # load dataset
         self.root = os.environ['DATA_PATH']
-        self.train_dataset = CoCoNetDataset(self.root, 'train', transform=transform)
+        self.train_dataset = CoCoNetDataset(self.root, 'train', transform=transform, discard_train_size_based=discard_train_size_based)
         
         # setup splits
         if self.num_folds == 1:

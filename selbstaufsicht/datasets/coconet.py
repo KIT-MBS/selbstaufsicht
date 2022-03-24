@@ -23,7 +23,7 @@ class CoCoNetDataset(Dataset):
     train the downstream 'unsupervised' contact prediction and the train dataset for
     testing
     """
-    def __init__(self, root, split, transform=None, download=True):
+    def __init__(self, root, split, transform=None, download=True, discard_train_size_based=True):
         self.root = pathlib.Path(root)
         self.transform = transform
         self.token_mapping = rna2index
@@ -72,7 +72,7 @@ class CoCoNetDataset(Dataset):
                 
                 num_seq = len(msa)
                 seq_len = msa.get_alignment_length()
-                if (pdb_id, chain_id) in discarded_msa or (split == 'test' and (num_seq < self.min_num_seq or seq_len > self.max_seq_len)):
+                if (pdb_id, chain_id) in discarded_msa or ((split == 'test' or discard_train_size_based) and (num_seq < self.min_num_seq or seq_len > self.max_seq_len)):
                     print("Discarding MSA (pdb=%s, chain=%s)" % (pdb_id, chain_id))
                     discarded_msa_idx.add(idx)
                     continue
