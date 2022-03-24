@@ -35,13 +35,12 @@ class CoCoNetDataset(Dataset):
         msa_index_filename = 'CCNListOfMSAFiles.txt'
         
         # NOTE: these MSAs are excluded, since they are problematic
-        # too long sequences (400+)
-        overlong_msa = {('3bwp', 'A'), ('4r0d', 'A')}
+        # too long sequences (>400)
+        self.max_seq_len = 400
         # too few sequences (<50)
-        small_msa = {('2krl', 'A'), ('2n1q', 'A'), ('2ke6', 'A'), ('4c4q', 'N')}
+        self.min_num_seq = 50
         # the hammerhead ribozyme somehow shows bad ppv performance, also in previous research using DCA methods 
-        unknown_reason_msa = {('3zp8', 'A')}
-        discarded_msa = overlong_msa | small_msa | unknown_reason_msa
+        discarded_msa = {('3zp8', 'A')}
 
         with open(pathlib.Path(self.root / 'coconet' / split_dir / msa_index_filename), 'rt') as f:
             self.fam_ids = [line.strip() for line in f]
@@ -70,7 +69,11 @@ class CoCoNetDataset(Dataset):
                 pdb_id = pdb_file.split('_')[0]
                 structure = PDBParser().get_structure(pdb_id, f)
                 pdb_id = pdb_id.replace('.pdb', '')
-                if (pdb_id, chain_id) in discarded_msa:
+                
+                num_seq = len(msa)
+                seq_len = msa.get_alignment_length()
+                if (pdb_id, chain_id) in discarded_msa or num_seq < self.min_num_seq or seq_len > self.max_seq_len:
+                    print("Discarding MSA (pdb=%s, chain=%s)" % (pdb_id, chain_id))
                     discarded_msa_idx.add(idx)
                     continue
                 hetres = [r.get_id() for r in structure.get_residues() if r.get_id()[0] != ' ']
