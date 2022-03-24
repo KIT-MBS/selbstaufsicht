@@ -61,7 +61,7 @@ class CoCoNetDataset(Dataset):
             self.pdb_chains = [line.strip() for line in f]
 
         self.pdbs = []
-        self.discarded_msa_idx = []
+        discarded_msa_idx = set()
         for idx, (msa, pdb_file, chain_id) in enumerate(zip(self.msas, self.pdb_filenames, self.pdb_chains)):
             refseq = msa[0].seq
 
@@ -71,7 +71,7 @@ class CoCoNetDataset(Dataset):
                 structure = PDBParser().get_structure(pdb_id, f)
                 pdb_id = pdb_id.replace('.pdb', '')
                 if (pdb_id, chain_id) in discarded_msa:
-                    self.discarded_msa_idx.append(idx)
+                    discarded_msa_idx.add(idx)
                     continue
                 hetres = [r.get_id() for r in structure.get_residues() if r.get_id()[0] != ' ']
                 # NOTE remove het residues
@@ -135,8 +135,7 @@ class CoCoNetDataset(Dataset):
         assert len(self.msas) == len(self.fam_ids)
 
         # NOTE: Remove discarded MSAs
-        for idx in self.discarded_msa_idx:
-            self.msas.pop(idx)
+        self.msas = [msa for idx, msa in enumerate(self.msas) if idx not in discarded_msa_idx]
 
     def __getitem__(self, i):
         x = self.msas[i]
