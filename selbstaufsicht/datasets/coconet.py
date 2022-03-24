@@ -70,6 +70,7 @@ class CoCoNetDataset(Dataset):
                 structure = PDBParser().get_structure(pdb_id, f)
                 pdb_id = pdb_id.replace('.pdb', '')
                 if (pdb_id, chain_id) in discarded_msa:
+                    self.msas.remove(msa)
                     continue
                 hetres = [r.get_id() for r in structure.get_residues() if r.get_id()[0] != ' ']
                 # NOTE remove het residues
