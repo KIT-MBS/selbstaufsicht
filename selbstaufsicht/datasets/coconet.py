@@ -33,6 +33,15 @@ class CoCoNetDataset(Dataset):
 
         split_dir = 'RNA_DATASET' if split == 'train' else 'RNA_TESTSET'
         msa_index_filename = 'CCNListOfMSAFiles.txt'
+        
+        # NOTE: these MSAs are excluded, since they are problematic
+        # too long sequences (400+)
+        overlong_msa = {('3bwp', 'A'), ('4r0d', 'A')}
+        # too few sequences (<50)
+        small_msa = {('2krl', 'A'), ('2n1q', 'A'), ('2ke6', 'A'), ('4c4q', 'N')}
+        # the hammerhead ribozyme somehow shows bad ppv performance, also in previous research using DCA methods 
+        unknown_reason_msa = {('3zp8', 'A')}
+        discarded_msa = overlong_msa | small_msa | unknown_reason_msa
 
         with open(pathlib.Path(self.root / 'coconet' / split_dir / msa_index_filename), 'rt') as f:
             self.fam_ids = [line.strip() for line in f]
@@ -59,6 +68,9 @@ class CoCoNetDataset(Dataset):
             with open(pdb_path, 'r') as f:
                 pdb_id = pdb_file.split('_')[0]
                 structure = PDBParser().get_structure(pdb_id, f)
+                pdb_id = pdb_id.replace('.pdb', '')
+                if (pdb_id, chain_id) in discarded_msa:
+                    continue
                 hetres = [r.get_id() for r in structure.get_residues() if r.get_id()[0] != ' ']
                 # NOTE remove het residues
                 chain = structure[0].get_list()[0]
