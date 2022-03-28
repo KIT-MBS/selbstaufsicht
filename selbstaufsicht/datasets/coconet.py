@@ -23,7 +23,8 @@ class CoCoNetDataset(Dataset):
     train the downstream 'unsupervised' contact prediction and the train dataset for
     testing
     """
-    def __init__(self, root, split, transform=None, download=True, discard_train_size_based=True):
+    def __init__(self, root, split, transform=None, download=True, discard_train_size_based=True, 
+                 max_seq_len: int = 400, min_num_seq: int = 50):
         self.root = pathlib.Path(root)
         self.transform = transform
         self.token_mapping = rna2index
@@ -35,10 +36,10 @@ class CoCoNetDataset(Dataset):
         msa_index_filename = 'CCNListOfMSAFiles.txt'
         
         # NOTE: these MSAs are excluded, since they are problematic
-        # too long sequences (>400)
-        self.max_seq_len = 400
-        # too few sequences (<50)
-        self.min_num_seq = 50
+        # too long sequences
+        self.max_seq_len = max_seq_len
+        # too few sequences
+        self.min_num_seq = min_num_seq
         # the hammerhead ribozyme somehow shows bad ppv performance, also in previous research using DCA methods 
         discarded_msa = {('3zp8', 'A')}
 

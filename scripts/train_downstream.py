@@ -79,9 +79,11 @@ def main():
         raise ValueError("Testing only works with disabled cross validation!")
     
     downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold)
-    kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform, num_folds=args.cv_num_folds, val_ratio=args.validation_ratio, batch_size=args.batch_size, shuffle=not args.disable_shuffle, rng_seed=args.rng_seed, discard_train_size_based=not args.disable_train_data_discarding)
+    kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform, num_folds=args.cv_num_folds, val_ratio=args.validation_ratio, batch_size=args.batch_size, shuffle=not args.disable_shuffle, 
+                                                     rng_seed=args.rng_seed, discard_train_size_based=not args.disable_train_data_discarding, max_seq_len=h_params['cropping_size'], min_num_seq=h_params['subsampling_depth'])
     if args.test:
-        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root, 'test', transform=downstream_transform, discard_train_size_based=not args.disable_train_data_discarding)
+        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root, 'test', transform=downstream_transform, discard_train_size_based=not args.disable_train_data_discarding, max_seq_len=h_params['cropping_size'], 
+                                               min_num_seq=h_params['subsampling_depth'])
         test_dl = DataLoader(test_dataset,
                              batch_size=args.batch_size,
                              shuffle=False,
