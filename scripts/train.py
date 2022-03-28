@@ -220,6 +220,7 @@ def main():
         val_metrics=val_metrics,
         alphabet_size=len(train_ds.token_mapping),
         padding_token=train_ds.token_mapping['PADDING_TOKEN'],
+        max_seqlen=args.cropping_size,
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,
