@@ -106,7 +106,7 @@ def set_difference(set_1: torch.Tensor, set_2: torch.Tensor) -> torch.Tensor:
     
 
 def recombine_solutions(solution_1: torch.Tensor, solution_2: torch.Tensor, distance_mat: torch.Tensor, num_samples: int, 
-                        num_sdv: int, profile: bool = False) -> Tuple[torch.Tensor, int]:
+                        num_sdv: int) -> Tuple[torch.Tensor, int]:
     """
     Implements the recombination operator, which creates a new offspring solution out of two given solutions.
 
@@ -121,24 +121,12 @@ def recombine_solutions(solution_1: torch.Tensor, solution_2: torch.Tensor, dist
         Tuple[torch.Tensor, int]: New offspring solution [num_seq]; Objective value of the new offspring solution.
     """
     
-    t1 = time.time()
     sdv_1, sdv_2 = determine_sdv(solution_1, distance_mat, num_sdv), determine_sdv(solution_2, distance_mat, num_sdv)
-    t2 = time.time()
-    if profile:
-        print("PROFILE: recombine_solutions -> determine_sdv:", t2-t1)
     
-    t1 = time.time()
     consistent_sdv = set_intersection(sdv_1, sdv_2)
-    t2 = time.time()
-    if profile:
-        print("PROFILE: recombine_solutions -> set_intersection:", t2-t1)
     
     all_variables = torch.arange(solution_1.shape[0], dtype=consistent_sdv.dtype)
-    t1 = time.time()
     selectable_variables = set_difference(all_variables, consistent_sdv)
-    t2 = time.time()
-    if profile:
-        print("PROFILE: recombine_solutions -> set_difference:", t2-t1)
     selectable_variables = selectable_variables[torch.randperm(selectable_variables.shape[0])]
     num_selected = num_samples - consistent_sdv.numel()
     selected_variables = torch.cat((selectable_variables[:num_selected], consistent_sdv))
@@ -288,7 +276,10 @@ def initialize_population(distance_mat: torch.Tensor, num_samples: int, candidat
     t1 = time.time()
     num_succ = 0
     for idx in range(population_size):
-        for _ in range(max_reinit):
+        for idx_2 in range(max_reinit):
+            if profile:
+                print("PROFILE: init_population -> iter", idx, ", reinit", idx_2)
+            
             initial_solution = population[idx].clone()
             initial_objective_val = objective_values[idx].item()
             solution, objective_val = tabu_search(initial_solution, initial_objective_val, distance_mat, candidate_list_size, 
@@ -345,7 +336,10 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
         
         assert old_solution.sum() == num_samples
         
-        for _ in range(max_reinit):
+        for idx_2 in range(max_reinit):
+            if profile:
+                print("PROFILE: rebuild_population -> iter", idx, ", reinit", idx_2)
+            
             new_solution = old_solution.clone()
             perturbation_mask_1 = torch.bernoulli(torch.full(new_solution.shape, perturbation_fraction)).bool()
             perturbation_mask_1 *= new_solution
@@ -361,11 +355,7 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
             
             assert new_solution.sum() == num_samples
             
-            t2 = time.time()
             new_objective_val = objective_function(new_solution, distance_mat).item()
-            t3 = time.time()
-            if profile:
-                print("PROFILE: rebuild_population -> objective_function:", t3-t2)
             new_solution, new_objective_val = tabu_search(new_solution, new_objective_val, distance_mat, candidate_list_size, 
                                                           improvement_cutoff, min_tabu_extension, max_tabu_extension)
             t4 = time.time()
@@ -464,13 +454,15 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
     for idx in range(1, num_iter+1):
         update_non_succ = 0
         while update_non_succ <= population_rebuilding_threshold:
+            if profile:
+                print("PROFILE: iter", idx, ", update_non_succ", update_non_succ)
             different_solutions = False
             while not different_solutions:
                 solution_indices = torch.randint(size=(2,), high=population.shape[0], dtype=torch.int64)
                 different_solutions = solution_indices[0] != solution_indices[1]
             solution_1, solution_2 = population[solution_indices[0]], population[solution_indices[1]]
             t1 = time.time()
-            new_solution, new_objective_val = recombine_solutions(solution_1, solution_2, distance_mat, num_samples, num_sdv, profile)
+            new_solution, new_objective_val = recombine_solutions(solution_1, solution_2, distance_mat, num_samples, num_sdv)
             t2 = time.time()
             if profile:
                 print("PROFILE: maximize_diversity -> recombine_solutions:", t2-t1)
@@ -482,12 +474,8 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
             if new_objective_val > objective_val_record:
                 solution_record[:] = new_solution
                 objective_val_record = new_objective_val
-            t1 = time.time()
             population, objective_values, population_changed = update_population(population, objective_values, new_solution, 
                                                                                  new_objective_val)
-            t2 = time.time()
-            if profile:
-                print("PROFILE: maximize_diversity -> update_population:", t2-t1)
             if not population_changed:
                 update_non_succ += 1
             else:
