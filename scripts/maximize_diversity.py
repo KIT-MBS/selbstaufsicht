@@ -42,13 +42,19 @@ def main():
     # Logging
     parser.add_argument('--log-path', default='../selbstaufsicht/datasets/coconet_diversity_maximization.pt', type=str, help='Logging path.')
     parser.add_argument('--verbose', action='store_true', help="Activates verbose output.")
+    # Profiling
+    parser.add_argument('--profile', action='store_true', help="Activates profiling.")
+    parser.add_argument('--profile-num-seq', default=15000, type=int, help="Number of random sequences in profiling.")
 
     args = parser.parse_args()
     
-    root = os.environ['DATA_PATH']
-    data = datasets.CoCoNetDataset(root, 'train', transform=MSATokenize(rna2index), discard_train_size_based=True)
-    data = [data[idx][0]['msa'] for idx in range(len(data))]
-    data = distribute_data(data, args.num_jobs)  # [num_jobs, num_msa_per_job, num_seq, len_seq]
+    if args.profile:
+        data = [[torch.randint(size=(args.profile_num_seq, 400), high=20)] for idx in range(args.num_jobs)]
+    else:
+        root = os.environ['DATA_PATH']
+        data = datasets.CoCoNetDataset(root, 'train', transform=MSATokenize(rna2index), discard_train_size_based=True)
+        data = [data[idx][0]['msa'] for idx in range(len(data))]
+        data = distribute_data(data, args.num_jobs)  # [num_jobs, num_msa_per_job, num_seq, len_seq]
     
     mp_pool = mp.Pool(processes=args.num_jobs)
     pool_args = zip(data, repeat(args.num_samples), repeat(args.num_iter), repeat(args.cls), repeat(args.imp_cutoff), 
