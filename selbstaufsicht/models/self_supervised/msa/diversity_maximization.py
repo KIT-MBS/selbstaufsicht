@@ -27,7 +27,7 @@ def distance_matrix(msa: torch.Tensor, profile: bool = False) -> torch.Tensor:
     distance_mat += distance_mat.T - torch.diag(torch.diag(distance_mat))
     t2 = time.time()
     if profile:
-        print("PROFILE: distance_matrix:" t2-t1)
+        print("PROFILE: distance_matrix:", t2-t1)
     
     return distance_mat
 
@@ -125,20 +125,20 @@ def recombine_solutions(solution_1: torch.Tensor, solution_2: torch.Tensor, dist
     sdv_1, sdv_2 = determine_sdv(solution_1, distance_mat, num_sdv), determine_sdv(solution_2, distance_mat, num_sdv)
     t2 = time.time()
     if profile:
-        print("PROFILE: recombine_solutions -> determine_sdv:" t2-t1)
+        print("PROFILE: recombine_solutions -> determine_sdv:", t2-t1)
     
     t1 = time.time()
     consistent_sdv = set_intersection(sdv_1, sdv_2)
     t2 = time.time()
     if profile:
-        print("PROFILE: recombine_solutions -> set_intersection:" t2-t1)
+        print("PROFILE: recombine_solutions -> set_intersection:", t2-t1)
     
     all_variables = torch.arange(solution_1.shape[0], dtype=consistent_sdv.dtype)
     t1 = time.time()
     selectable_variables = set_difference(all_variables, consistent_sdv)
     t2 = time.time()
     if profile:
-        print("PROFILE: recombine_solutions -> set_difference:" t2-t1)
+        print("PROFILE: recombine_solutions -> set_difference:", t2-t1)
     selectable_variables = selectable_variables[torch.randperm(selectable_variables.shape[0])]
     num_selected = num_samples - consistent_sdv.numel()
     selected_variables = torch.cat((selectable_variables[:num_selected], consistent_sdv))
@@ -187,7 +187,7 @@ def tabu_search(initial_solution: torch.Tensor, initial_objective_val: int, dist
         _, D_sorted_idx = D.sort(descending=True)
         t2 = time.time()
         if profile:
-            print("PROFILE: tabu_search -> sort_D:" t2-t1)
+            print("PROFILE: tabu_search -> sort_D:", t2-t1)
         ZCL = D_sorted_idx[:candidate_list_size]
         UCL = D_sorted_idx[num_Z:num_Z+candidate_list_size]
         
@@ -195,14 +195,14 @@ def tabu_search(initial_solution: torch.Tensor, initial_objective_val: int, dist
         swap_candidates = torch.cartesian_prod(UCL, ZCL).T
         t2 = time.time()
         if profile:
-            print("PROFILE: tabu_search -> cartesian_prod:" t2-t1)
+            print("PROFILE: tabu_search -> cartesian_prod:", t2-t1)
         
         t1 = time.time()
         d = torch.empty((swap_candidates.shape[1],), dtype=torch.int32)
         d = D[swap_candidates[0]] + D[swap_candidates[1]] - distance_mat[swap_candidates[0], swap_candidates[1]]
         t2 = time.time()
         if profile:
-            print("PROFILE: tabu_search -> create_d:" t2-t1)
+            print("PROFILE: tabu_search -> create_d:", t2-t1)
         
         max_d, max_d_idx = torch.max(d, dim=0)
         max_d = max_d.item()
@@ -218,7 +218,7 @@ def tabu_search(initial_solution: torch.Tensor, initial_objective_val: int, dist
     D[Z] = distance_mat[Z, :][:, U].sum(dim=1, dtype=torch.int32)
     t2 = time.time()
     if profile:
-        print("PROFILE: tabu_search -> create_D:" t2-t1)
+        print("PROFILE: tabu_search -> create_D:", t2-t1)
     
     T = torch.zeros(initial_solution.shape, dtype=torch.int32)
     num_iter = 0
@@ -237,11 +237,11 @@ def tabu_search(initial_solution: torch.Tensor, initial_objective_val: int, dist
         max_d_nt, UCL_swap_idx_nt, ZCL_swap_idx_nt = determine_swap(D_nt)
         t2 = time.time()
         if profile:
-            print("PROFILE: tabu_search -> determine_swap_nt:" t2-t1)
+            print("PROFILE: tabu_search -> determine_swap_nt:", t2-t1)
         max_d_t, UCL_swap_idx_t, ZCL_swap_idx_t = determine_swap(D_t)
         t3 = time.time()
         if profile:
-            print("PROFILE: tabu_search -> determine_swap_t:" t3-t2)
+            print("PROFILE: tabu_search -> determine_swap_t:", t3-t2)
         
         if max_d_t > max_d_nt and max_d_t > 0:
             max_d, UCL_swap_idx, ZCL_swap_idx = max_d_t, UCL_swap_idx_t, ZCL_swap_idx_t
@@ -306,16 +306,16 @@ def initialize_population(distance_mat: torch.Tensor, num_samples: int, candidat
     population[:, :num_samples] = 1
     t2 = time.time()
     if profile:
-        print("PROFILE: init_population -> create_tensor:" t2-t1)
+        print("PROFILE: init_population -> create_tensor:", t2-t1)
         
     population = population[:, torch.randperm(distance_mat.shape[0])]
     t3 = time.time()
     if profile:
-        print("PROFILE: init_population -> randperm:" t3-t2)
+        print("PROFILE: init_population -> randperm:", t3-t2)
     objective_values = objective_function(population, distance_mat)
     t4 = time.time()
     if profile:
-        print("PROFILE: init_population -> objective_function:" t4-t3)
+        print("PROFILE: init_population -> objective_function:", t4-t3)
     
     std_mean = torch.std_mean(objective_values.float(), unbiased=True)
     print("Random init avg:", std_mean[1].item(), "+-", std_mean[0].item())
@@ -331,7 +331,7 @@ def initialize_population(distance_mat: torch.Tensor, num_samples: int, candidat
                                                   improvement_cutoff, min_tabu_extension, max_tabu_extension)
             t2 = time.time()
             if profile:
-                print("PROFILE: init_population -> tabu_search:" t2-t1)
+                print("PROFILE: init_population -> tabu_search:", t2-t1)
             
             if not any(torch.all(population == solution, dim=1)):
                 population[num_succ] = solution
@@ -388,7 +388,7 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
             num_perturbations = perturbation_mask_1.sum().item()
             t2 = time.time()
             if profile:
-                print("PROFILE: rebuild_population -> perturbation_mask_1:" t2-t1)
+                print("PROFILE: rebuild_population -> perturbation_mask_1:", t2-t1)
 
             perturbation_mask_2 = torch.arange(new_solution.shape[0], dtype=torch.int64)
             perturbation_mask_2 = perturbation_mask_2[~new_solution]
@@ -396,7 +396,7 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
             perturbation_mask_2 = perturbation_mask_2[:num_perturbations]
             t3 = time.time()
             if profile:
-                print("PROFILE: rebuild_population -> perturbation_mask_2:" t3-t2)
+                print("PROFILE: rebuild_population -> perturbation_mask_2:", t3-t2)
 
             new_solution[perturbation_mask_1] = 0
             new_solution[perturbation_mask_2] = 1
@@ -407,12 +407,12 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
             new_objective_val = objective_function(new_solution, distance_mat).item()
             t2 = time.time()
             if profile:
-                print("PROFILE: rebuild_population -> objective_function:" t2-t1)
+                print("PROFILE: rebuild_population -> objective_function:", t2-t1)
             new_solution, new_objective_val = tabu_search(new_solution, new_objective_val, distance_mat, candidate_list_size, 
                                                           improvement_cutoff, min_tabu_extension, max_tabu_extension)
             t3 = time.time()
             if profile:
-                print("PROFILE: rebuild_population -> tabu_search:" t3-t2)
+                print("PROFILE: rebuild_population -> tabu_search:", t3-t2)
             
             if not any(torch.all(new_population == new_solution, dim=1)):
                 new_population[num_succ] = new_solution
@@ -493,7 +493,7 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
                                                          min_tabu_extension, max_tabu_extension, population_size, max_reinit)
     t2 = time.time()
     if profile:
-        print("PROFILE: maximize_diversity -> initialize_population:" t2-t1)
+        print("PROFILE: maximize_diversity -> initialize_population:", t2-t1)
     objective_val_record, solution_record_idx = torch.max(objective_values, dim=0)
     solution_record = population[solution_record_idx]
     
@@ -512,12 +512,12 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
             new_solution, new_objective_val = recombine_solutions(solution_1, solution_2, distance_mat, num_samples, num_sdv)
             t2 = time.time()
             if profile:
-                print("PROFILE: maximize_diversity -> recombine_solutions:" t2-t1)
+                print("PROFILE: maximize_diversity -> recombine_solutions:", t2-t1)
             new_solution, new_objective_val = tabu_search(new_solution, new_objective_val, distance_mat, candidate_list_size, 
                                                           improvement_cutoff, min_tabu_extension, max_tabu_extension)
             t3 = time.time()
             if profile:
-                print("PROFILE: maximize_diversity -> tabu_search:" t3-t2)
+                print("PROFILE: maximize_diversity -> tabu_search:", t3-t2)
             if new_objective_val > objective_val_record:
                 solution_record[:] = new_solution
                 objective_val_record = new_objective_val
@@ -526,7 +526,7 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
                                                                                  new_objective_val)
             t2 = time.time()
             if profile:
-                print("PROFILE: maximize_diversity -> update_population:" t2-t1)
+                print("PROFILE: maximize_diversity -> update_population:", t2-t1)
             if not population_changed:
                 update_non_succ += 1
             else:
@@ -537,7 +537,7 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
                                                           perturbation_fraction, max_reinit)
         t2 = time.time()
         if profile:
-            print("PROFILE: maximize_diversity -> rebuild_population:" t2-t1)
+            print("PROFILE: maximize_diversity -> rebuild_population:", t2-t1)
         if verbose:
             print("Diversity after iteration", idx, "/", num_iter, ":", objective_val_record)
     
