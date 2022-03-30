@@ -59,7 +59,8 @@ def main():
     mp_pool = mp.Pool(processes=args.num_jobs)
     pool_args = zip(data, repeat(args.num_samples), repeat(args.num_iter), repeat(args.cls), repeat(args.imp_cutoff), 
                     repeat(args.num_sdv), repeat(args.min_te), repeat(args.max_te), repeat(args.pop_size), 
-                    repeat(args.pop_rt), repeat(args.perturb_frac), repeat(args.max_reinit), repeat(args.verbose))
+                    repeat(args.pop_rt), repeat(args.perturb_frac), repeat(args.max_reinit), repeat(args.verbose),
+                    repeat(args.profile))
     results = mp_pool.starmap(maximize_diversity_msa, pool_args)  # [num_jobs, num_msa_per_job, num_samples]
     results = list(chain.from_iterable(results))  # [num_jobs*num_msa_per_job, num_samples]
     results = torch.stack(results)  # [num_jobs*num_msa_per_job, num_samples]
