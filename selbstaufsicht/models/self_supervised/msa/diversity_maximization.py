@@ -328,7 +328,7 @@ def initialize_population(distance_mat: torch.Tensor, num_samples: int, candidat
             
             t1 = time.time()
             solution, objective_val = tabu_search(initial_solution, initial_objective_val, distance_mat, candidate_list_size, 
-                                                  improvement_cutoff, min_tabu_extension, max_tabu_extension)
+                                                  improvement_cutoff, min_tabu_extension, max_tabu_extension, profile)
             t2 = time.time()
             if profile:
                 print("PROFILE: init_population -> tabu_search:", t2-t1)
@@ -409,7 +409,7 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
             if profile:
                 print("PROFILE: rebuild_population -> objective_function:", t2-t1)
             new_solution, new_objective_val = tabu_search(new_solution, new_objective_val, distance_mat, candidate_list_size, 
-                                                          improvement_cutoff, min_tabu_extension, max_tabu_extension)
+                                                          improvement_cutoff, min_tabu_extension, max_tabu_extension, profile)
             t3 = time.time()
             if profile:
                 print("PROFILE: rebuild_population -> tabu_search:", t3-t2)
@@ -490,7 +490,7 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
     
     t1 = time.time()
     population, objective_values = initialize_population(distance_mat, num_samples, candidate_list_size, improvement_cutoff, 
-                                                         min_tabu_extension, max_tabu_extension, population_size, max_reinit)
+                                                         min_tabu_extension, max_tabu_extension, population_size, max_reinit, profile)
     t2 = time.time()
     if profile:
         print("PROFILE: maximize_diversity -> initialize_population:", t2-t1)
@@ -509,12 +509,12 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
                 different_solutions = solution_indices[0] != solution_indices[1]
             solution_1, solution_2 = population[solution_indices[0]], population[solution_indices[1]]
             t1 = time.time()
-            new_solution, new_objective_val = recombine_solutions(solution_1, solution_2, distance_mat, num_samples, num_sdv)
+            new_solution, new_objective_val = recombine_solutions(solution_1, solution_2, distance_mat, num_samples, num_sdv, profile)
             t2 = time.time()
             if profile:
                 print("PROFILE: maximize_diversity -> recombine_solutions:", t2-t1)
             new_solution, new_objective_val = tabu_search(new_solution, new_objective_val, distance_mat, candidate_list_size, 
-                                                          improvement_cutoff, min_tabu_extension, max_tabu_extension)
+                                                          improvement_cutoff, min_tabu_extension, max_tabu_extension, profile)
             t3 = time.time()
             if profile:
                 print("PROFILE: maximize_diversity -> tabu_search:", t3-t2)
@@ -534,7 +534,7 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
         t1 = time.time()
         population, objective_values = rebuild_population(population, objective_values, distance_mat, num_samples, candidate_list_size, 
                                                           improvement_cutoff, min_tabu_extension, max_tabu_extension, 
-                                                          perturbation_fraction, max_reinit)
+                                                          perturbation_fraction, max_reinit, profile)
         t2 = time.time()
         if profile:
             print("PROFILE: maximize_diversity -> rebuild_population:", t2-t1)
@@ -579,7 +579,7 @@ def maximize_diversity_msa(data: List[torch.Tensor], num_samples: int, num_iter:
         if verbose:
             print("-- Starting MSA", idx+1, "/", len(data), "--\n")
         cls_ = candidate_list_size if candidate_list_size > 0 else int(min(num_samples**0.5, (msa.shape[0]-num_samples)**0.5))
-        distance_mat = distance_matrix(msa)
+        distance_mat = distance_matrix(msa, profile)
         solution = maximize_diversity(distance_mat, num_samples, num_iter, cls_, improvement_cutoff, num_sdv, max_reinit, 
                                       min_tabu_extension, max_tabu_extension, population_size, population_rebuilding_threshold, perturbation_fraction,
                                       verbose, profile)
