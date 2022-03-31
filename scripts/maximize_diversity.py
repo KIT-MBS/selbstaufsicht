@@ -56,14 +56,15 @@ def main():
     data = [data[idx][0]['msa'] for idx in range(len(data))]
     data = distribute_data(data, args.num_jobs)  # [num_jobs, num_msa_per_job, num_seq, len_seq]
     
+    process_ids = [idx for idx in range(1, args.num_jobs+1)]
+    
     if args.solver == 'greedy':
         solver = maximize_diversity_msa_greedy
-        solver_args = zip(data, repeat(args.num_samples), repeat(args.verbose))
+        solver_args = zip(data, repeat(args.num_samples), repeat(args.verbose), process_ids)
     elif args.solver == 'mats':
         solver = maximize_diversity_msa_mats
-        solver_args = zip(data, repeat(args.num_samples), repeat(args.num_iter), repeat(args.cls), repeat(args.imp_cutoff), 
-                          repeat(args.num_sdv), repeat(args.min_te), repeat(args.max_te), repeat(args.pop_size), 
-                          repeat(args.pop_rt), repeat(args.perturb_frac), repeat(args.max_reinit), repeat(args.verbose))
+        solver_args = zip(data, repeat(args.num_samples), repeat(args.num_iter), repeat(args.cls), repeat(args.imp_cutoff), repeat(args.num_sdv), repeat(args.min_te), repeat(args.max_te), 
+                          repeat(args.pop_size), repeat(args.pop_rt), repeat(args.perturb_frac), repeat(args.max_reinit), repeat(args.verbose), process_ids)
     else:
         raise ValueError("Unknown approach: %s" % args.solver)
     

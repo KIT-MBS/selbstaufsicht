@@ -2,12 +2,14 @@ import torch
 from typing import List, Tuple
 
 
-def distance_matrix(msa: torch.Tensor) -> torch.Tensor:
+def distance_matrix(msa: torch.Tensor, verbose: bool, process_id: int) -> torch.Tensor:
     """
     Creates symmetric distance matrix, containing the hamming distance between each pair of sequences.
 
     Args:
         msa (torch.Tensor): MSA [num_seq, len_seq].
+        verbose (bool): Activates verbose output.
+        process_id (int): Process id.
 
     Returns:
         torch.Tensor: Distance matrix [num_seq, num_seq].
@@ -19,7 +21,10 @@ def distance_matrix(msa: torch.Tensor) -> torch.Tensor:
     for idx in range(num_seq):
         temp_1 = msa[idx:idx+1].expand(num_seq-idx, -1)
         temp_2 = msa[idx:]
-        distance_mat[idx, idx:] = (temp_1 != temp_2).sum(dim=-1, dtype=torch.int16) 
+        distance_mat[idx, idx:] = (temp_1 != temp_2).sum(dim=-1, dtype=torch.int16)
+        
+        if verbose:
+            print(process_id, ":", idx, "/", num_seq)
     
     distance_mat += distance_mat.T - torch.diag(torch.diag(distance_mat))
     
@@ -386,8 +391,9 @@ def update_population(population: torch.Tensor, objective_values: torch.Tensor, 
 
 
 def maximize_diversity_mats(distance_mat: torch.Tensor, num_samples: int, num_iter: int, candidate_list_size: int, improvement_cutoff: int,
-                            num_sdv: int, max_reinit: int, min_tabu_extension: int = 15, max_tabu_extension: int = 25, population_size: int = 10, 
-                            population_rebuilding_threshold: int = 30, perturbation_fraction: float = 0.3, verbose: bool = False) -> torch.Tensor:
+                            num_sdv: int, max_reinit: int, , process_id: int, min_tabu_extension: int = 15, max_tabu_extension: int = 25, 
+                            population_size: int = 10, population_rebuilding_threshold: int = 30, perturbation_fraction: float = 0.3, 
+                            verbose: bool = False) -> torch.Tensor:
     """
     Implements the MA/TS algorithm (cf. https://doi.org/10.1016/j.engappai.2013.09.005) to solve a maximum-diversity-problem (MDP), 
     specified by a distance matrix. It is a memetic algorithm, i.e. it extends an evolutionary algorithm (EA) by Tabu-Search-based 
@@ -401,6 +407,7 @@ def maximize_diversity_mats(distance_mat: torch.Tensor, num_samples: int, num_it
         improvement_cutoff (int): Number of iterations of Tabu Search without improvement, after which the procedure is stopped.
         num_sdv (int): Number of strongly determined variables.
         max_reinit (int): Number of random reinitializations, after which initialization and rebuilding procedures ends with the current population size.
+        process_id (int): Process id.
         min_tabu_extension (int, optional): Minimum number of iterations of Tabu Search, by which a variable is restricted from 
         change. Defaults to 15.
         max_tabu_extension (int, optional): Maximum number of iterations of Tabu Search, by which a variable is restricted from 
@@ -423,7 +430,7 @@ def maximize_diversity_mats(distance_mat: torch.Tensor, num_samples: int, num_it
     solution_record = population[solution_record_idx]
     
     if verbose:
-        print("Initial diversity:", objective_val_record.item())
+        print(process_id, ": Initial diversity:", objective_val_record.item())
     
     for idx in range(1, num_iter+1):
         update_non_succ = 0
@@ -449,7 +456,7 @@ def maximize_diversity_mats(distance_mat: torch.Tensor, num_samples: int, num_it
                                                           improvement_cutoff, min_tabu_extension, max_tabu_extension, 
                                                           perturbation_fraction, max_reinit)
         if verbose:
-            print("Diversity after iteration", idx, "/", num_iter, ":", objective_val_record)
+            print(process_id, ": Diversity after iteration", idx, "/", num_iter, ":", objective_val_record)
     
     return solution_record
 
@@ -483,7 +490,7 @@ def maximize_diversity_greedy(distance_mat: torch.Tensor, num_samples: int) -> t
 
 def maximize_diversity_msa_mats(data: List[torch.Tensor], num_samples: int, num_iter: int, candidate_list_size: int, improvement_cutoff: int, num_sdv: int, 
                                 min_tabu_extension: int, max_tabu_extension: int, population_size: int, population_rebuilding_threshold: int, 
-                                perturbation_fraction: float, max_reinit: int, verbose: bool) -> List[torch.Tensor]:
+                                perturbation_fraction: float, max_reinit: int, verbose: bool, process_id: int) -> List[torch.Tensor]:
     """
     Creates a subset of sequences with maximized diversity for each MSA by solving the corresponding maximum-diversity-problem (MDP) using the MA/TS 
     algorithm.
@@ -506,6 +513,7 @@ def maximize_diversity_msa_mats(data: List[torch.Tensor], num_samples: int, num_
         population rebuilding.
         max_reinit (int): Number of random reinitializations, after which initialization and rebuilding procedures ends with the current population size.
         verbose (bool): Activates verbose output.
+        process_id (int): Process id.
 
     Returns:
         List[torch.Tensor]: List of sequence indices per MSA [num_samples].
@@ -515,21 +523,21 @@ def maximize_diversity_msa_mats(data: List[torch.Tensor], num_samples: int, num_
     
     for idx, msa in enumerate(data):
         if verbose:
-            print("-- Starting MSA", idx+1, "/", len(data), "--\n")
+            print(process_id, ": Starting MSA", idx+1, "/", len(data))
         cls_ = candidate_list_size if candidate_list_size > 0 else int(min(num_samples**0.5, (msa.shape[0]-num_samples)**0.5))
-        distance_mat = distance_matrix(msa)
-        solution = maximize_diversity(distance_mat, num_samples, num_iter, cls_, improvement_cutoff, num_sdv, max_reinit, 
+        distance_mat = distance_matrix(msa, verbose, process_id)
+        solution = maximize_diversity(distance_mat, num_samples, num_iter, cls_, improvement_cutoff, num_sdv, max_reinit, process_id,
                                       min_tabu_extension, max_tabu_extension, population_size, population_rebuilding_threshold, perturbation_fraction,
                                       verbose)
         seq_indices = torch.arange(solution.shape[0], dtype=torch.int64)
         results.append(seq_indices[solution])
         if verbose:
-            print("-- MSA", idx+1, "/", len(data), "finished --\n\n")
+            print(process_id, ": MSA", idx+1, "/", len(data), "finished")
         
     return results
 
 
-def maximize_diversity_msa_greedy(data: List[torch.Tensor], num_samples: int, verbose: bool) -> List[torch.Tensor]:
+def maximize_diversity_msa_greedy(data: List[torch.Tensor], num_samples: int, verbose: bool, process_id: int) -> List[torch.Tensor]:
     """
     Creates a subset of sequences with maximized diversity for each MSA by solving the corresponding maximum-diversity-problem (MDP) using a greedy 
     approach.
@@ -538,6 +546,7 @@ def maximize_diversity_msa_greedy(data: List[torch.Tensor], num_samples: int, ve
         data (List[torch.Tensor]): List of MSAs [num_seq, len_seq].
         num_samples (int): Number of sequences, whose diversity is to be maximized over all sequences.
         verbose (bool): Activates verbose output.
+        process_id (int): Process id.
 
     Returns:
         List[torch.Tensor]: List of sequence indices per MSA [num_samples].
@@ -547,12 +556,12 @@ def maximize_diversity_msa_greedy(data: List[torch.Tensor], num_samples: int, ve
     
     for idx, msa in enumerate(data):
         if verbose:
-            print("-- Starting MSA", idx+1, "/", len(data), "--\n")
-        distance_mat = distance_matrix(msa)
+            print(process_id, ": Starting MSA", idx+1, "/", len(data))
+        distance_mat = distance_matrix(msa, verbose, process_id)
         solution = maximize_diversity_greedy(distance_mat, num_samples)
         seq_indices = torch.arange(solution.shape[0], dtype=torch.int64)
         results.append(seq_indices[solution])
         if verbose:
-            print("-- MSA", idx+1, "/", len(data), "finished --\n\n")
+            print(process_id, ": MSA", idx+1, "/", len(data), "finished")
     
     return results
