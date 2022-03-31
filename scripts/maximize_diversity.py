@@ -58,7 +58,7 @@ def main():
     
     if args.solver == 'greedy':
         solver = maximize_diversity_msa_greedy
-        solver_args = zip(data, repeat(args.num_samples))
+        solver_args = zip(data, repeat(args.num_samples), repeat(args.verbose))
     elif args.solver == 'mats':
         solver = maximize_diversity_msa_mats
         solver_args = zip(data, repeat(args.num_samples), repeat(args.num_iter), repeat(args.cls), repeat(args.imp_cutoff), 
