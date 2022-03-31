@@ -8,6 +8,7 @@ import numpy as np
 from Bio.PDB.Residue import Residue
 from Bio.PDB.Atom import Atom
 
+import torch
 from torch.utils.data import Dataset
 
 from Bio import AlignIO
