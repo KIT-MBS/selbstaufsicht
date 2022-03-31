@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Union, Tuple
 import torch
 from torch.distributions import Categorical, Distribution
 import numpy as np
