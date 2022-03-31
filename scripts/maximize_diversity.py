@@ -56,16 +56,16 @@ def main():
     data = [data[idx][0]['msa'] for idx in range(len(data))]
     data = distribute_data(data, args.num_jobs)  # [num_jobs, num_msa_per_job, num_seq, len_seq]
     
-    if args.approach == 'greedy':
+    if args.solver == 'greedy':
         solver = maximize_diversity_msa_greedy
         solver_args = zip(data, repeat(args.num_samples))
-    elif args.approach == 'mats':
+    elif args.solver == 'mats':
         solver = maximize_diversity_msa_mats
         solver_args = zip(data, repeat(args.num_samples), repeat(args.num_iter), repeat(args.cls), repeat(args.imp_cutoff), 
                           repeat(args.num_sdv), repeat(args.min_te), repeat(args.max_te), repeat(args.pop_size), 
                           repeat(args.pop_rt), repeat(args.perturb_frac), repeat(args.max_reinit), repeat(args.verbose))
     else:
-        raise ValueError("Unknown approach: %s" % args.approach)
+        raise ValueError("Unknown approach: %s" % args.solver)
     
     mp_pool = mp.Pool(processes=args.num_jobs)
     results = mp_pool.starmap(solver, solver_args)  # [num_jobs, num_msa_per_job, num_samples]
