@@ -391,7 +391,7 @@ def update_population(population: torch.Tensor, objective_values: torch.Tensor, 
 
 
 def maximize_diversity_mats(distance_mat: torch.Tensor, num_samples: int, num_iter: int, candidate_list_size: int, improvement_cutoff: int,
-                            num_sdv: int, max_reinit: int, , process_id: int, min_tabu_extension: int = 15, max_tabu_extension: int = 25, 
+                            num_sdv: int, max_reinit: int, process_id: int, min_tabu_extension: int = 15, max_tabu_extension: int = 25, 
                             population_size: int = 10, population_rebuilding_threshold: int = 30, perturbation_fraction: float = 0.3, 
                             verbose: bool = False) -> torch.Tensor:
     """
