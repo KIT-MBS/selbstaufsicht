@@ -270,7 +270,7 @@ class MSASubsampling():
         """
 
         msa = x['msa'][:, :]
-        if mode == 'diversity':
+        if self.mode == 'diversity':
             if 'indices' not in x:
                 raise KeyError('No indices provided for diversity-maximizing subsampling!')
             x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'], False)
@@ -279,7 +279,7 @@ class MSASubsampling():
             x['msa'] = self.sampling_fn(msa, self.nseqs, False)
         if self.contrastive:
             # diversity maximization should not be used in combination with contrastive
-            assert mode != 'diversity'
+            assert self.mode != 'diversity'
             x['contrastive'] = self.sampling_fn(msa, self.nseqs, True)
         return x, y
 
