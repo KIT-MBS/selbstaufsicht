@@ -169,7 +169,22 @@ def test_update_population():
     assert population_changed
 
 
-def test_maximize_diversity():
+def test_maximize_diversity_mats():
     # TODO: Find suitable MDP (not too complex, but also non-trivial)
     
     pass
+
+
+def test_maximize_diversity_greedy():
+    distance_mat = torch.tensor([[0, 1, 2, 3], 
+                                 [1, 0, 4, 5], 
+                                 [2, 4, 0, 6],
+                                 [3, 5, 6, 0]], dtype=torch.int16)
+    
+    num_samples = 3
+    
+    solution = dm.maximize_diversity_greedy(distance_mat, num_samples)
+    print(solution)
+    solution_ref = torch.tensor([1, 0, 1, 1], dtype=torch.bool)
+
+    testing.assert_close(solution, solution_ref, rtol=0, atol=0)

@@ -1,12 +1,10 @@
-import time
 import torch
 from typing import List, Tuple
 
 
-def distance_matrix(msa: torch.Tensor, profile: bool = False) -> torch.Tensor:
+def distance_matrix(msa: torch.Tensor) -> torch.Tensor:
     """
-    Creates symmetric distance matrix, which contains contains pair-wise (in-)equality flags between corresponding places of different 
-    sequences.
+    Creates symmetric distance matrix, containing the hamming distance between each pair of sequences.
 
     Args:
         msa (torch.Tensor): MSA [num_seq, len_seq].
@@ -15,7 +13,6 @@ def distance_matrix(msa: torch.Tensor, profile: bool = False) -> torch.Tensor:
         torch.Tensor: Distance matrix [num_seq, num_seq].
     """
     
-    t1 = time.time()
     num_seq, len_seq = msa.shape
     distance_mat = torch.zeros((num_seq, num_seq), dtype=torch.int16)
     
@@ -25,9 +22,6 @@ def distance_matrix(msa: torch.Tensor, profile: bool = False) -> torch.Tensor:
         distance_mat[idx, idx:] = (temp_1 != temp_2).sum(dim=-1, dtype=torch.int16) 
     
     distance_mat += distance_mat.T - torch.diag(torch.diag(distance_mat))
-    t2 = time.time()
-    if profile:
-        print("PROFILE: distance_matrix:", t2-t1)
     
     return distance_mat
 
@@ -247,7 +241,7 @@ def tabu_search(initial_solution: torch.Tensor, initial_objective_val: int, dist
 
     
 def initialize_population(distance_mat: torch.Tensor, num_samples: int, candidate_list_size: int, improvement_cutoff: int, 
-                          min_tabu_extension: int, max_tabu_extension: int, population_size: int, max_reinit: int, profile: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+                          min_tabu_extension: int, max_tabu_extension: int, population_size: int, max_reinit: int) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Initializes population of feasible solutions.
 
@@ -273,12 +267,9 @@ def initialize_population(distance_mat: torch.Tensor, num_samples: int, candidat
     std_mean = torch.std_mean(objective_values.float(), unbiased=True)
     print("Random init avg:", std_mean[1].item(), "+-", std_mean[0].item())
         
-    t1 = time.time()
     num_succ = 0
     for idx in range(population_size):
         for idx_2 in range(max_reinit):
-            if profile:
-                print("PROFILE: init_population -> iter", idx, ", reinit", idx_2)
             
             initial_solution = population[idx].clone()
             initial_objective_val = objective_values[idx].item()
@@ -291,15 +282,12 @@ def initialize_population(distance_mat: torch.Tensor, num_samples: int, candidat
                 num_succ += 1
                 break
     
-    t2 = time.time()
-    if profile:
-        print("PROFILE: init_population -> loop:", t2-t1)
     return population[:num_succ], objective_values[:num_succ]
 
 
 def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor, distance_mat: torch.Tensor, num_samples: int, 
                        candidate_list_size: int, improvement_cutoff: int, min_tabu_extension: int, max_tabu_extension: int, 
-                       perturbation_fraction: float, max_reinit: int, profile: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+                       perturbation_fraction: float, max_reinit: int) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Rebuilds population of feasible solutions after several iterations of global and local optimization without improvement.
 
@@ -328,7 +316,6 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
     new_population[-1] = population[best_solution_idx]
     new_objective_values[-1] = objective_values[best_solution_idx]
     
-    t1 = time.time()
     num_succ = 0
     for idx in range(population.shape[0]-1):
         old_solution_idx = remaining_solution_indices[idx]
@@ -336,10 +323,7 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
         
         assert old_solution.sum() == num_samples
         
-        for idx_2 in range(max_reinit):
-            if profile:
-                print("PROFILE: rebuild_population -> iter", idx, ", reinit", idx_2)
-            
+        for idx_2 in range(max_reinit):       
             new_solution = old_solution.clone()
             perturbation_mask_1 = torch.bernoulli(torch.full(new_solution.shape, perturbation_fraction)).bool()
             perturbation_mask_1 *= new_solution
@@ -358,9 +342,6 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
             new_objective_val = objective_function(new_solution, distance_mat).item()
             new_solution, new_objective_val = tabu_search(new_solution, new_objective_val, distance_mat, candidate_list_size, 
                                                           improvement_cutoff, min_tabu_extension, max_tabu_extension)
-            t4 = time.time()
-            if profile:
-                print("PROFILE: rebuild_population -> tabu_search:", t4-t3)
             
             if not any(torch.all(new_population == new_solution, dim=1)):
                 new_population[num_succ] = new_solution
@@ -368,9 +349,6 @@ def rebuild_population(population: torch.Tensor, objective_values: torch.Tensor,
                 num_succ += 1
                 break
     
-    t2 = time.time()
-    if profile:
-        print("PROFILE: rebuild_population -> loop:", t2-t1)
     new_population = torch.cat((new_population[:num_succ], new_population[-1:]))
     new_objective_values = torch.cat((new_objective_values[:num_succ], new_objective_values[-1:]))
     return new_population, new_objective_values
@@ -407,11 +385,11 @@ def update_population(population: torch.Tensor, objective_values: torch.Tensor, 
     return population, objective_values, update_criterion
 
 
-def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: int, candidate_list_size: int, improvement_cutoff: int,
-                       num_sdv: int, max_reinit: int, min_tabu_extension: int = 15, max_tabu_extension: int = 25, population_size: int = 10, 
-                       population_rebuilding_threshold: int = 30, perturbation_fraction: float = 0.3, verbose: bool = False, profile: bool = False) -> torch.Tensor:
+def maximize_diversity_mats(distance_mat: torch.Tensor, num_samples: int, num_iter: int, candidate_list_size: int, improvement_cutoff: int,
+                            num_sdv: int, max_reinit: int, min_tabu_extension: int = 15, max_tabu_extension: int = 25, population_size: int = 10, 
+                            population_rebuilding_threshold: int = 30, perturbation_fraction: float = 0.3, verbose: bool = False) -> torch.Tensor:
     """
-    Implements the MA/TS algorithm (# cf. https://doi.org/10.1016/j.engappai.2013.09.005) to solve a maximum-diversity-problem (MDP), 
+    Implements the MA/TS algorithm (cf. https://doi.org/10.1016/j.engappai.2013.09.005) to solve a maximum-diversity-problem (MDP), 
     specified by a distance matrix. It is a memetic algorithm, i.e. it extends an evolutionary algorithm (EA) by Tabu-Search-based 
     local optimization. 
 
@@ -439,12 +417,8 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
     """
     
     
-    t1 = time.time()
     population, objective_values = initialize_population(distance_mat, num_samples, candidate_list_size, improvement_cutoff, 
-                                                         min_tabu_extension, max_tabu_extension, population_size, max_reinit, profile)
-    t2 = time.time()
-    if profile:
-        print("PROFILE: maximize_diversity -> initialize_population:", t2-t1)
+                                                         min_tabu_extension, max_tabu_extension, population_size, max_reinit)
     objective_val_record, solution_record_idx = torch.max(objective_values, dim=0)
     solution_record = population[solution_record_idx]
     
@@ -454,23 +428,14 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
     for idx in range(1, num_iter+1):
         update_non_succ = 0
         while update_non_succ <= population_rebuilding_threshold:
-            if profile:
-                print("PROFILE: iter", idx, ", update_non_succ", update_non_succ)
             different_solutions = False
             while not different_solutions:
                 solution_indices = torch.randint(size=(2,), high=population.shape[0], dtype=torch.int64)
                 different_solutions = solution_indices[0] != solution_indices[1]
             solution_1, solution_2 = population[solution_indices[0]], population[solution_indices[1]]
-            t1 = time.time()
             new_solution, new_objective_val = recombine_solutions(solution_1, solution_2, distance_mat, num_samples, num_sdv)
-            t2 = time.time()
-            if profile:
-                print("PROFILE: maximize_diversity -> recombine_solutions:", t2-t1)
             new_solution, new_objective_val = tabu_search(new_solution, new_objective_val, distance_mat, candidate_list_size, 
                                                           improvement_cutoff, min_tabu_extension, max_tabu_extension)
-            t3 = time.time()
-            if profile:
-                print("PROFILE: maximize_diversity -> tabu_search:", t3-t2)
             if new_objective_val > objective_val_record:
                 solution_record[:] = new_solution
                 objective_val_record = new_objective_val
@@ -480,24 +445,48 @@ def maximize_diversity(distance_mat: torch.Tensor, num_samples: int, num_iter: i
                 update_non_succ += 1
             else:
                 update_non_succ = 0
-        t1 = time.time()
         population, objective_values = rebuild_population(population, objective_values, distance_mat, num_samples, candidate_list_size, 
                                                           improvement_cutoff, min_tabu_extension, max_tabu_extension, 
-                                                          perturbation_fraction, max_reinit, profile)
-        t2 = time.time()
-        if profile:
-            print("PROFILE: maximize_diversity -> rebuild_population:", t2-t1)
+                                                          perturbation_fraction, max_reinit)
         if verbose:
             print("Diversity after iteration", idx, "/", num_iter, ":", objective_val_record)
     
     return solution_record
 
 
-def maximize_diversity_msa(data: List[torch.Tensor], num_samples: int, num_iter: int, candidate_list_size: int, improvement_cutoff: int, num_sdv: int, 
-                           min_tabu_extension: int, max_tabu_extension: int, population_size: int, population_rebuilding_threshold: int, 
-                           perturbation_fraction: float, max_reinit: int, verbose: bool, profile: bool = False) -> List[torch.Tensor]:
+def maximize_diversity_greedy(distance_mat: torch.Tensor, num_samples: int) -> torch.Tensor:
     """
-    Creates a subset of sequences with maximized diversity for each MSA by solving the corresponding maximum-diversity-problem (MDP).
+    Implements a greedy approach to solve a maximum-diversity-problem (MDP), specified by a distance matrix.
+    Initially, it selects the very first element as a reference. 
+    Subsequently, the element with the highest average distance to the current set of selected sequences is selected from the set of unselected ones.
+
+    Args:
+        distance_mat (torch.Tensor): Distance matrix [num_seq, num_seq].
+        num_samples (int): Number of sequences, whose diversity is to be maximized over all sequences.
+
+    Returns:
+        torch.Tensor: Solution of the MDP [num_seq].
+    """
+    
+    distance_mat = distance_mat.float()
+    solution = torch.zeros((distance_mat.shape[0]), dtype=torch.bool)
+    solution[0] = 1
+    
+    for idx in range(1, num_samples):
+        selected_idx = torch.argmax(torch.mean(distance_mat[solution, :], dim=0) * ~solution)
+        solution[selected_idx] = 1
+    
+    assert solution.sum() == num_samples
+    
+    return solution
+
+
+def maximize_diversity_msa_mats(data: List[torch.Tensor], num_samples: int, num_iter: int, candidate_list_size: int, improvement_cutoff: int, num_sdv: int, 
+                                min_tabu_extension: int, max_tabu_extension: int, population_size: int, population_rebuilding_threshold: int, 
+                                perturbation_fraction: float, max_reinit: int, verbose: bool) -> List[torch.Tensor]:
+    """
+    Creates a subset of sequences with maximized diversity for each MSA by solving the corresponding maximum-diversity-problem (MDP) using the MA/TS 
+    algorithm.
 
     Args:
         data (List[torch.Tensor]): List of MSAs [num_seq, len_seq].
@@ -528,14 +517,42 @@ def maximize_diversity_msa(data: List[torch.Tensor], num_samples: int, num_iter:
         if verbose:
             print("-- Starting MSA", idx+1, "/", len(data), "--\n")
         cls_ = candidate_list_size if candidate_list_size > 0 else int(min(num_samples**0.5, (msa.shape[0]-num_samples)**0.5))
-        distance_mat = distance_matrix(msa, profile)
+        distance_mat = distance_matrix(msa)
         solution = maximize_diversity(distance_mat, num_samples, num_iter, cls_, improvement_cutoff, num_sdv, max_reinit, 
                                       min_tabu_extension, max_tabu_extension, population_size, population_rebuilding_threshold, perturbation_fraction,
-                                      verbose, profile)
+                                      verbose)
         seq_indices = torch.arange(solution.shape[0], dtype=torch.int64)
         results.append(seq_indices[solution])
         if verbose:
-            print("-- MSA", idx+1, "/", len(data), "finished --\n\n\n")
+            print("-- MSA", idx+1, "/", len(data), "finished --\n\n")
         
+    return results
+
+
+def maximize_diversity_msa_greedy(data: List[torch.Tensor], num_samples: int, verbose: bool) -> List[torch.Tensor]:
+    """
+    Creates a subset of sequences with maximized diversity for each MSA by solving the corresponding maximum-diversity-problem (MDP) using a greedy 
+    approach.
+
+    Args:
+        data (List[torch.Tensor]): List of MSAs [num_seq, len_seq].
+        num_samples (int): Number of sequences, whose diversity is to be maximized over all sequences.
+        verbose (bool): Activates verbose output.
+
+    Returns:
+        List[torch.Tensor]: List of sequence indices per MSA [num_samples].
+    """
+
+    results = []
+    
+    for idx, msa in enumerate(data):
+        if verbose:
+            print("-- Starting MSA", idx+1, "/", len(data), "--\n")
+        distance_mat = distance_matrix(msa)
+        solution = maximize_diversity_greedy(distance_mat, num_samples)
+        seq_indices = torch.arange(solution.shape[0], dtype=torch.int64)
+        results.append(seq_indices[solution])
+        if verbose:
+            print("-- MSA", idx+1, "/", len(data), "finished --\n\n")
     
     return results
