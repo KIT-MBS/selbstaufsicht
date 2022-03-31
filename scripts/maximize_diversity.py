@@ -28,6 +28,7 @@ def main():
     # Diversity maximization
     parser.add_argument('--num-samples', default=50, type=int, help="Number of samples whose diversity is to be maximized.")
     parser.add_argument('--solver', default='greedy', type=str, help='Solver used for the maximum-diversity-problem: greedy, mats.')
+    parser.add_argument('--dataset', default='train', type=str, help='Dataset: train, test.')
     # MA/TS algorithm
     parser.add_argument('--num-iter', default=5, type=int, help="Number of outer iterations performed by the evolutionary algorithm.")
     parser.add_argument('--cls', default=-1, type=int, help="Number of best candidates that are selected in each iteration of Tabu Search. If non-positive, sqrt-rule is used.")
@@ -42,13 +43,16 @@ def main():
     # Data parallelism
     parser.add_argument('--num-jobs', default=1, type=int, help="Number of jobs.")
     # Logging
-    parser.add_argument('--log-path', default='../selbstaufsicht/datasets/coconet_diversity_maximization.pt', type=str, help='Logging path.')
+    parser.add_argument('--log-dir', default='../selbstaufsicht/datasets/', type=str, help='Logging directory.')
     parser.add_argument('--verbose', action='store_true', help="Activates verbose output.")
 
     args = parser.parse_args()
     
+    if args.dataset not in {'train', 'test'}:
+        raise ValueError("Unknown dataset: %s" % args.dataset)
+    
     root = os.environ['DATA_PATH']
-    data = datasets.CoCoNetDataset(root, 'train', transform=MSATokenize(rna2index), discard_train_size_based=True)
+    data = datasets.CoCoNetDataset(root, args.dataset, transform=MSATokenize(rna2index), discard_train_size_based=True)
     data = [data[idx][0]['msa'] for idx in range(len(data))]
     data = distribute_data(data, args.num_jobs)  # [num_jobs, num_msa_per_job, num_seq, len_seq]
     
@@ -67,7 +71,9 @@ def main():
     results = mp_pool.starmap(solver, solver_args)  # [num_jobs, num_msa_per_job, num_samples]
     results = list(chain.from_iterable(results))  # [num_jobs*num_msa_per_job, num_samples]
     results = torch.stack(results)  # [num_jobs*num_msa_per_job, num_samples]
-    torch.save(results, args.log_path)
+    
+    log_path = os.path.join(args.log_dir, 'coconet_%s_diversity_maximization.pt' % args.dataset) 
+    torch.save(results, log_path)
     
     
 if __name__ == '__main__':
