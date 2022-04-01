@@ -9,7 +9,7 @@ def test_distance_matrix():
                         [5, 4, 3, 2, 1], 
                         [1, 2, 3, 2, 1]])
     
-    distance_mat = dm.distance_matrix(msa)
+    distance_mat = dm.distance_matrix(msa, False, 0)
     distance_mat_ref = torch.tensor([[0, 4, 2], 
                                      [4, 0, 2], 
                                      [2, 2, 0]], dtype=torch.int16)
