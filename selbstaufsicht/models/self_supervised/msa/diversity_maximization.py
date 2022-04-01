@@ -526,9 +526,9 @@ def maximize_diversity_msa_mats(data: List[torch.Tensor], num_samples: int, num_
             print(process_id, ": Starting MSA", idx+1, "/", len(data))
         cls_ = candidate_list_size if candidate_list_size > 0 else int(min(num_samples**0.5, (msa.shape[0]-num_samples)**0.5))
         distance_mat = distance_matrix(msa, verbose, process_id)
-        solution = maximize_diversity(distance_mat, num_samples, num_iter, cls_, improvement_cutoff, num_sdv, max_reinit, process_id,
-                                      min_tabu_extension, max_tabu_extension, population_size, population_rebuilding_threshold, perturbation_fraction,
-                                      verbose)
+        solution = maximize_diversity_mats(distance_mat, num_samples, num_iter, cls_, improvement_cutoff, num_sdv, max_reinit, process_id,
+                                           min_tabu_extension, max_tabu_extension, population_size, population_rebuilding_threshold, perturbation_fraction,
+                                           verbose)
         seq_indices = torch.arange(solution.shape[0], dtype=torch.int64)
         results.append(seq_indices[solution])
         if verbose:
