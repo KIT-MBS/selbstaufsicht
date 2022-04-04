@@ -120,8 +120,8 @@ def main():
         feature_dim_head=h_params['feature_dim_head'],
         task_heads=task_heads,
         task_losses=task_losses,
-        alphabet_size=len(kfold_cv_downstream.train_dataset.token_mapping),
-        padding_token=kfold_cv_downstream.train_dataset.token_mapping['PADDING_TOKEN'],
+        alphabet_size=len(train_dataset.token_mapping),
+        padding_token=train_dataset.token_mapping['PADDING_TOKEN'],
         lr=h_params['learning_rate'],
         lr_warmup=h_params['learning_rate_warmup'],
         dropout=0.,
@@ -131,24 +131,42 @@ def main():
     model.need_attn = True
     model.to(device)
     
+    num_maps = h_params['num_blocks'] * h_params['num_heads']
+    cull_tokens = [train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
+    
     attn_maps_list = []
     targets_list = []
     
     for x, y in train_dl:
-        for k, v in x:
+        for k, v in x.items():
             if isinstance(v, torch.Tensor):
                 x[k] = v.to(device)
         
         with torch.no_grad():
             _, attn_maps = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+        
+        B, _, L = x['msa'].shape
+        assert B == 1
+        
+        mask = torch.ones((L, ), device=device)
+        for token in cull_tokens:
+            mask -= (x['msa'][:, 0].reshape((L, )) == token).int()
+        mask = mask.bool()
+        degapped_L = int(mask.sum())
+        mask = torch.reshape(mask, (B, 1, L))
+        mask = torch.logical_and(mask.reshape((B, 1, L)).expand(B, L, L), mask.reshape((B, L, 1)).expand(B, L, L))
+        mask = mask.reshape((B, 1, L, L)).expand((B, num_maps, L, L))
 
         attn_maps = torch.cat([m.squeeze(dim=2) for m in attn_maps], dim=1)  # [B, num_maps, L, L]
+        attn_maps = attn_maps.masked_select(mask).reshape(B, num_maps, degapped_L, degapped_L)
         attn_maps = torch.permute(attn_maps, (0, 2, 3, 1))  # [B, L, L, num_maps]
-        num_maps = attn_maps.shape[-1]
+        
+        assert num_maps == attn_maps.shape[-1]
+        
         attn_maps = attn_maps.view(-1, num_maps)  # [B*L*L, num_maps]
         attn_maps_list.append(attn_maps)
         
-        target_list.append(y['contact'].view(-1))  # [B*L*L]
+        targets_list.append(y['contact'].view(-1))  # [B*L*L]
     
     attn_maps = torch.cat(attn_maps_list)  # [B*L*L, num_maps]
     targets = torch.cat(targets_list)  # [B*L*L]
