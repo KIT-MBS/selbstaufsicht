@@ -175,7 +175,7 @@ def main():
     targets = targets[targets != -1]
     
     attn_maps = attn_maps.cpu().numpy()
-    targets = targets.numpy()
+    targets = targets.cpu().numpy()
     
     print(attn_maps.shape)
         
