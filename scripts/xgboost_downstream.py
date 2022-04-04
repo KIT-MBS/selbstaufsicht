@@ -1,6 +1,5 @@
 import argparse
 from datetime import datetime
-import glob
 import os
 import random
 
@@ -9,15 +8,9 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.plugins import DDPPlugin
-
 from selbstaufsicht import models
 from selbstaufsicht import datasets
-from selbstaufsicht.modules import SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss
-from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
+from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks
 from selbstaufsicht.utils import data_loader_worker_init
 
 
@@ -47,6 +40,8 @@ def main():
     torch.manual_seed(args.rng_seed)
     np.random.seed(args.rng_seed)
     random.seed(args.rng_seed)
+    data_loader_rng = torch.Generator()
+    data_loader_rng.manual_seed(args.rng_seed)
     
     if not args.no_gpu and torch.cuda.is_available():
         device = torch.device('cuda:0')
@@ -66,6 +61,8 @@ def main():
                           batch_size=args.batch_size,
                           shuffle=False,
                           num_workers=0,
+                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
+                          generator=data_loader_rng,
                           pin_memory=False)
 
     dt_now = datetime.now()
@@ -97,7 +94,6 @@ def main():
     if h_params['task_contrastive']:
         tasks.append("contrastive")
         
-    train_metrics, val_metrics, test_metrics = get_downstream_metrics()
     _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                  h_params['feature_dim_head'] * h_params['num_heads'],
                                                  subsample_depth=h_params['subsampling_depth'],
