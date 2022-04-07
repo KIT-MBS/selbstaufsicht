@@ -3,16 +3,38 @@ from datetime import datetime
 from functools import partial
 import os
 import random
+from typing import List, Tuple
 
 import numpy as np
+import pandas as pd
+from sklearn.model_selection import KFold
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+import xgboost as xgb
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks
 from selbstaufsicht.utils import data_loader_worker_init
+
+
+def xgb_accuracy(preds: np.ndarray, dtrain: xgb.DMatrix) -> Tuple[str, float]:
+    """
+    Custom XGBoost Metric for accuracy.
+
+    Args:
+        preds (np.ndarray): Predictions [B].
+        dtrain (xgb.DMatrix): Training data (x: [B, num_maps], y: [B]).
+
+    Returns:
+        Tuple[str, float]: Metric name; metric value.
+    """
+    
+    y = dtrain.get_label()  # [B]
+    acc = float(sum(y == np.round(preds))) / len(y) 
+    
+    return 'accuracy', acc
 
 
 def main():
@@ -23,16 +45,31 @@ def main():
     parser.add_argument('--distance-threshold', default=10., type=float, help="Minimum distance between two atoms in angström that is not considered as a contact")
     # Preprocessing
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
+    parser.add_argument('--diag-shift', default=4, type=int, help="Width of the area around the main diagonal of prediction maps that is ignored.")
     # Training process
-    parser.add_argument('--batch-size', default=1, type=int, help="Batch size (attention-map computation)")
+    parser.add_argument('--booster', default='dart' type=str, help="Booster algorithm used by XGBoost: gbtree, dart.")
+    parser.add_argument('--num-round', default=100, type=int, help="Number of rounds performed by XGBoost.")
+    parser.add_argument('--num-early-stopping-round', default=100, type=int, help="Number of rounds in which the validation metric needs to improve at least once in order to continue training.")
+    parser.add_argument('--batch-size', default=1, type=int, help="Batch size (attention-map computation). Currently restricted to 1.")
+    parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
+    parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
-    parser.add_argument('--validation-ratio', default=0.1, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
+    parser.add_argument('--validation-ratio', default=0.2, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
     parser.add_argument('--cv-num-folds', default=1, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
+    # XGBoost HParams
+    parser.add_argument('--learning-rate', default=0.3, type=float, help="Learning rate used by XGBoost.")
+    parser.add_argument('--gamma', default=0.3, type=float, help="Minimum loss reduction required to make a further partition on a leaf node of the tree. Increases model bias.")
+    parser.add_argument('--max-depth', default=6, type=int, help="Maximum depth of a tree. Increasing this value will make the model more complex and more likely to overfit. 0 indicates no limit on depth.")
+    parser.add_argument('--min-child-width', default=1., type=float, help="Minimum sum of instance weight (hessian) needed in a child. Increases model bias.")
+    parser.add_argument('--xgb-subsampling-rate', default=1., type=float, help="Subsample ratio of the training instances used by XGBoost. Setting it to 0.5 means that XGBoost would randomly sample half of the training data prior to growing trees, preventing overfitting.")
+    parser.add_argument('--xgb-subsampling-mode', default='uniform' type=str, help="The method used to sample the training instances by XGBoost: uniform, gradient_based.")
+    parser.add_argument('--scale-pos-weight', default=1., type=float, help="Controls the balance of positive and negative weights, useful for unbalanced classes.")
+    parser.add_argument('--dart-dropout', default=0., type=float, help="Tree dropout rate of XGBoost DART.")
     # GPU
     parser.add_argument('--no-gpu', action='store_true', help="disables cuda")
     # Logging
-    parser.add_argument('--log-dir', default='', type=str, help='Logging directory. If empty, the directory of the pre-trained model is used. Default: \"\"')
+    parser.add_argument('--log-dir', default='xgb_logs/', type=str, help='Logging directory. If empty, the directory of the pre-trained model is used. Default: \"xgb_logs/\"')
     parser.add_argument('--log-exp-name', default='', type=str, help='Logging experiment name. If empty, the experiment name of the pre-trained model is used. Default: \"\"')
     parser.add_argument('--log-run-name', default='', type=str, help='Logging run name. Supports 1989 C standard datetime codes. If empty, the run name of the pre-trained model is used, prefixed by \"downstream__\". Default: \"\"')
 
@@ -67,13 +104,13 @@ def main():
                           pin_memory=False)
 
     dt_now = datetime.now()
-    log_dir = h_params['log_dir'] if args.log_dir == "" else args.log_dir
     log_exp_name = h_params['log_exp_name'] if args.log_exp_name == "" else args.log_exp_name
-    log_run_name = "downstream__" + h_params['log_run_name'] if args.log_run_name == "" else dt_now.strftime(args.log_run_name)
-    if args.cv_num_folds >= 2:
-        log_exp_name = log_run_name
-    h_params['downstream__log_dir'] = log_dir
-    h_params['downstream__log_exp_name'] = log_exp_name
+    log_run_name = "downstream__xgb__" + h_params['log_run_name'] if args.log_run_name == "" else dt_now.strftime(args.log_run_name)
+    
+    if log_exp_name == "":
+        log_path = os.path.join(args.log_dir, log_run_name)
+    else:
+        log_path = os.path.join(args.log_dir, log_exp_name, log_run_name)
     
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
@@ -154,68 +191,87 @@ def main():
         mask = torch.logical_and(mask.reshape((B, 1, L)).expand(B, L, L), mask.reshape((B, L, 1)).expand(B, L, L))
         mask = mask.reshape((B, 1, L, L)).expand((B, num_maps, L, L))
 
-        attn_maps = torch.cat([m.squeeze(dim=2) for m in attn_maps], dim=1)  # [B, num_maps, L, L]
+        attn_maps = torch.cat([m.squeeze(dim=2) for m in attn_maps], dim=1)  # [1, num_maps, L, L]
         attn_maps = attn_maps.masked_select(mask).reshape(B, num_maps, degapped_L, degapped_L)
-        attn_maps = torch.permute(attn_maps, (0, 2, 3, 1))  # [B, L, L, num_maps]
+        attn_maps = torch.permute(attn_maps, (0, 2, 3, 1))  # [1, L, L, num_maps]
         
         assert num_maps == attn_maps.shape[-1]
         
-        attn_maps = attn_maps.view(-1, num_maps)  # [B*L*L, num_maps]
-        attn_maps_list.append(attn_maps)
+        attn_maps = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
+        target = y['contact'].view(-1)  # [1*L*L]
         
-        targets_list.append(y['contact'].view(-1))  # [B*L*L]
+        # exclude lower triangle and unknown target points, apply diag shift
+        mask = target != -1
+        mask = torch.logical_and(mask, torch.triu(torch.ones_like(mask), args.diag_shift))
+        
+        attn_maps = attn_maps[mask, :]
+        target = target[mask]
+        
+        attn_maps_list.append(attn_maps)
+        targets_list.append(target)
     
     attn_maps = torch.cat(attn_maps_list)  # [B*L*L, num_maps]
     targets = torch.cat(targets_list)  # [B*L*L]
     
-    attn_maps = attn_maps[targets != -1, :]
-    targets = targets[targets != -1]
-    
     attn_maps = attn_maps.cpu().numpy()
     targets = targets.cpu().numpy()
     
-    print(attn_maps.shape)
-        
-    # for fold_idx in range(args.cv_num_folds):
-    #     if args.cv_num_folds >= 2:
-    #         log_run_name = 'fold_%d' % (fold_idx + 1)
-    #     h_params['downstream__log_run_name'] = log_run_name
-        
-        
-        
-    #     kfold_cv_downstream.setup_fold_index(fold_idx)
-
-    #     train_dl = kfold_cv_downstream.train_dataloader()
-    #     val_dl = kfold_cv_downstream.val_dataloader()
-        
-    #     trainer = Trainer(max_epochs=args.num_epochs,
-    #                       gpus=args.num_gpus,
-    #                       auto_select_gpus=num_gpus > 0,
-    #                       num_nodes=args.num_nodes,
-    #                       precision=args.precision,
-    #                       strategy=dp_strategy,
-    #                       enable_progress_bar=not args.disable_progress_bar,
-    #                       log_every_n_steps=args.log_every,
-    #                       logger=tb_logger,
-    #                       callbacks=[checkpoint_callback])
-    #     trainer.fit(model, train_dl, val_dl)
-
-    # if args.test:
-    #     trainer = Trainer(gpus=1 if num_gpus > 0 else 0,
-    #                       logger=tb_logger,
-    #                       enable_progress_bar=not args.disable_progress_bar)
-    #     checkpoint_path = log_dir
-    #     if log_exp_name != "":
-    #         checkpoint_path += '%s/' % log_exp_name
-    #     checkpoint_path += '%s/checkpoints/' % log_run_name
-        
-    #     # seaching for the latest file is a little bit hacky, but should work
-    #     checkpoint_list = glob.glob('%s*.ckpt' % checkpoint_path)
-    #     latest_checkpoint = max(checkpoint_list, key=os.path.getctime)
-        
-    #     model.downstream_loss_device_flag = False
-
-    #     trainer.test(model, test_dl, ckpt_path=latest_checkpoint, verbose=True)
+    params = {
+        'booster': args.booster,
+        'eta': args.learning_rate,
+        'gamma': args.gamma,
+        'max_depth': args.max_depth,
+        'min_child_width': args.min_child_width,
+        'subsample': args.xgb_subsample_rate,
+        'sampling_method': args.xgb_subsampling_mode,
+        'scale_pos_weight': args.scale_pos_weight,
+        'objective': 'binary:logistic'
+    }
     
+    if args.booster == 'dart':
+        params['dart_dropout'] = args.dart_dropout
+        
+    if args.no_gpu:
+        params['tree_method'] = 'hist'
+    else:
+        params['tree_method'] = 'gpu_hist'
+    
+    if args.cv_num_folds == 1:
+        val_size = int(args.validation_ratio * attn_maps.shape[0])
+        indices = np.random.permutation(attn_maps.shape[0])
+        
+        train_attn_maps, val_attn_maps = attn_maps[indices[val_size:], :], attn_maps[indices[:val_size], :]
+        train_targets, val_targets = targets[indices[val_size:]], targets[indices[:val_size]]
+        
+        train_data = xgb.DMatrix(train_attn_maps, label=train_targets)
+        val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
+        
+        evals_result = {}
+        xgb_model = xgb.train(params, train_data, evals=[(val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, custom_metric=xgb_accuracy, 
+                              maximize=True, seed=args.rng_seed, shuffle=not args.disable_shuffle, early_stopping_rounds=args.num_early_stopping_round, 
+                              verbose_eval=not args.disable_progress_bar)
+        xgb_model.save_model(os.path.join(log_path, 'checkpoint.model'))
+        
+        results = {}
+        for k1, v1 in evals_result:
+            for k2, v2 in v1:
+                results['%s_%s' % (k2, k1)] = v2
+        results = pd.DataFrame.from_dict(results)
+        results.to_csv(os.path.join(log_path, 'train_log.csv'))
+        
+    elif args.cv_num_folds > 1:
+        data = xgb.DMatrix(attn_maps, label=targets)
+        folds = KFold(args.cv_num_folds, shuffle=not args.disable_shuffle, random_state=args.rng_seed)
+        
+        results = xgb.cv(params, data, num_boost_round=args.num_round, nfold=args.cv_num_folds, folds=folds, custom_metric=xgb_accuracy, maximize=True, seed=args.rng_seed, 
+                         shuffle=not args.disable_shuffle, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
+        
+        print('\n\nCV Results:\n', results)
+        with open(os.path.join(log_path, 'cv_log.txt'), 'w') as f:
+            f.writelines(results)
+    else:
+        raise ValueError("Number of CV folds must be positive!")
+
+
 if __name__ == '__main__':
     main()
