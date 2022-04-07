@@ -47,7 +47,7 @@ def main():
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
     parser.add_argument('--diag-shift', default=4, type=int, help="Width of the area around the main diagonal of prediction maps that is ignored.")
     # Training process
-    parser.add_argument('--booster', default='dart' type=str, help="Booster algorithm used by XGBoost: gbtree, dart.")
+    parser.add_argument('--booster', default='dart', type=str, help="Booster algorithm used by XGBoost: gbtree, dart.")
     parser.add_argument('--num-round', default=100, type=int, help="Number of rounds performed by XGBoost.")
     parser.add_argument('--num-early-stopping-round', default=100, type=int, help="Number of rounds in which the validation metric needs to improve at least once in order to continue training.")
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (attention-map computation). Currently restricted to 1.")
@@ -61,9 +61,9 @@ def main():
     parser.add_argument('--learning-rate', default=0.3, type=float, help="Learning rate used by XGBoost.")
     parser.add_argument('--gamma', default=0.3, type=float, help="Minimum loss reduction required to make a further partition on a leaf node of the tree. Increases model bias.")
     parser.add_argument('--max-depth', default=6, type=int, help="Maximum depth of a tree. Increasing this value will make the model more complex and more likely to overfit. 0 indicates no limit on depth.")
-    parser.add_argument('--min-child-width', default=1., type=float, help="Minimum sum of instance weight (hessian) needed in a child. Increases model bias.")
+    parser.add_argument('--min-child-weight', default=1., type=float, help="Minimum sum of instance weight (hessian) needed in a child. Increases model bias.")
     parser.add_argument('--xgb-subsampling-rate', default=1., type=float, help="Subsample ratio of the training instances used by XGBoost. Setting it to 0.5 means that XGBoost would randomly sample half of the training data prior to growing trees, preventing overfitting.")
-    parser.add_argument('--xgb-subsampling-mode', default='uniform' type=str, help="The method used to sample the training instances by XGBoost: uniform, gradient_based.")
+    parser.add_argument('--xgb-subsampling-mode', default='uniform', type=str, help="The method used to sample the training instances by XGBoost: uniform, gradient_based.")
     parser.add_argument('--scale-pos-weight', default=1., type=float, help="Controls the balance of positive and negative weights, useful for unbalanced classes.")
     parser.add_argument('--dart-dropout', default=0., type=float, help="Tree dropout rate of XGBoost DART.")
     # GPU
@@ -111,6 +111,9 @@ def main():
         log_path = os.path.join(args.log_dir, log_run_name)
     else:
         log_path = os.path.join(args.log_dir, log_exp_name, log_run_name)
+        
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
     
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
@@ -221,15 +224,16 @@ def main():
         'eta': args.learning_rate,
         'gamma': args.gamma,
         'max_depth': args.max_depth,
-        'min_child_width': args.min_child_width,
-        'subsample': args.xgb_subsample_rate,
+        'min_child_weight': args.min_child_weight,
+        'subsample': args.xgb_subsampling_rate,
         'sampling_method': args.xgb_subsampling_mode,
         'scale_pos_weight': args.scale_pos_weight,
-        'objective': 'binary:logistic'
+        'objective': 'binary:logistic',
+        'seed': args.rng_seed
     }
     
     if args.booster == 'dart':
-        params['dart_dropout'] = args.dart_dropout
+        params['rate_drop'] = args.dart_dropout
         
     if args.no_gpu:
         params['tree_method'] = 'hist'
@@ -247,9 +251,8 @@ def main():
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
         
         evals_result = {}
-        xgb_model = xgb.train(params, train_data, evals=[(val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, custom_metric=xgb_accuracy, 
-                              maximize=True, seed=args.rng_seed, shuffle=not args.disable_shuffle, early_stopping_rounds=args.num_early_stopping_round, 
-                              verbose_eval=not args.disable_progress_bar)
+        xgb_model = xgb.train(params, train_data, evals=[(val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, feval=xgb_accuracy, 
+                              maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
         xgb_model.save_model(os.path.join(log_path, 'checkpoint.model'))
         
         results = {}
@@ -263,8 +266,8 @@ def main():
         data = xgb.DMatrix(attn_maps, label=targets)
         folds = KFold(args.cv_num_folds, shuffle=not args.disable_shuffle, random_state=args.rng_seed)
         
-        results = xgb.cv(params, data, num_boost_round=args.num_round, nfold=args.cv_num_folds, folds=folds, custom_metric=xgb_accuracy, maximize=True, seed=args.rng_seed, 
-                         shuffle=not args.disable_shuffle, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
+        results = xgb.cv(params, data, num_boost_round=args.num_round, nfold=args.cv_num_folds, folds=folds, feval=xgb_accuracy, maximize=True, 
+                         early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
         
         print('\n\nCV Results:\n', results)
         with open(os.path.join(log_path, 'cv_log.txt'), 'w') as f:
