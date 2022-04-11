@@ -19,7 +19,21 @@ from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_trans
 from selbstaufsicht.utils import data_loader_worker_init
 
 
-def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray) -> Tuple[str, float]:
+def sigmoid(x: np.ndarray) -> np.ndarray:
+    """
+    Applies sigmoid function.
+    
+    Args:
+        x (np.ndarray): Input data.
+        
+    Returns:
+        np.ndarray: Output data.
+    """
+
+    return 1 / (1 + np.exp(-x))
+
+
+def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, treat_all_preds_positive: bool = False) -> Tuple[str, float]:
     """
     Custom XGBoost Metric for top-L-precision.
 
@@ -27,7 +41,8 @@ def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.
         preds (np.ndarray): Predictions [B] as logits.
         dtrain (xgb.DMatrix): Training data (x: [B, num_maps], y: [B]).
         msa_mappings (Tuple[np.ndarray, np.ndarray]): Mapping: Data point -> MSA index [B] (Train, Val).
-        L_mapping (np.ndarray): Mapping: MSA index -> MSA L. 
+        L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
+        treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
 
     Returns:
         Tuple[str, float]: Metric name; metric value.
@@ -57,9 +72,15 @@ def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.
         L = L_mapping[msa_idx]
         L_idx = np.argpartition(preds_, -L)[-L:]  # [L]
         
-        tp += sum(y_[L_idx] == 1)
-        fp += sum(y_[L_idx] == 0)
-    
+        preds_ = np.round(sigmoid(preds_[L_idx]))
+        y_ = y_[L_idx]
+        
+        if treat_all_preds_positive:
+            tp += sum(y_ == 1)
+            fp += sum(y_ == 0)
+        else:
+            tp += sum(np.logical_and(preds_ == 1, y_ == 1))
+            fp += sum(np.logical_and(preds_ == 1, y_ == 0))
     
     top_l_prec = float(tp) / (tp + fp)
     
@@ -86,6 +107,7 @@ def main():
     parser.add_argument('--validation-ratio', default=0.2, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
     parser.add_argument('--cv-num-folds', default=1, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
+    parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
     # XGBoost HParams
     parser.add_argument('--learning-rate', default=0.3, type=float, help="Learning rate used by XGBoost.")
     parser.add_argument('--gamma', default=0.3, type=float, help="Minimum loss reduction required to make a further partition on a leaf node of the tree. Increases model bias.")
@@ -290,7 +312,7 @@ def main():
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
         
         evals_result = {}
-        metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping)
+        metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, treat_all_preds_positive=args.treat_all_preds_positive)
         xgb_model = xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, 
                               feval=metric, maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
         xgb_model.save_model(os.path.join(log_path, 'checkpoint.model'))
