@@ -326,14 +326,29 @@ def main():
         
     elif args.cv_num_folds > 1:
         data = xgb.DMatrix(attn_maps, label=targets)
-        folds = KFold(args.cv_num_folds, shuffle=not args.disable_shuffle, random_state=args.rng_seed)
+        splits = [split for split in KFold(args.cv_num_folds, shuffle=not args.disable_shuffle, random_state=args.rng_seed).split(range(attn_maps.shape[0]))]
         
-        results = xgb.cv(params, data, num_boost_round=args.num_round, nfold=args.cv_num_folds, folds=folds, feval=xgb_accuracy, maximize=True, 
-                         early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
-        
-        print('\n\nCV Results:\n', results)
-        with open(os.path.join(log_path, 'cv_log.txt'), 'w') as f:
-            f.writelines(results)
+        for idx in range(args.cv_num_folds):
+            train_indices, val_indices = splits[idx]
+
+            train_attn_maps, val_attn_maps = attn_maps[train_indices, :], attn_maps[val_indices, :]
+            train_targets, val_targets = targets[train_indices], targets[val_indices]
+            train_msa_mapping, val_msa_mapping = msa_mapping[train_indices], msa_mapping[val_indices]
+            
+            train_data = xgb.DMatrix(train_attn_maps, label=train_targets)
+            val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
+            
+            evals_result = {}
+            metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, treat_all_preds_positive=args.treat_all_preds_positive)
+            xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, 
+                    feval=metric, maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
+            
+            results = {}
+            for k1, v1 in evals_result.items():
+                for k2, v2 in v1.items():
+                    results['%s_%s' % (k2, k1)] = v2
+            results = pd.DataFrame.from_dict(results)
+            results.to_csv(os.path.join(log_path, 'cv_%d_log.csv' % idx))
     else:
         raise ValueError("Number of CV folds must be positive!")
 
