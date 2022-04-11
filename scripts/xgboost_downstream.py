@@ -19,36 +19,51 @@ from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_trans
 from selbstaufsicht.utils import data_loader_worker_init
 
 
-def sigmoid(x: np.array) -> np.array:
+def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray) -> Tuple[str, float]:
     """
-    Applies sigmoid function.
-
-    Args:
-        x (np.array): Input data.
-
-    Returns:
-        np.array: Output data.
-    """
-    
-    return 1 / (1 + np.exp(-x))
-
-
-def xgb_accuracy(preds: np.ndarray, dtrain: xgb.DMatrix) -> Tuple[str, float]:
-    """
-    Custom XGBoost Metric for accuracy.
+    Custom XGBoost Metric for top-L-precision.
 
     Args:
         preds (np.ndarray): Predictions [B] as logits.
         dtrain (xgb.DMatrix): Training data (x: [B, num_maps], y: [B]).
+        msa_mappings (Tuple[np.ndarray, np.ndarray]): Mapping: Data point -> MSA index [B] (Train, Val).
+        L_mapping (np.ndarray): Mapping: MSA index -> MSA L. 
 
     Returns:
         Tuple[str, float]: Metric name; metric value.
     """
     
     y = dtrain.get_label()  # [B]
-    acc = float(sum(y == np.round(sigmoid(preds)))) / len(y) 
     
-    return 'accuracy', acc
+    # Dirty hack: Find out by data length, whether training or validation is active. Only works, if training and validation dataset have different lengths.
+    B = len(y)
+    if len(msa_mappings[0]) == B:
+        msa_mapping = msa_mappings[0]
+    elif len(msa_mappings[1]) == B:
+        msa_mapping = msa_mappings[1]
+    else:
+        raise ValueError("Given data length does not match to msa_mappings: %d != (%d, %d)" % (B, len(msa_mappings[0]), len(msa_mappings[1])))
+    
+    msa_indices = np.unique(msa_mapping)
+    tp = 0
+    fp = 0
+    
+    # for each MSA, find top-L and compute true/false positives
+    for msa_idx in msa_indices:
+        mask = msa_mapping == msa_idx  # [B]
+        preds_ = preds[mask]
+        y_ = y[mask]
+        
+        L = L_mapping[msa_idx]
+        L_idx = np.argpartition(preds_, -L)[-L:]  # [L]
+        
+        tp += sum(y_[L_idx] == 1)
+        fp += sum(y_[L_idx] == 0)
+    
+    
+    top_l_prec = float(tp) / (tp + fp)
+    
+    return 'topLPrec', top_l_prec
 
 
 def main():
@@ -187,8 +202,10 @@ def main():
     
     attn_maps_list = []
     targets_list = []
+    msa_mapping_list = []
+    L_mapping_list = []
     
-    for x, y in train_dl:
+    for idx, (x, y) in enumerate(train_dl):
         for k, v in x.items():
             if isinstance(v, torch.Tensor):
                 x[k] = v.to(device)
@@ -216,6 +233,7 @@ def main():
         
         attn_maps = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
         target = y['contact'].view(-1)  # [1*L*L]
+        msa_mapping = torch.full_like(target, idx)  # [1*L*L]
         
         # exclude lower triangle and unknown target points, apply diag shift
         mask = target != -1
@@ -223,15 +241,21 @@ def main():
         
         attn_maps = attn_maps[mask, :]
         target = target[mask]
+        msa_mapping = msa_mapping[mask]
         
         attn_maps_list.append(attn_maps)
         targets_list.append(target)
+        msa_mapping_list.append(msa_mapping)
+        L_mapping_list.append(L)
     
     attn_maps = torch.cat(attn_maps_list)  # [B*L*L, num_maps]
     targets = torch.cat(targets_list)  # [B*L*L]
+    msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L]
     
     attn_maps = attn_maps.cpu().numpy()
     targets = targets.cpu().numpy()
+    msa_mapping = msa_mapping.cpu().numpy()
+    L_mapping = np.array(L_mapping_list)
     
     params = {
         'booster': args.booster,
@@ -260,13 +284,15 @@ def main():
         
         train_attn_maps, val_attn_maps = attn_maps[indices[val_size:], :], attn_maps[indices[:val_size], :]
         train_targets, val_targets = targets[indices[val_size:]], targets[indices[:val_size]]
+        train_msa_mapping, val_msa_mapping = msa_mapping[indices[val_size:]], msa_mapping[indices[:val_size]]
         
         train_data = xgb.DMatrix(train_attn_maps, label=train_targets)
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
         
         evals_result = {}
-        xgb_model = xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, feval=xgb_accuracy, 
-                              maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
+        metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping)
+        xgb_model = xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, 
+                              feval=metric, maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
         xgb_model.save_model(os.path.join(log_path, 'checkpoint.model'))
         
         results = {}
