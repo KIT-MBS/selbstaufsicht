@@ -19,12 +19,26 @@ from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_trans
 from selbstaufsicht.utils import data_loader_worker_init
 
 
+def sigmoid(x: np.array) -> np.array:
+    """
+    Applies sigmoid function.
+
+    Args:
+        x (np.array): Input data.
+
+    Returns:
+        np.array: Output data.
+    """
+    
+    return 1 / (1 + np.exp(-x))
+
+
 def xgb_accuracy(preds: np.ndarray, dtrain: xgb.DMatrix) -> Tuple[str, float]:
     """
     Custom XGBoost Metric for accuracy.
 
     Args:
-        preds (np.ndarray): Predictions [B].
+        preds (np.ndarray): Predictions [B] as logits.
         dtrain (xgb.DMatrix): Training data (x: [B, num_maps], y: [B]).
 
     Returns:
@@ -32,7 +46,7 @@ def xgb_accuracy(preds: np.ndarray, dtrain: xgb.DMatrix) -> Tuple[str, float]:
     """
     
     y = dtrain.get_label()  # [B]
-    acc = float(sum(y == np.round(preds))) / len(y) 
+    acc = float(sum(y == np.round(sigmoid(preds)))) / len(y) 
     
     return 'accuracy', acc
 
@@ -228,7 +242,7 @@ def main():
         'subsample': args.xgb_subsampling_rate,
         'sampling_method': args.xgb_subsampling_mode,
         'scale_pos_weight': args.scale_pos_weight,
-        'objective': 'binary:logistic',
+        'objective': 'binary:logitraw',
         'seed': args.rng_seed
     }
     
@@ -251,13 +265,13 @@ def main():
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
         
         evals_result = {}
-        xgb_model = xgb.train(params, train_data, evals=[(val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, feval=xgb_accuracy, 
+        xgb_model = xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, feval=xgb_accuracy, 
                               maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
         xgb_model.save_model(os.path.join(log_path, 'checkpoint.model'))
         
         results = {}
-        for k1, v1 in evals_result:
-            for k2, v2 in v1:
+        for k1, v1 in evals_result.items():
+            for k2, v2 in v1.items():
                 results['%s_%s' % (k2, k1)] = v2
         results = pd.DataFrame.from_dict(results)
         results.to_csv(os.path.join(log_path, 'train_log.csv'))
