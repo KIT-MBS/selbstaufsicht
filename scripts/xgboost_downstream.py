@@ -315,7 +315,7 @@ def main():
         metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, treat_all_preds_positive=args.treat_all_preds_positive)
         xgb_model = xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, 
                               feval=metric, maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
-        xgb_model.save_model(os.path.join(log_path, 'checkpoint.model'))
+        xgb_model.save_model(os.path.join(log_path, 'model_checkpoint.json'))
         
         results = {}
         for k1, v1 in evals_result.items():
