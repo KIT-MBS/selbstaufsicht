@@ -3,6 +3,10 @@ from functools import partial
 import os
 import random
 from typing import Any, Dict, List, Tuple
+import xgboost as xgb
+import mpi4py
+#mpi4py.rc.initialize=False
+#mpi4py.rc.finalize=False
 
 from mpi4py import MPI
 import numpy as np
@@ -11,10 +15,10 @@ from sklearn.model_selection import KFold
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-import xgboost as xgb
 
-from propulate import Propulator
+from propulate import Islands
 from propulate.utils import get_default_propagator
+from propulate.propagators import SelectBest, SelectWorst, SelectUniform
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
@@ -343,10 +347,18 @@ def main():
     objective_fn = partial(hparam_objective, attn_maps=attn_maps, targets=targets, msa_mapping=msa_mapping, L_mapping=L_mapping, 
                            num_early_stopping_round=args.num_early_stopping_round, cv_num_folds=args.cv_num_folds, 
                            treat_all_preds_positive=args.treat_all_preds_positive, gpu_id=gpu_id)
+    num_migrants = 1
+    migration_topology = num_migrants*np.ones((4, 4), dtype=int)
+    np.fill_diagonal(migration_topology, 0)
     propagator = get_default_propagator(args.prop_pop_size, limits, args.prop_mate_p, args.prop_mut_p, args.prop_rand_p)
-    propulator = Propulator(objective_fn, propagator, generations=args.prop_num_generations)
-    propulator.propulate()
-    propulator.summarize()
+    islands = Islands(objective_fn, propagator, generations=args.prop_num_generations,
+                      num_isles=4, isle_sizes=[4, 4, 4, 4], migration_topology=migration_topology,
+                      load_checkpoint = "pop_cpt.p",
+                      save_checkpoint="pop_cpt.p", seed=9,
+                      migration_probability=0.9,
+                      emigration_propagator=SelectBest, immigration_propagator=SelectWorst,
+                      pollination=False)
+    islands.evolve(top_n=1, logging_interval=1)
 
 
 if __name__ == '__main__':
