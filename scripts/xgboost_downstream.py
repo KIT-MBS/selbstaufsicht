@@ -98,8 +98,6 @@ def main():
     parser.add_argument('--diag-shift', default=4, type=int, help="Width of the area around the main diagonal of prediction maps that is ignored.")
     # Training process
     parser.add_argument('--booster', default='dart', type=str, help="Booster algorithm used by XGBoost: gbtree, dart.")
-    parser.add_argument('--num-round', default=100, type=int, help="Number of rounds performed by XGBoost.")
-    parser.add_argument('--num-early-stopping-round', default=100, type=int, help="Number of rounds in which the validation metric needs to improve at least once in order to continue training.")
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (attention-map computation). Currently restricted to 1.")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
@@ -109,6 +107,8 @@ def main():
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
     # XGBoost HParams
+    parser.add_argument('--num-round', default=100, type=int, help="Number of rounds performed by XGBoost. Also equals the number of trees.")
+    parser.add_argument('--num-early-stopping-round', default=20, type=int, help="Number of rounds in which the validation metric needs to improve at least once in order to continue training.")
     parser.add_argument('--learning-rate', default=0.3, type=float, help="Learning rate used by XGBoost.")
     parser.add_argument('--gamma', default=0.3, type=float, help="Minimum loss reduction required to make a further partition on a leaf node of the tree. Increases model bias.")
     parser.add_argument('--max-depth', default=6, type=int, help="Maximum depth of a tree. Increasing this value will make the model more complex and more likely to overfit. 0 indicates no limit on depth.")
