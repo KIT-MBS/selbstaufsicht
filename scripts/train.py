@@ -303,12 +303,15 @@ def main():
     #print(a['msa'].shape)
 
 
-    model = models.self_supervised.MSAModel.load_from_checkpoint(#models.self_supervised.MSAModel(
+    model = models.self_supervised.MSAModel(
     #models.self_supervised.MSAModel.load_from_checkpoint(
-        num_blocks=args.num_blocks,
-        num_heads=args.num_heads,
-        feature_dim_head=args.feature_dim_head,
-        checkpoint_path=args.checkpoint,
+        #num_blocks=
+        args.num_blocks,
+        #num_heads=
+        args.num_heads,
+        #feature_dim_head=
+        args.feature_dim_head,
+        #checkpoint_path=args.checkpoint,
         task_heads=task_heads,
         task_losses=task_losses,
         task_loss_weights=task_loss_weights,
