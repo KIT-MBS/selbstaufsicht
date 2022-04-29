@@ -33,15 +33,16 @@ def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-x))
 
 
-def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, treat_all_preds_positive: bool = False) -> Tuple[str, float]:
+def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> Tuple[str, float]:
     """
-    Custom XGBoost Metric for top-L-precision.
+    Custom XGBoost Metric for top-(k*L)-precision.
 
     Args:
         preds (np.ndarray): Predictions [B] as logits.
         dtrain (xgb.DMatrix): Training data (x: [B, num_maps], y: [B]).
         msa_mappings (Tuple[np.ndarray, np.ndarray]): Mapping: Data point -> MSA index [B] (Train, Val).
         L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
+        k (float, optional): Coefficient k that is used in computing the top-(k*L)-precision. Defaults to 1.
         treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
 
     Returns:
@@ -70,7 +71,8 @@ def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.
         y_ = y[mask]
         
         L = L_mapping[msa_idx]
-        L_idx = np.argpartition(preds_, -L)[-L:]  # [L]
+        kL = min(int(k*L), len(y_))
+        L_idx = np.argpartition(preds_, -kL)[-kL:]  # [k*L]
         
         preds_ = np.round(sigmoid(preds_[L_idx]))
         y_ = y_[L_idx]
@@ -105,6 +107,7 @@ def main():
     parser.add_argument('--validation-ratio', default=0.2, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
     parser.add_argument('--cv-num-folds', default=1, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
+    parser.add_argument('--top-l-prec-coeff', default=1., type=float, help="Coefficient k that is used in computing the top-(k*L)-precision.")
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
     # XGBoost HParams
     parser.add_argument('--num-round', default=100, type=int, help="Number of rounds performed by XGBoost. Also equals the number of trees.")
@@ -156,7 +159,7 @@ def main():
 
     dt_now = datetime.now()
     log_exp_name = h_params['log_exp_name'] if args.log_exp_name == "" else args.log_exp_name
-    log_run_name = "downstream__xgb__" + h_params['log_run_name'] if args.log_run_name == "" else dt_now.strftime(args.log_run_name)
+    log_run_name = "downstream__xgb__k_%s__" % str(args.top_l_prec_coeff).replace('.', '_') + h_params['log_run_name'] if args.log_run_name == "" else dt_now.strftime(args.log_run_name)
     
     if log_exp_name == "":
         log_path = os.path.join(args.log_dir, log_run_name)
@@ -268,11 +271,11 @@ def main():
         attn_maps_list.append(attn_maps)
         targets_list.append(target)
         msa_mapping_list.append(msa_mapping)
-        L_mapping_list.append(L)
+        L_mapping_list.append(degapped_L)
     
-    attn_maps = torch.cat(attn_maps_list)  # [B*L*L, num_maps]
-    targets = torch.cat(targets_list)  # [B*L*L]
-    msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L]
+    attn_maps = torch.cat(attn_maps_list)  # [B*L*L/2, num_maps]
+    targets = torch.cat(targets_list)  # [B*L*L/2]
+    msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L/2]
     
     attn_maps = attn_maps.cpu().numpy()
     targets = targets.cpu().numpy()
@@ -312,7 +315,7 @@ def main():
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
         
         evals_result = {}
-        metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, treat_all_preds_positive=args.treat_all_preds_positive)
+        metric = partial(xgb_topkLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=args.treat_all_preds_positive)
         xgb_model = xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, 
                               feval=metric, maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
         xgb_model.save_model(os.path.join(log_path, 'model_checkpoint.json'))
@@ -339,7 +342,7 @@ def main():
             val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
             
             evals_result = {}
-            metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, treat_all_preds_positive=args.treat_all_preds_positive)
+            metric = partial(xgb_topkLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=args.treat_all_preds_positive)
             xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, 
                     feval=metric, maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
             

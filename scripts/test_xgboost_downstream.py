@@ -8,6 +8,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -32,7 +33,7 @@ def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-x))
 
 
-def xgb_topLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, treat_all_preds_positive: bool = False) -> float:
+def xgb_topkLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> float:
     """
     Custom XGBoost Metric for top-L-precision.
 
@@ -41,6 +42,7 @@ def xgb_topLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray,
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
         L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
+        k (float, optional): Coefficient k that is used in computing the top-(k*L)-precision. Defaults to 1.
         treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
 
     Returns:
@@ -60,7 +62,8 @@ def xgb_topLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray,
         y_ = y[mask]
         
         L = L_mapping[msa_idx]
-        L_idx = np.argpartition(preds_, -L)[-L:]  # [L]
+        kL = min(int(k*L), len(y_))
+        L_idx = np.argpartition(preds_, -kL)[-kL:]  # [k*L]
         
         preds_ = np.round(sigmoid(preds_[L_idx]))
         y_ = y_[L_idx]
@@ -77,7 +80,7 @@ def xgb_topLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray,
     return top_l_prec
 
 
-def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, save_dir: str) -> None:
+def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, msa_inv_mapping: np.ndarray, L_mapping: np.ndarray, save_dir: str) -> None:
     """
     Plots predictions and ground truth of contact maps side by side.
 
@@ -85,6 +88,7 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         preds (np.ndarray): Predictions [B] as logits.
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
+        msa_inv_mapping (np.ndarray): Mask inverting mapping.
         L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
         save_dir (str): Directory, where plots are saved.
     """
@@ -93,19 +97,27 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
     
     msa_indices = np.unique(msa_mapping)
     
+    preds_ = np.full(len(msa_mapping), -np.inf)
+    assert sum(msa_inv_mapping) == len(preds)
+    preds_[msa_inv_mapping] = preds
+    
+    y_ = np.zeros(len(mask), dtype=int)
+    assert sum(msa_inv_mapping) == len(y)
+    y_[msa_inv_mapping] = y
+    
     # for each MSA, plot prediction and ground-truth
     for msa_idx in msa_indices:
         mask = msa_mapping == msa_idx  # [B]
         L = L_mapping[msa_idx]
         
-        preds_ = sigmoid(preds[mask].reshape((L, L)))
-        preds_binary = np.round(preds_).astype(bool)
-        y_ = y[mask].reshape((L, L)).astype(bool)
+        preds_shaped = sigmoid(preds_[mask].reshape((L, L)))
+        preds_shaped_binary = np.round(preds_shaped).astype(bool)
+        y_shaped = y_[mask].reshape((L, L)).astype(bool)
         
         fig, ax = plt.subplots(1, 3)
-        sns.heatmap(preds_, fmt='', ax=ax[0])
-        sns.heatmap(preds_binary, fmt='', ax=ax[1])
-        sns.heatmap(target, fmt='', ax=ax[2])
+        sns.heatmap(preds_shaped, fmt='', ax=ax[0])
+        sns.heatmap(preds_shaped_binary, fmt='', ax=ax[1])
+        sns.heatmap(y_shaped, fmt='', ax=ax[2])
 
         ax[0].set_aspect('equal')
         ax[0].set_title("Prediction")
@@ -128,8 +140,10 @@ def main():
     parser.add_argument('--distance-threshold', default=10., type=float, help="Minimum distance between two atoms in angström that is not considered as a contact")
     # Preprocessing
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
+    parser.add_argument('--diag-shift', default=4, type=int, help="Width of the area around the main diagonal of prediction maps that is ignored.")
     # Test process
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu testing)")
+    parser.add_argument('--top-l-prec-coeff', default=1., type=float, help="Coefficient k that is used in computing the top-(k*L)-precision.")
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
     # Visualization
     parser.add_argument('--vis-dir', type=str, default='', help="Directory, where plots are saved. If empty, no plots are created.")
@@ -212,10 +226,11 @@ def main():
     attn_maps_list = []
     targets_list = []
     msa_mapping_list = []
+    msa_inv_mapping_list = []
     msa_mapping_filtered_list = []
     L_mapping_list = []
     
-    for idx, (x, y) in enumerate(train_dl):
+    for idx, (x, y) in enumerate(test_dl):
         for k, v in x.items():
             if isinstance(v, torch.Tensor):
                 x[k] = v.to(device)
@@ -244,6 +259,7 @@ def main():
         attn_maps = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
         target = y['contact'].view(-1)  # [1*L*L]
         msa_mapping = torch.full_like(target, idx)  # [1*L*L]
+        msa_inv_mapping = torch.zeros_like(target).bool()  # [1*L*L]
         
         # exclude lower triangle and unknown target points, apply diag shift
         mask = target != -1
@@ -252,21 +268,25 @@ def main():
         attn_maps = attn_maps[mask, :]
         target = target[mask]
         msa_mapping_filtered = msa_mapping[mask]
+        msa_inv_mapping[mask] = 1
         
         attn_maps_list.append(attn_maps)
         targets_list.append(target)
         msa_mapping_list.append(msa_mapping)
+        msa_inv_mapping_list.append(msa_inv_mapping)
         msa_mapping_filtered_list.append(msa_mapping_filtered)
-        L_mapping_list.append(L)
+        L_mapping_list.append(degapped_L)
     
-    attn_maps = torch.cat(attn_maps_list)  # [B*L*L, num_maps]
-    targets = torch.cat(targets_list)  # [B*L*L]
+    attn_maps = torch.cat(attn_maps_list)  # [B*L*L/2, num_maps]
+    targets = torch.cat(targets_list)  # [B*L*L/2]
     msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L]
-    msa_mapping_filtered = torch.cat(msa_mapping_filtered_list)  # [B*L*L]
+    msa_inv_mapping = torch.cat(msa_inv_mapping_list)  # [B*L*L]
+    msa_mapping_filtered = torch.cat(msa_mapping_filtered_list)  # [B*L*L/2]
     
     attn_maps = attn_maps.cpu().numpy()
     targets = targets.cpu().numpy()
     msa_mapping = msa_mapping.cpu().numpy()
+    msa_inv_mapping = msa_inv_mapping.cpu().numpy()
     msa_mapping_filtered = msa_mapping_filtered.cpu().numpy()
     L_mapping = np.array(L_mapping_list)
     
@@ -275,10 +295,10 @@ def main():
     xgb_model = xgb.Booster(model_file=args.xgboost_checkpoint)
     
     preds = xgb_model.predict(test_data, iteration_range=(0, xgb_model.best_iteration), strict_shape=True)[:, 0]
-    top_l_prec = xgb_topLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.treat_all_preds_positive)
-    print("TopLPrec:", top_l_prec)
+    top_l_prec = xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.top_l_prec_coeff, args.treat_all_preds_positive)
+    print("Top-%sL-Prec:" % str(args.top_l_prec_coeff), top_l_prec)
     if args.vis_dir != '':
-        plot_contact_maps(preds, test_data, msa_mapping, L_mapping, args.vis_dir)
+        plot_contact_maps(preds, test_data, msa_mapping, msa_inv_mapping, L_mapping, args.vis_dir)
 
 if __name__ == '__main__':
     main()
