@@ -267,7 +267,7 @@ def main():
         mask_triu = torch.triu(torch.ones_like(mask), args.diag_shift).view(-1)  # [1*L*L]
         attn_maps_triu = attn_maps[mask_triu, :]
         
-        mask_tril = torch.tril(torch.ones_like(mask), args.diag_shift).view(-1)  # [1*L*L]
+        mask_tril = torch.tril(torch.ones_like(mask), -args.diag_shift).view(-1)  # [1*L*L]
         attn_maps_tril = attn_maps[mask_tril, :]
         
         mask = torch.logical_and(mask, mask_triu.view(mask.shape)).view(-1)  # [1*L*L]
