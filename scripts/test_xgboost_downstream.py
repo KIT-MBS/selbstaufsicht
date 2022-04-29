@@ -261,11 +261,18 @@ def main():
         target = y['contact'].view(-1)  # [1*L*L]
         msa_mapping = torch.full_like(target, idx)  # [1*L*L]
         
-        # exclude lower triangle and unknown target points, apply diag shift
+        # exclude unknown target points, apply diag shift, averge over both triangle matrices
         mask = y['contact'] != -1
-        mask = torch.logical_and(mask, torch.triu(torch.ones_like(mask), args.diag_shift)).view(-1)  # [1*L*L]
         
-        attn_maps = attn_maps[mask, :]
+        mask_triu = torch.triu(torch.ones_like(mask), args.diag_shift)
+        mask_triu = torch.logical_and(mask, mask_triu).view(-1)  # [1*L*L]
+        attn_maps_triu = attn_maps[mask_triu, :]
+        
+        mask_tril = torch.tril(torch.ones_like(mask), args.diag_shift)
+        mask_tril = torch.logical_and(mask, mask_tril).view(-1)  # [1*L*L]
+        attn_maps_tril = attn_maps[mask_tril, :]
+        
+        attn_maps = 0.5 * (attn_maps_triu + attn_maps_tril)
         target = target[mask]
         msa_mapping_filtered = msa_mapping[mask]
         
