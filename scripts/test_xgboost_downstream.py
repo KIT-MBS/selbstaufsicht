@@ -111,6 +111,7 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         L = L_mapping[msa_idx]
         
         preds_shaped = sigmoid(preds_[mask].reshape((L, L)))
+        preds_shaped += preds_shaped.T
         preds_shaped_binary = np.round(preds_shaped).astype(bool)
         y_shaped = y_[mask].reshape((L, L)).astype(bool)
         
@@ -261,8 +262,8 @@ def main():
         msa_mapping = torch.full_like(target, idx)  # [1*L*L]
         
         # exclude lower triangle and unknown target points, apply diag shift
-        mask = target != -1
-        mask = torch.logical_and(mask, torch.triu(torch.ones_like(mask), args.diag_shift))
+        mask = y['contact'] != -1
+        mask = torch.logical_and(mask, torch.triu(torch.ones_like(mask), args.diag_shift)).view(-1)  # [1*L*L]
         
         attn_maps = attn_maps[mask, :]
         target = target[mask]
