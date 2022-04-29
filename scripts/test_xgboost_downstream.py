@@ -101,7 +101,7 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
     assert sum(msa_inv_mapping) == len(preds)
     preds_[msa_inv_mapping] = preds
     
-    y_ = np.zeros(len(mask), dtype=int)
+    y_ = np.zeros(len(msa_mapping), dtype=int)
     assert sum(msa_inv_mapping) == len(y)
     y_[msa_inv_mapping] = y
     
