@@ -80,7 +80,7 @@ def xgb_topkLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray
     return top_l_prec
 
 
-def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, msa_inv_mapping: np.ndarray, L_mapping: np.ndarray, save_dir: str) -> None:
+def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, msa_mask: np.ndarray, L_mapping: np.ndarray, save_dir: str) -> None:
     """
     Plots predictions and ground truth of contact maps side by side.
 
@@ -88,7 +88,7 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         preds (np.ndarray): Predictions [B] as logits.
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
-        msa_inv_mapping (np.ndarray): Mask inverting mapping.
+        msa_mask (np.ndarray): MSA mask [B].
         L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
         save_dir (str): Directory, where plots are saved.
     """
@@ -97,13 +97,13 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
     
     msa_indices = np.unique(msa_mapping)
     
-    preds_ = np.full(len(msa_mapping), -np.inf)
-    assert sum(msa_inv_mapping) == len(preds)
-    preds_[msa_inv_mapping] = preds
+    preds_ = np.full(len(msa_mask), -np.inf)
+    assert sum(msa_mask) == len(preds)
+    preds_[msa_mask] = preds
     
-    y_ = np.zeros(len(msa_mapping), dtype=int)
-    assert sum(msa_inv_mapping) == len(y)
-    y_[msa_inv_mapping] = y
+    y_ = np.zeros(len(msa_mask), dtype=int)
+    assert sum(msa_mask) == len(y)
+    y_[msa_mask] = y
     
     # for each MSA, plot prediction and ground-truth
     for msa_idx in msa_indices:
@@ -226,7 +226,7 @@ def main():
     attn_maps_list = []
     targets_list = []
     msa_mapping_list = []
-    msa_inv_mapping_list = []
+    msa_mask_list = []
     msa_mapping_filtered_list = []
     L_mapping_list = []
     
@@ -259,7 +259,6 @@ def main():
         attn_maps = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
         target = y['contact'].view(-1)  # [1*L*L]
         msa_mapping = torch.full_like(target, idx)  # [1*L*L]
-        msa_inv_mapping = torch.zeros_like(target).bool()  # [1*L*L]
         
         # exclude lower triangle and unknown target points, apply diag shift
         mask = target != -1
@@ -268,25 +267,24 @@ def main():
         attn_maps = attn_maps[mask, :]
         target = target[mask]
         msa_mapping_filtered = msa_mapping[mask]
-        msa_inv_mapping[mask] = 1
         
         attn_maps_list.append(attn_maps)
         targets_list.append(target)
         msa_mapping_list.append(msa_mapping)
-        msa_inv_mapping_list.append(msa_inv_mapping)
+        msa_mask_list.append(mask)
         msa_mapping_filtered_list.append(msa_mapping_filtered)
         L_mapping_list.append(degapped_L)
     
     attn_maps = torch.cat(attn_maps_list)  # [B*L*L/2, num_maps]
     targets = torch.cat(targets_list)  # [B*L*L/2]
     msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L]
-    msa_inv_mapping = torch.cat(msa_inv_mapping_list)  # [B*L*L]
+    msa_mask = torch.cat(msa_mask_list)  # [B*L*L]
     msa_mapping_filtered = torch.cat(msa_mapping_filtered_list)  # [B*L*L/2]
     
     attn_maps = attn_maps.cpu().numpy()
     targets = targets.cpu().numpy()
     msa_mapping = msa_mapping.cpu().numpy()
-    msa_inv_mapping = msa_inv_mapping.cpu().numpy()
+    msa_mask = msa_mask.cpu().numpy()
     msa_mapping_filtered = msa_mapping_filtered.cpu().numpy()
     L_mapping = np.array(L_mapping_list)
     
@@ -298,7 +296,7 @@ def main():
     top_l_prec = xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.top_l_prec_coeff, args.treat_all_preds_positive)
     print("Top-%sL-Prec:" % str(args.top_l_prec_coeff), top_l_prec)
     if args.vis_dir != '':
-        plot_contact_maps(preds, test_data, msa_mapping, msa_inv_mapping, L_mapping, args.vis_dir)
+        plot_contact_maps(preds, test_data, msa_mapping, msa_mask, L_mapping, args.vis_dir)
 
 if __name__ == '__main__':
     main()
