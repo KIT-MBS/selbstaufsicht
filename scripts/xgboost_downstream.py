@@ -269,13 +269,14 @@ def main():
         mask_tril = torch.tril(torch.ones_like(mask), -args.diag_shift).view(-1)  # [1*L*L]
         attn_maps_tril = attn_maps[mask_tril, :]
         
-        # tril = trius, since target is symmetrical 
-        mask = torch.triu(mask, args.diag_shift).view(-1)  # [1*L*L]
+        mask = mask.view(-1)  # [1*L*L]
+        mask_attn_maps = mask[mask_triu]
+        mask_target = torch.logical_and(mask, mask_triu)
         
         attn_maps = 0.5 * (attn_maps_triu + attn_maps_tril)
-        attn_maps = attn_maps[mask, :]
-        target = target[mask]
-        msa_mapping = msa_mapping[mask]
+        attn_maps = attn_maps[mask_attn_maps, :]
+        target = target[mask_target]
+        msa_mapping = msa_mapping[mask_target]
         
         attn_maps_list.append(attn_maps)
         targets_list.append(target)
