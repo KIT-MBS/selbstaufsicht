@@ -259,7 +259,7 @@ def main():
         assert num_maps == attn_maps.shape[-1]
         
         attn_maps_triu = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
-        attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).view(-1, num_maps)  # [1*L*L, num_maps]
+        attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).reshape(-1, num_maps)  # [1*L*L, num_maps]
         target = y['contact'].view(-1)  # [1*L*L]
         msa_mapping = torch.full_like(target, idx)  # [1*L*L]
         
