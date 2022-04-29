@@ -256,22 +256,21 @@ def main():
         
         assert num_maps == attn_maps.shape[-1]
         
-        attn_maps = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
+        attn_maps_triu = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
+        attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).view(-1, num_maps)  # [1*L*L, num_maps]
         target = y['contact'].view(-1)  # [1*L*L]
         msa_mapping = torch.full_like(target, idx)  # [1*L*L]
         
         # exclude unknown target points, apply diag shift, averge over both triangle matrices
         mask = y['contact'] != -1
-        
         mask_triu = torch.triu(torch.ones_like(mask), args.diag_shift).view(-1)  # [1*L*L]
-        attn_maps_triu = attn_maps[mask_triu, :]
-        
-        mask_tril = torch.tril(torch.ones_like(mask), -args.diag_shift).view(-1)  # [1*L*L]
-        attn_maps_tril = attn_maps[mask_tril, :]
         
         mask = mask.view(-1)  # [1*L*L]
         mask_attn_maps = mask[mask_triu]
         mask_target = torch.logical_and(mask, mask_triu)
+        
+        attn_maps_triu = attn_maps_triu[mask_triu, :]
+        attn_maps_tril = attn_maps_tril[mask_triu, :]
         
         attn_maps = 0.5 * (attn_maps_triu + attn_maps_tril)
         attn_maps = attn_maps[mask_attn_maps, :]
