@@ -86,7 +86,7 @@ def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np
     
     top_l_prec = float(tp) / (tp + fp)
     
-    return 'topLPrec', top_l_prec
+    return 'top-%sL-Prec' % str(k), top_l_prec
 
 
 def main():
