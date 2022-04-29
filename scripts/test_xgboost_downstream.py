@@ -114,6 +114,7 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         preds_shaped += preds_shaped.T
         preds_shaped_binary = np.round(preds_shaped).astype(bool)
         y_shaped = y_[mask].reshape((L, L)).astype(bool)
+        y_shaped += y_shaped.T
         
         fig, ax = plt.subplots(1, 3)
         sns.heatmap(preds_shaped, fmt='', ax=ax[0])
