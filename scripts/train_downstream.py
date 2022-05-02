@@ -117,6 +117,8 @@ def main():
         tasks.append("inpainting")
     if h_params['task_jigsaw']:
         tasks.append("jigsaw")
+    if h_params['task_jigsaw_boot']:
+        tasks.append("jigsaw_boot")
     if h_params['task_contrastive']:
         tasks.append("contrastive")
         
