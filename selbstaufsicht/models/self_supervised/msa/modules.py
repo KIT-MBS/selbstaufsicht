@@ -25,12 +25,7 @@ class InpaintingHead(nn.Module):
     # NOTE the output is basically flattened (of  shape (-1, num_classes)) since the number of masked tokens per sample in the batch is not the same
     def forward(self, latent: torch.Tensor, x: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
-<<<<<<< HEAD
         Receives latent representation, performs linear transformation and applies inpainting mask to predict masked tokens.
-=======
-        Receives latent representation, performs 
-        linear transformation and applies inpainting mask to predict masked tokens.
->>>>>>> 5fa303c... new branch for bootstrapping and fixed jigsaw
 
         Args:
             latent (torch.Tensor): Latent representation [B, E, L, D].
