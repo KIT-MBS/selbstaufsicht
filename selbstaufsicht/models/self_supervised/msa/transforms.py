@@ -150,7 +150,8 @@ class RandomMSAShuffling():
                  num_partitions: int = None,
                  num_classes: int = None,
                  euclid_emb: torch.Tensor = None,
-                 contrastive: bool = False):
+                 contrastive: bool = False,
+                 frozen: bool=False):
         """
         Initializes random MSA shuffling.
 
@@ -174,6 +175,7 @@ class RandomMSAShuffling():
 
         if permutations is None:
             self.perm_indices = list(range(1, math.factorial(num_partitions)))
+            self.frozen=frozen
             random.shuffle(self.perm_indices)
             # NOTE always include 'no transformation'
             self.perm_indices.insert(0, 0)
@@ -206,11 +208,19 @@ class RandomMSAShuffling():
         """
 
         num_seq = x['msa'].size(0)
+        #print(x['msa'],"beginning")
         if 'jigsaw' in y:
             # NOTE: ugly, only works for fixed subsampling mode
-            perm_sampling = y['jigsaw'][:num_seq]
+            if self.frozen:
+                perm_sampling=y['jigsaw'][0]
+            else:
+                perm_sampling = y['jigsaw'][:num_seq]
         else:
-            perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
+            if self.frozen:
+                perm_sampling = torch.randint(0,self.num_classes,(1,))*torch.ones((num_seq,))
+                perm_sampling=perm_sampling.type(torch.LongTensor)
+            else:
+                perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
         shuffled_msa = _jigsaw(x['msa'],
                                self.permutations.expand(num_seq, -1, -1)[range(num_seq),
                                perm_sampling], delimiter_token=self.delimiter_token,
@@ -218,7 +228,11 @@ class RandomMSAShuffling():
                                mintrailer=self.mintrailer)
         x['msa'] = shuffled_msa
         if self.euclid_emb is None:
-            y['jigsaw'] = perm_sampling
+            if self.frozen:
+                y['jigsaw']=perm_sampling[0]
+                y['jigsaw']=y['jigsaw'].reshape(1)
+            else:
+                y['jigsaw'] = perm_sampling
         else:
             if self.perm_indices is None:
                 # TODO: Implement inverse lehmer code to solve?
@@ -227,7 +241,10 @@ class RandomMSAShuffling():
             if not self.euclid_emb_device_flag:
                 self.euclid_emb = self.euclid_emb.type_as(x['msa']).float()
                 self.euclid_emb_device_flag = True
-            y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :]
+            if self.frozen:
+                y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :][0]           
+            else:
+                y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :]
 
         if self.contrastive:
             contrastive_perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
@@ -239,6 +256,62 @@ class RandomMSAShuffling():
                                        mintrailer=self.mintrailer)
 
         return x, y
+
+
+class MSAboot():
+    
+    def __init__(self,ratio: float=0.5, per_token: bool=False, boot_same: bool=False)->None:
+
+        self.ratio=ratio
+        self.per_token=per_token
+        self.boot_same=boot_same
+
+
+
+    def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor])->Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+
+        num_seq=x['msa'].shape[0]
+        num_col=x['msa'].shape[1]
+
+
+
+        ind_rand=torch.ones((int(np.floor(self.ratio*num_seq)),num_seq)).multinomial(num_samples=num_col,replacement=True)
+
+        msa_boot=_jigsaw_boot(x['msa'],self.ratio,ind_rand)
+
+        msa_boot_expanded=msa_boot.unsqueeze(1).expand(num_seq,num_seq,num_col)
+        msa_repeated=x['msa'].repeat(num_seq,1,1)
+
+        msa_bool=torch.eq(msa_boot_expanded,msa_repeated)
+
+        if not self.per_token:
+            y_boot=torch.any(torch.all(msa_bool,keepdim=True,axis=2),axis=1).reshape(num_seq,)
+
+            y['jigsaw_boot']=y_boot.type(torch.LongTensor)
+        else:
+            if not self.boot_same:
+                y_ind=torch.argmax(torch.sum(msa_bool,keepdim=True,axis=2),axis=1)
+
+                y_boot=torch.eq(msa_boot,x['msa'][torch.argmax(torch.sum(msa_bool,keepdim=True,axis=2),axis=1)].reshape(num_seq,num_col))
+
+            else:
+                y_boot=torch.eq(msa_boot,x['msa'])
+
+            y_boot=y_boot.type(torch.LongTensor)
+
+            y['jigsaw_boot']=y_boot.reshape(num_col*num_seq,)
+
+
+
+        #print(x['msa'])
+
+        x['msa']=msa_boot
+
+        #print(x['msa'],y['jigsaw_boot'],"transform")
+        #y['jigsaw_boot']=labels_boot
+
+        return x,y
+
 
 
 class MSASubsampling():
@@ -462,6 +535,40 @@ def _jigsaw(msa: torch.Tensor, permutations: torch.Tensor, delimiter_token: int 
     jigsawed_msa = torch.cat(chunks, dim=-1)
 
     return jigsawed_msa
+
+
+
+def _jigsaw_boot(msa: torch.Tensor,ratio: float, ind_rand: torch.Tensor) -> torch.Tensor:
+    """
+    Shuffles the given MSA according to the given permutations.
+    Args:
+        msa (torch.Tensor): Tokenized MSA to be shuffled [E, L].
+        permutations (torch.Tensor): Permutations to be applied sequence-wise to the MSA [E, NPartitions].
+        delimiter_token (int, optional): Special token that is used to separate shuffled partitions from each other. Defaults to None.
+        minleader (int, optional): Minimum number of unshuffled tokens at the start of each sequence. Defaults to 1.
+        mintrailer (int, optional): Minimum number of unshuffled tokens at the end of each sequence. Defaults to 0.
+    Returns:
+        torch.Tensor: Shuffled, tokenized MSA [E, L].
+    """
+
+    msa_copy=torch.clone(msa)
+
+    num_seq=msa.shape[0]
+    num_seq_r=int(np.floor(num_seq*ratio))
+    num_col=msa.shape[1]
+
+    ind_col=torch.arange(0,num_col)
+    #ind_rand=torch.ones((num_seq_r,num_seq)).multinomial(num_samples=num_col,replacement=True)
+    ind_rand_r=torch.randperm(num_seq)[range(num_seq_r)]
+    
+
+    msa_copy[ind_rand_r,]=msa[ind_rand,ind_col]
+    #msa_label=torch.all(torch.eq(msa_copy,msa))
+
+    return msa_copy
+
+
+ 
 
 
 def _get_replace_mask(mask: torch.Tensor, masking_type_sampling: torch.Tensor, static_mask_token: int,
