@@ -355,3 +355,4 @@ class BinaryConfusionMatrix(Metric):
                 return torch.tensor(np.array([[self.tp.cpu().numpy(), self.fn.cpu().numpy()], [self.fp.cpu().numpy(), self.tn.cpu().numpy()]]))
             elif isinstance(self.tp, list):
                 return torch.tensor([[self.tp, self.fn], [self.fp, self.tn]])
+
