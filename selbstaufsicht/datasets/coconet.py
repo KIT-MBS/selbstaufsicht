@@ -8,6 +8,7 @@ import numpy as np
 from Bio.PDB.Residue import Residue
 from Bio.PDB.Atom import Atom
 
+import torch
 from torch.utils.data import Dataset
 
 from Bio import AlignIO
@@ -23,7 +24,8 @@ class CoCoNetDataset(Dataset):
     train the downstream 'unsupervised' contact prediction and the train dataset for
     testing
     """
-    def __init__(self, root, split, transform=None, download=True):
+    def __init__(self, root, split, transform=None, download=True, discard_train_size_based=True, 
+                 diversity_maximization=False, max_seq_len: int = 400, min_num_seq: int = 50):
         self.root = pathlib.Path(root)
         self.transform = transform
         self.token_mapping = rna2index
@@ -33,6 +35,19 @@ class CoCoNetDataset(Dataset):
 
         split_dir = 'RNA_DATASET' if split == 'train' else 'RNA_TESTSET'
         msa_index_filename = 'CCNListOfMSAFiles.txt'
+        
+        self.indices = None
+        if diversity_maximization:
+            indices_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'coconet_%s_diversity_maximization.pt' % split)
+            self.indices = torch.load(indices_path)
+        
+        # NOTE: these MSAs are excluded, since they are problematic
+        # too long sequences
+        self.max_seq_len = max_seq_len
+        # too few sequences
+        self.min_num_seq = min_num_seq
+        # the hammerhead ribozyme somehow shows bad ppv performance, also in previous research using DCA methods 
+        discarded_msa = {('3zp8', 'A')}
 
         with open(pathlib.Path(self.root / 'coconet' / split_dir / msa_index_filename), 'rt') as f:
             self.fam_ids = [line.strip() for line in f]
@@ -52,13 +67,22 @@ class CoCoNetDataset(Dataset):
             self.pdb_chains = [line.strip() for line in f]
 
         self.pdbs = []
-        for msa, pdb_file, chain_id in zip(self.msas, self.pdb_filenames, self.pdb_chains):
+        discarded_msa_idx = set()
+        for idx, (msa, pdb_file, chain_id) in enumerate(zip(self.msas, self.pdb_filenames, self.pdb_chains)):
             refseq = msa[0].seq
 
             pdb_path = self.root / 'coconet' / split_dir / 'PDBFiles' / pdb_file
             with open(pdb_path, 'r') as f:
                 pdb_id = pdb_file.split('_')[0]
                 structure = PDBParser().get_structure(pdb_id, f)
+                pdb_id = pdb_id.replace('.pdb', '')
+                
+                num_seq = len(msa)
+                seq_len = msa.get_alignment_length()
+                if (pdb_id, chain_id) in discarded_msa or ((split == 'test' or discard_train_size_based) and (num_seq < self.min_num_seq or seq_len > self.max_seq_len)):
+                    print("Discarding MSA (pdb=%s, chain=%s)" % (pdb_id, chain_id))
+                    discarded_msa_idx.add(idx)
+                    continue
                 hetres = [r.get_id() for r in structure.get_residues() if r.get_id()[0] != ' ']
                 # NOTE remove het residues
                 chain = structure[0].get_list()[0]
@@ -120,12 +144,18 @@ class CoCoNetDataset(Dataset):
                 assert refseq == ''.join([r.get_resname() for r in chain])
         assert len(self.msas) == len(self.fam_ids)
 
+        # NOTE: Remove discarded MSAs
+        self.msas = [msa for idx, msa in enumerate(self.msas) if idx not in discarded_msa_idx]
+
     def __getitem__(self, i):
         x = self.msas[i]
         y = self.pdbs[i]
 
         if self.transform is not None:
-            return self.transform({'msa': x}, {'structure': y})
+            if self.indices is None:
+                return self.transform({'msa': x}, {'structure': y})
+            else:
+                return self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y})
 
         return x, y
 

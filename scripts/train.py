@@ -22,23 +22,23 @@ from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downs
 def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Training Script')
     # Architecture
-    parser.add_argument('--num-blocks', default=6, type=int, help="Number of consecutive Transmorpher blocks")
+    parser.add_argument('--num-blocks', default=10, type=int, help="Number of consecutive Transmorpher blocks")
     parser.add_argument('--feature-dim-head', default=64, type=int, help="Size of the feature dimension per Transmorpher head")
     parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
     parser.add_argument("--disable-emb-grad-freq-scale", action='store_true', help="If set, this will scale gradients by the inverse of frequency of the words in the mini-batch")
     # Dataset
-    parser.add_argument('--dataset', default='xfam', type=str, help="Used dataset: xfam, zwd, combined, dummy")
+    parser.add_argument('--dataset', default='combined', type=str, help="Used dataset: xfam, zwd, combined, dummy")
     parser.add_argument('--num-data-samples', default=-1, type=int, help="Number of used samples from dataset. Non-positive numbers refer to using all data.")
     parser.add_argument('--xfam-version', default='14.6', type=str, help="Xfam dataset version")
     parser.add_argument('--xfam-mode', default='seed', type=str, help="Xfam dataset mode: seed, full, or enhanced")
     # Training process
-    parser.add_argument('--num-epochs', default=200, type=int, help="Number of training epochs")
-    parser.add_argument('--batch-size', default=16, type=int, help="Batch size (local in case of multi-gpu training)")
+    parser.add_argument('--num-epochs', default=10000, type=int, help="Number of training epochs")
+    parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu training)")
     parser.add_argument('--validation-size', default=100, type=float, help="Either relative (if in range 0...1) or absolute (if integer) size of the validation dataset split")
-    parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
-    parser.add_argument('--learning-rate-warmup', default=200, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
-    parser.add_argument('--dropout', default=0.1, type=float, help="Dropout probability")
-    parser.add_argument('--precision', default=32, type=int, help="Precision used for computations")
+    parser.add_argument('--learning-rate', default=0.00003, type=float, help="Initial learning rate")
+    parser.add_argument('--learning-rate-warmup', default=400, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
+    parser.add_argument('--dropout', default=0.3, type=float, help="Dropout probability")
+    parser.add_argument('--precision', default=16, type=int, help="Precision used for computations")
     parser.add_argument('--attn-chunk-size', default=0, type=int, help="Chunk size in attention computation. Chunking causes sequential computation, which increases training time, but decreases memory pressure. Sizes below one activate the non-chunking implementation.")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
@@ -47,7 +47,7 @@ def main():
     # Data parallelism
     parser.add_argument('--num-gpus', default=-1, type=int, help="Number of GPUs per node. -1 refers to using all available GPUs. 0 refers to using the CPU.")
     parser.add_argument('--num-nodes', default=1, type=int, help="Number of nodes")
-    parser.add_argument('--num-workers', default=4, type=int, help="Number of data loader worker processes")
+    parser.add_argument('--num-workers', default=8, type=int, help="Number of data loader worker processes")
     # Upstream tasks
     parser.add_argument('--task-inpainting', action='store_true', help="Activates the inpainting task")
     parser.add_argument('--task-jigsaw', action='store_true', help="Activates the jigsaw task")
@@ -55,18 +55,18 @@ def main():
     parser.add_argument('--task-jigsaw-boot', action='store_true', help="Activates the contrastive task")
 
     # Upstream task configuration
-    parser.add_argument('--subsampling-depth', default=100, type=int, help="Number of subsampled sequences")
-    parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
+    parser.add_argument('--subsampling-depth', default=50, type=int, help="Number of subsampled sequences")
+    parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, fixed")
     parser.add_argument('--cropping-size', default=400, type=int, help="Maximum uncropped sequence length")
     parser.add_argument('--cropping-mode', default='random-dependent', type=str, help="Cropping mode: random-dependent, random-independent, fixed")
     parser.add_argument('--inpainting-masking-type', default='token', type=str, help="MSA masking type in the inpainting task")
     parser.add_argument('--inpainting-masking-p', default=0.15, type=float, help="MSA masking ratio in the inpainting task")
-    parser.add_argument('--inpainting-masking-p-static', default=0.8, type=float, help="Conditional probability that a token, if masked in the inpainting task, is replaced by a special masking token.")
-    parser.add_argument('--inpainting-masking-p-nonstatic', default=0.1, type=float, help="Conditional probability that a token, if masked in the inpainting task, is replaced by a randomly drawn regular token.")
-    parser.add_argument('--inpainting-masking-p-unchanged', default=0.1, type=float, help="Conditional probability that a token, if masked in the inpainting task, is not replaced.")
+    parser.add_argument('--inpainting-masking-p-static', default=0., type=float, help="Conditional probability that a token, if masked in the inpainting task, is replaced by a special masking token.")
+    parser.add_argument('--inpainting-masking-p-nonstatic', default=1.0, type=float, help="Conditional probability that a token, if masked in the inpainting task, is replaced by a randomly drawn regular token.")
+    parser.add_argument('--inpainting-masking-p-unchanged', default=0., type=float, help="Conditional probability that a token, if masked in the inpainting task, is not replaced.")
     parser.add_argument('--inpainting-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
-    parser.add_argument('--jigsaw-partitions', default=3, type=int, help="Number of partitions in the jigsaw task")
-    parser.add_argument('--jigsaw-permutations', default=6, type=int, help="Number of permutations in the jigsaw task")
+    parser.add_argument('--jigsaw-partitions', default=4, type=int, help="Number of partitions in the jigsaw task")
+    parser.add_argument('--jigsaw-permutations', default=24, type=int, help="Number of permutations in the jigsaw task")
     parser.add_argument('--jigsaw-force-permutations', default=0, type=int,
                         help="""Duplicates the number of used data samples times the specified number in the jigsaw task,
                         where each duplicate is labeled with a different permutation in numerical order. Value 0 disables this mechanism."""
@@ -85,7 +85,7 @@ def main():
     parser.add_argument('--frozen', action='store_true',help='applies the same permutation to all seqs in the MSA')
 
     # Logging
-    parser.add_argument('--log-every', default=50, type=int, help='how often to add logging rows(does not write to disk)')
+    parser.add_argument('--log-every', default=100, type=int, help='how often to add logging rows(does not write to disk)')
     parser.add_argument('--log-dir', default='lightning_logs/', type=str, help='Logging directory. Default: \"lightning_logs/\"')
     parser.add_argument('--log-exp-name', default='', type=str, help='Logging experiment name. If empty, this structure level is omitted. Default: \"\"')
     parser.add_argument('--log-run-name', default='%d_%m_%Y__%H_%M_%S', type=str,
@@ -237,6 +237,7 @@ def main():
         val_metrics=val_metrics,
         alphabet_size=len(train_ds.token_mapping),
         padding_token=train_ds.token_mapping['PADDING_TOKEN'],
+        max_seqlen=args.cropping_size,
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,

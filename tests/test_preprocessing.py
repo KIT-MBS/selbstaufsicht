@@ -12,7 +12,6 @@ from Bio.Align import MultipleSeqAlignment
 from selbstaufsicht.transforms import SelfSupervisedCompose
 from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, _get_replace_mask, RandomMSAMasking, ExplicitPositionalEncoding, MSACropping, MSASubsampling, RandomMSAShuffling
-from selbstaufsicht.models.self_supervised.msa.transforms import _hamming_distance, _hamming_distance_matrix, _maximize_diversity_naive, _maximize_diversity_cached
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
 from selbstaufsicht.models.self_supervised.msa.utils import MSACollator, _pad_collate_nd
 
@@ -330,6 +329,23 @@ def test_subsampling_uniform(msa_sample):
         assert sampled[idx].seq == sampled_ref[idx].seq
 
 
+def test_subsampling_maximum_diversity(msa_sample):
+    sampler = MSASubsampling(3, False, 'diversity')
+    x, y = msa_sample
+    x['indices'] = torch.tensor([0, 2, 3], dtype=torch.int64)
+    sampled = sampler(x, y)[0]['msa']
+
+    sampled_ref = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq("ACUCCUA"), id='seq1'),
+            SeqRecord(Seq("CCUACU."), id='seq3'),
+            SeqRecord(Seq("UCUCCUC"), id='seq4'),
+        ])
+
+    for idx in range(len(sampled)):
+        assert sampled[idx].seq == sampled_ref[idx].seq
+
+
 def test_subsampling_fixed(msa_sample):
     sampler = MSASubsampling(2, True, 'fixed')
     sampled = sampler(*msa_sample)[0]['msa']
@@ -352,55 +368,6 @@ def test_subsampling_fixed(msa_sample):
 
     for idx in range(len(sampled_contrastive)):
         assert sampled_contrastive[idx].seq == sampled_contrastive_ref[idx].seq
-
-
-def test_hamming_distance():
-    seq_1 = "abcdefg"
-    hd = _hamming_distance(seq_1, seq_1)
-    hd_ref = 0
-    assert hd == hd_ref
-
-    seq_2 = "a.c.e.g"
-    hd = _hamming_distance(seq_1, seq_2)
-    hd_ref = 3
-    assert hd == hd_ref
-
-    seq_2 = "......."
-    hd = _hamming_distance(seq_1, seq_2)
-    hd_ref = len(seq_1)
-    assert hd == hd_ref
-
-    seq_2 = ""
-    with pytest.raises(AssertionError) as excinfo:
-        hd = _hamming_distance(seq_1, seq_2)
-
-    assert str(excinfo.value) == "Both sequences are required to have the same length!"
-
-
-def test_hamming_distance_matrix(msa_sample):
-    basic_msa = msa_sample[0]['msa']
-    hd_matrix = _hamming_distance_matrix(basic_msa)
-    hd_matrix_ref = torch.tensor([[0, 2, 3, 2], [2, 0, 4, 4], [3, 4, 0, 3], [2, 4, 3, 0]], dtype=torch.float32)
-    testing.assert_close(hd_matrix, hd_matrix_ref, atol=0, rtol=0)
-
-
-def test_maximize_diversity(msa_sample):
-    basic_msa = msa_sample[0]['msa']
-    nseqs = 3
-    hd_matrix = _hamming_distance_matrix(basic_msa)
-    sampled_cached = _maximize_diversity_cached(basic_msa, list(range(1, len(basic_msa))), nseqs - 1, basic_msa[0:1], [0], hd_matrix)
-    sampled_naive = _maximize_diversity_naive(basic_msa, list(range(1, len(basic_msa))), nseqs - 1, basic_msa[0:1])
-
-    sampled_ref = MultipleSeqAlignment(
-        [
-            SeqRecord(Seq("ACUCCUA"), id='seq1'),
-            SeqRecord(Seq("CCUACU."), id='seq3'),
-            SeqRecord(Seq("AAU.CUA"), id='seq2'),
-        ])
-
-    for idx in range(len(sampled_ref)):
-        assert sampled_naive[idx].seq == sampled_ref[idx].seq
-        assert sampled_cached[idx].seq == sampled_ref[idx].seq
 
 
 def test_cropping_random_dependent(msa_sample):
