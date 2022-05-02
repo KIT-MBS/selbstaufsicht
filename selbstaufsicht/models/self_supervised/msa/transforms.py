@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Union, Tuple
 import torch
 from torch.distributions import Categorical, Distribution
 import numpy as np
@@ -253,15 +253,16 @@ class MSASubsampling():
         """
 
         self.contrastive = contrastive
+        self.mode = mode
         self.sampling_fn = _get_msa_subsampling_fn(mode)
         self.nseqs = num_sequences
 
-    def __call__(self, x: Dict[str, MultipleSeqAlignment], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
+    def __call__(self, x: Dict[str, Union[MultipleSeqAlignment, torch.Tensor]], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
         """
         Subsamples the predefined number of sequences from the given lettered MSA, according to the predefined subsampling mode.
 
         Args:
-            x (Dict[str, MultipleSeqAlignment]): Lettered MSA.
+            x (Dict[str, Union[MultipleSeqAlignment, torch.Tensor]]): Lettered MSA; Subsampling indices [num_seq] (if mode=diversity).
             y (Dict[str, torch.Tensor]): Upstream task labels.
 
         Returns:
@@ -269,8 +270,16 @@ class MSASubsampling():
         """
 
         msa = x['msa'][:, :]
-        x['msa'] = self.sampling_fn(msa, self.nseqs, False)
+        if self.mode == 'diversity':
+            if 'indices' not in x:
+                raise KeyError('No indices provided for diversity-maximizing subsampling!')
+            x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'], False)
+            del x['indices']
+        else:
+            x['msa'] = self.sampling_fn(msa, self.nseqs, False)
         if self.contrastive:
+            # diversity maximization should not be used in combination with contrastive
+            assert self.mode != 'diversity'
             x['contrastive'] = self.sampling_fn(msa, self.nseqs, True)
         return x, y
 
@@ -668,167 +677,28 @@ def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool 
     return msa
 
 
-def _hamming_distance(seq_1: str, seq_2: str) -> int:
+def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indices: torch.Tensor, contrastive: bool = False) -> MultipleSeqAlignment:
     """
-    Computes the hamming distance, i.e., the number of index-wise different characters, for the two given sequences.
-
-    Args:
-        seq_1 (str): First sequence.
-        seq_2 (str): Second sequence.
-
-    Returns:
-        int: Hamming distance.
-    """
-
-    assert len(seq_1) == len(seq_2), "Both sequences are required to have the same length!"
-    return sum(n_1 != n_2 for n_1, n_2 in zip(seq_1, seq_2))
-
-
-def _hamming_distance_matrix(msa: MultipleSeqAlignment) -> torch.Tensor:
-    """
-    Computes hamming distances between all pairs of different sequences from the given MSA.
-
-    Args:
-        msa (MultipleSeqAlignment): Lettered MSA.
-
-    Returns:
-        torch.Tensor: Symmetric, zero-diagonal matrix with sequence-to-sequence hamming distances [E, E].
-    """
-
-    hd_matrix = torch.zeros((len(msa), len(msa)))
-
-    # computes upper triangular part, without diagonal
-    for idx_1, seq_1 in enumerate(msa):
-        for idx_2, seq_2 in enumerate(msa):
-            if idx_2 <= idx_1:
-                continue
-            hd_matrix[idx_1, idx_2] = _hamming_distance(seq_1.seq, seq_2.seq)
-
-    # make matrix symmetric for easier handling
-    return hd_matrix + hd_matrix.T
-
-
-def _maximize_diversity_naive(msa: MultipleSeqAlignment, msa_indices: List[int], nseqs: int, sampled_msa: MultipleSeqAlignment) -> MultipleSeqAlignment:
-    """
-    Subsamples sequences from the given MSA according to the greedy diviserty maximization scheme.
-    This function uses the naive strategy, where hamming distances between sequences are computed on-the-fly when needed, potentially repeatedly.
-
-    Args:
-        msa (MultipleSeqAlignment): Lettered MSA.
-        msa_indices (List[int]): Indices of remaining (not already subsampled) sequences.
-        nseqs (int): Number of sequences still to be subsampled.
-        sampled_msa (MultipleSeqAlignment): Already subsampled sequences.
-
-    Returns:
-        MultipleSeqAlignment: Subsampled, lettered MSA.
-    """
-
-    # naive strategy: compute hamming distances on-the-fly, when needed
-    hd_matrix = torch.zeros((len(msa_indices), len(sampled_msa)))
-
-    for idx_1, idx_msa in enumerate(msa_indices):
-        seq_1 = msa[idx_msa]
-        for idx_2, seq_2 in enumerate(sampled_msa):
-            hd_matrix[idx_1, idx_2] = _hamming_distance(seq_1.seq, seq_2.seq)
-
-    # average over already sampled sequences
-    avg_hd = torch.mean(hd_matrix, dim=1)
-    # find sequence with maximum average hamming distance
-    idx_max = torch.argmax(avg_hd).item()
-    idx_msa_max = msa_indices[idx_max]
-
-    sampled_msa.append(msa[idx_msa_max])
-    msa_indices.pop(idx_max)
-    nseqs -= 1
-
-    if nseqs == 0:
-        return sampled_msa
-    else:
-        return _maximize_diversity_naive(msa, msa_indices, nseqs, sampled_msa)
-
-
-def _maximize_diversity_cached(msa: MultipleSeqAlignment,
-                               msa_indices: List[int],
-                               nseqs: int,
-                               sampled_msa: MultipleSeqAlignment,
-                               sampled_msa_indices: List[int],
-                               hd_matrix: torch.Tensor) -> MultipleSeqAlignment:
-    """
-    Subsamples sequences from the given MSA according to the greedy diviserty maximization scheme.
-    This function uses the cached strategy, where hamming distances between all non-reflexive sequences-to-sequence pairs are computed beforehand and cached.
-
-    Args:
-        msa (MultipleSeqAlignment): Lettered MSA.
-        msa_indices (List[int]): Indices of remaining (not already subsampled) sequences.
-        nseqs (int): Number of sequences still to be subsampled.
-        sampled_msa (MultipleSeqAlignment): Already subsampled sequences.
-        sampled_msa_indices (List[int]): Indices of already subsampled sequences.
-        hd_matrix (torch.Tensor): Symmetric matrix with sequence-to-sequence hamming distances [E, E].
-
-    Returns:
-        MultipleSeqAlignment: Subsampled, lettered MSA.
-    """
-
-    # cached strategy: use pre-computed hamming distances
-    indices = tuple(zip(*[(msa_idx, sampled_msa_idx) for msa_idx in msa_indices for sampled_msa_idx in sampled_msa_indices]))
-    hd_matrix_reduced = hd_matrix[indices[0], indices[1]].view(len(msa_indices), len(sampled_msa_indices))
-
-    # average over already sampled sequences
-    if hd_matrix_reduced.dim() == 2:
-        avg_hd = torch.mean(hd_matrix_reduced, dim=1)
-    else:
-        avg_hd = hd_matrix_reduced.float()
-    # find sequence with maximum average hamming distance
-    idx_max = torch.argmax(avg_hd).item()
-    idx_msa_max = msa_indices[idx_max]
-
-    sampled_msa.append(msa[idx_msa_max])
-    msa_indices.pop(idx_max)
-    sampled_msa_indices.append(idx_msa_max)
-    nseqs -= 1
-
-    if nseqs == 0:
-        return sampled_msa
-    else:
-        return _maximize_diversity_cached(msa, msa_indices, nseqs, sampled_msa, sampled_msa_indices, hd_matrix)
-
-
-def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool = False) -> MultipleSeqAlignment:
-    """
-    Subsamples sequences from the given MSA according to the greedy diviserty maximization scheme.
-    Depending on the number of sequences in the given MSA and the number of sequences to be subsampled, it chooses the more efficient computation strategy automatically.
+    Subsamples sequences from the given MSA according to the diviserty maximization scheme.
+    Requires pre-computed indices of most diverse sequences.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
+        indices (torch.Tensor): Indices of most diverse sequences.
         contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
 
-    # since the function is deterministic and contrastive input should be different from the regular input, it is sampled randomly
-    if contrastive:
-        return _subsample_uniform(msa, nseqs)
-
-    # depending on the total number of sequences and the number of sequences to be subsampled, choose computation strategy:
-    # either compute and cache all hamming distanced between distinct sequences beforehand or use the naive implementation with potentially repeating comparisons
-    # TODO: Combine naive and chached strategies to optimal strategy: Compute hamming distances on-the-fly when needed, but cache for later re-use
-
-    n = len(msa)
-    # exclude reference seq
-    m = min(nseqs, n) - 1
-
-    # symmetric, reflexive n:n relation
-    comparisons_cached = (n**2 - n) / 2
-    # equivalent to sum_{i=1}^{m} i*(N-i), which is the cumulative number of comparisons after the m-th recursive call
-    comparisons_naive = n * m * (m + 1) / 2 - m * (m + 1) * (2 * m + 1) / 6
-
-    if comparisons_cached <= comparisons_naive:
-        hd_matrix = _hamming_distance_matrix(msa)
-        return _maximize_diversity_cached(msa, list(range(1, n)), m, msa[0:1], [0], hd_matrix)
-    else:
-        return _maximize_diversity_naive(msa, list(range(1, n)), m, msa[0:1])
+    # diversity maximization should not be used in combination with contrastive
+    assert not contrastive    
+    assert indices.shape[0] == nseqs
+    assert len(msa) >= nseqs
+    
+    msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
+    return msa
 
 
 def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool = False) -> MultipleSeqAlignment:

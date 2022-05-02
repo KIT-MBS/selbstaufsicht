@@ -40,7 +40,7 @@ def main():
     
     downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'])
     root = os.environ['DATA_PATH']
-    test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform)
+    test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode=='diversity')
 
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:

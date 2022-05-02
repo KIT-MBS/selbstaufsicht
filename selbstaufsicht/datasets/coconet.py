@@ -8,6 +8,7 @@ import numpy as np
 from Bio.PDB.Residue import Residue
 from Bio.PDB.Atom import Atom
 
+import torch
 from torch.utils.data import Dataset
 
 from Bio import AlignIO
@@ -24,7 +25,7 @@ class CoCoNetDataset(Dataset):
     testing
     """
     def __init__(self, root, split, transform=None, download=True, discard_train_size_based=True, 
-                 max_seq_len: int = 400, min_num_seq: int = 50):
+                 diversity_maximization=False, max_seq_len: int = 400, min_num_seq: int = 50):
         self.root = pathlib.Path(root)
         self.transform = transform
         self.token_mapping = rna2index
@@ -34,6 +35,11 @@ class CoCoNetDataset(Dataset):
 
         split_dir = 'RNA_DATASET' if split == 'train' else 'RNA_TESTSET'
         msa_index_filename = 'CCNListOfMSAFiles.txt'
+        
+        self.indices = None
+        if diversity_maximization:
+            indices_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'coconet_%s_diversity_maximization.pt' % split)
+            self.indices = torch.load(indices_path)
         
         # NOTE: these MSAs are excluded, since they are problematic
         # too long sequences
@@ -146,7 +152,10 @@ class CoCoNetDataset(Dataset):
         y = self.pdbs[i]
 
         if self.transform is not None:
-            return self.transform({'msa': x}, {'structure': y})
+            if self.indices is None:
+                return self.transform({'msa': x}, {'structure': y})
+            else:
+                return self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y})
 
         return x, y
 

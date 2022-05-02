@@ -11,7 +11,7 @@ from selbstaufsicht.utils import data_loader_worker_init
 
 class KFoldCVDownstream():
     def __init__(self, transform, num_folds: int = 1, val_ratio: float = 0.1, batch_size: int = 1, shuffle: bool = True, rng_seed: int = 42, 
-                 discard_train_size_based=True, max_seq_len: int = 400, min_num_seq: int = 50) -> None:
+                 discard_train_size_based=True, diversity_maximization=False, max_seq_len: int = 400, min_num_seq: int = 50) -> None:
         """
         Initializes K-fold cross validation for the downstream task.
 
@@ -23,6 +23,7 @@ class KFoldCVDownstream():
             shuffle (bool, optional): Whether data is shuffled. Defaults to True.
             rng_seed (int, optional): DataLoader/Shuffling RNG seed. Defaults to 42.
             discard_train_size_based (bool, optional): Whether training data is discarded, if it contravenes size criteria. Defaults to True.
+            diversity_maximization (bool, optional): Whether diversity maximization is used as subsampling strategy. Defaults to False.
             max_seq_len (int, optional): Maximum sequence length s.t. the MSA is not discarded. Defaults to 400.
             min_num_seq (int, optional): Minimum number of sequences s.t. the MSA is not discarded. Defaults to 50.
         """
@@ -42,7 +43,8 @@ class KFoldCVDownstream():
         
         # load dataset
         self.root = os.environ['DATA_PATH']
-        self.train_dataset = CoCoNetDataset(self.root, 'train', transform=transform, discard_train_size_based=discard_train_size_based, max_seq_len=max_seq_len, min_num_seq=min_num_seq)
+        self.train_dataset = CoCoNetDataset(self.root, 'train', transform=transform, discard_train_size_based=discard_train_size_based, 
+                                            diversity_maximization=diversity_maximization, max_seq_len=max_seq_len, min_num_seq=min_num_seq)
         
         # setup splits
         if self.num_folds == 1:

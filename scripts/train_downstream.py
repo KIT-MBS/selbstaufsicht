@@ -44,7 +44,7 @@ def main():
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
-    parser.add_argument('--validation-ratio', default=0.1, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
+    parser.add_argument('--validation-ratio', default=0.2, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
     parser.add_argument('--cv-num-folds', default=1, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
     parser.add_argument('--test', action='store_true', help="Runs checkpointed model on test dataset, after training is finished.")
@@ -80,10 +80,11 @@ def main():
     
     downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold)
     kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform, num_folds=args.cv_num_folds, val_ratio=args.validation_ratio, batch_size=args.batch_size, shuffle=not args.disable_shuffle, 
-                                                     rng_seed=args.rng_seed, discard_train_size_based=not args.disable_train_data_discarding, max_seq_len=h_params['cropping_size'], min_num_seq=h_params['subsampling_depth'])
+                                                     rng_seed=args.rng_seed, discard_train_size_based=not args.disable_train_data_discarding, diversity_maximization=args.subsampling_mode=='diversity',
+                                                     max_seq_len=h_params['cropping_size'], min_num_seq=h_params['subsampling_depth'])
     if args.test:
-        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root, 'test', transform=downstream_transform, discard_train_size_based=not args.disable_train_data_discarding, max_seq_len=h_params['cropping_size'], 
-                                               min_num_seq=h_params['subsampling_depth'])
+        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root, 'test', transform=downstream_transform, discard_train_size_based=not args.disable_train_data_discarding, 
+                                               diversity_maximization=args.subsampling_mode=='diversity', max_seq_len=h_params['cropping_size'], min_num_seq=h_params['subsampling_depth'])
         test_dl = DataLoader(test_dataset,
                              batch_size=args.batch_size,
                              shuffle=False,
