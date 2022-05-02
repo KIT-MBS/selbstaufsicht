@@ -187,6 +187,7 @@ def main():
     parser.add_argument('--prop-mate-p', default=.7, type=float, help="Probability for mate uniform in the evolutionary algorithm.")
     parser.add_argument('--prop-mut-p', default=.4, type=float, help="Probability for point mutation in the evolutionary algorithm.")
     parser.add_argument('--prop-rand-p', default=.1, type=float, help="Probability for init uniform in the evolutionary algorithm.")
+    parser.add_argument('--prop-migr-p', default=.1, type=float, help="Migration probability in the evolutionary algorithm.")
     parser.add_argument('--prop-num-generations', default=3, type=int, help="Number of generations in the evolutionary algorithm.")
 
     args = parser.parse_args()
@@ -355,7 +356,7 @@ def main():
                       num_isles=4, isle_sizes=[4, 4, 4, 4], migration_topology=migration_topology,
                       load_checkpoint = "pop_cpt.p",
                       save_checkpoint="pop_cpt.p", seed=9,
-                      migration_probability=0.9,
+                      migration_probability=args.prop_migr_p,
                       emigration_propagator=SelectBest, immigration_propagator=SelectWorst,
                       pollination=False)
     islands.evolve(top_n=1, logging_interval=1)
