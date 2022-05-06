@@ -201,6 +201,10 @@ def main():
                                                  jigsaw_euclid_emb=jigsaw_euclid_emb,
                                                  simclr_temperature=h_params['contrastive_temperature'])
     
+    num_maps = h_params['num_blocks'] * h_params['num_heads']
+    cull_tokens = [train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
+    if 'downstream' in args.checkpoint:
+        task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(num_maps, cull_tokens=cull_tokens)
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
         checkpoint_path = args.checkpoint,
@@ -221,9 +225,6 @@ def main():
                          shuffle=False,
                          num_workers=0,
                          pin_memory=False)
-    
-    num_maps = h_params['num_blocks'] * h_params['num_heads']
-    cull_tokens = [test_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
     
     attn_maps_list = []
     targets_list = []
