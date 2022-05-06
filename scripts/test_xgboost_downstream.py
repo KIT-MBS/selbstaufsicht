@@ -205,6 +205,7 @@ def main():
     cull_tokens = [train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
     if 'downstream' in args.checkpoint:
         task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(num_maps, cull_tokens=cull_tokens)
+        task_losses['contact'] = None
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
         checkpoint_path = args.checkpoint,
