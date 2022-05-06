@@ -202,7 +202,7 @@ def main():
                                                  simclr_temperature=h_params['contrastive_temperature'])
     
     num_maps = h_params['num_blocks'] * h_params['num_heads']
-    cull_tokens = [train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
+    cull_tokens = [test_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
     if 'downstream' in args.checkpoint:
         task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(num_maps, cull_tokens=cull_tokens)
         task_losses['contact'] = None
