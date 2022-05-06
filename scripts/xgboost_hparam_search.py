@@ -155,7 +155,6 @@ def main():
     # Training process
     parser.add_argument('--booster', default='dart', type=str, help="Booster algorithm used by XGBoost: gbtree, dart.")
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (attention-map computation). Currently restricted to 1.")
-    parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
     parser.add_argument('--cv-num-folds', default=5, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
@@ -193,12 +192,13 @@ def main():
     args = parser.parse_args()
     
     gpu_id = MPI.COMM_WORLD.Get_rank() % args.num_gpu_per_node
+    rng_seed = MPI.COMM_WORLD.Get_rank()
 
-    torch.manual_seed(args.rng_seed)
-    np.random.seed(args.rng_seed)
-    random.seed(args.rng_seed)
+    torch.manual_seed(rng_seed)
+    np.random.seed(rng_seed)
+    random.seed(rng_seed)
     data_loader_rng = torch.Generator()
-    data_loader_rng.manual_seed(args.rng_seed)
+    data_loader_rng.manual_seed(rng_seed)
     
     device = torch.device('cuda:%d' % gpu_id)
 
@@ -215,7 +215,7 @@ def main():
                           batch_size=args.batch_size,
                           shuffle=False,
                           num_workers=0,
-                          worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
+                          worker_init_fn=partial(data_loader_worker_init, rng_seed=rng_seed),
                           generator=data_loader_rng,
                           pin_memory=False)
     
