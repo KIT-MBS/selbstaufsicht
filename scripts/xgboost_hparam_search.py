@@ -191,6 +191,8 @@ def main():
 
     args = parser.parse_args()
     
+    xgb.set_config(verbosity=0)
+    
     gpu_id = MPI.COMM_WORLD.Get_rank() % args.num_gpu_per_node
     rng_seed = MPI.COMM_WORLD.Get_rank()
 
