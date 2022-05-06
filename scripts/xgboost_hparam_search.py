@@ -159,7 +159,7 @@ def main():
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
     # XGBoost HParams
-    parser.add_argument('--num-round-min', default=10, type=int, help="Minimum number of rounds performed by XGBoost. Also equals the number of trees.")
+    parser.add_argument('--num-round-min', default=1, type=int, help="Minimum number of rounds performed by XGBoost. Also equals the number of trees.")
     parser.add_argument('--num-round-max', default=500, type=int, help="Maximum number of rounds performed by XGBoost. Also equals the number of trees.")
     parser.add_argument('--num-early-stopping-round', default=10, type=int, help="Number of rounds in which the validation metric needs to improve at least once in order to continue training.")
     parser.add_argument('--learning-rate-min', default=0.01, type=float, help="Minimum learning rate used by XGBoost.")
@@ -358,7 +358,7 @@ def main():
     islands = Islands(objective_fn, propagator, generations=args.prop_num_generations,
                       num_isles=4, isle_sizes=[4, 4, 4, 4], migration_topology=migration_topology,
                       load_checkpoint = "pop_cpt.p",
-                      save_checkpoint="pop_cpt.p", seed=9,
+                      save_checkpoint="pop_cpt.p",
                       migration_probability=args.prop_migr_p,
                       emigration_propagator=SelectBest, immigration_propagator=SelectWorst,
                       pollination=False)
