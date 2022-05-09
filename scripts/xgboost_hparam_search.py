@@ -40,15 +40,16 @@ def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-x))
 
 
-def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, treat_all_preds_positive: bool = False) -> Tuple[str, float]:
+def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> Tuple[str, float]:
     """
-    Custom XGBoost Metric for top-L-precision.
+    Custom XGBoost Metric for top-(k*L)-precision.
 
     Args:
         preds (np.ndarray): Predictions [B] as logits.
         dtrain (xgb.DMatrix): Training data (x: [B, num_maps], y: [B]).
         msa_mappings (Tuple[np.ndarray, np.ndarray]): Mapping: Data point -> MSA index [B] (Train, Val).
         L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
+        k (float, optional): Coefficient k that is used in computing the top-(k*L)-precision. Defaults to 1.
         treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
 
     Returns:
@@ -77,7 +78,8 @@ def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.
         y_ = y[mask]
         
         L = L_mapping[msa_idx]
-        L_idx = np.argpartition(preds_, -L)[-L:]  # [L]
+        kL = min(int(k*L), len(y_))
+        L_idx = np.argpartition(preds_, -kL)[-kL:]  # [k*L]
         
         preds_ = np.round(sigmoid(preds_[L_idx]))
         y_ = y_[L_idx]
@@ -91,11 +93,11 @@ def xgb_topLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.
     
     top_l_prec = float(tp) / (tp + fp)
     
-    return 'topLPrec', top_l_prec
+    return 'top-%sL-Prec' % str(k), top_l_prec
 
 
 def hparam_objective(params: Dict[str, Any], attn_maps: np.ndarray, targets: np.ndarray, msa_mapping: np.ndarray, L_mapping: np.ndarray, 
-                     num_early_stopping_round: int, cv_num_folds: int, treat_all_preds_positive: bool, gpu_id: int) -> float:
+                     num_early_stopping_round: int, cv_num_folds: int, k: float, treat_all_preds_positive: bool, gpu_id: int) -> float:
     data = xgb.DMatrix(attn_maps, label=targets)
     rng_seed = random.randint(0, 2**32-1)
     splits = [split for split in KFold(cv_num_folds, shuffle=True, random_state=rng_seed).split(range(attn_maps.shape[0]))]
@@ -128,7 +130,7 @@ def hparam_objective(params: Dict[str, Any], attn_maps: np.ndarray, targets: np.
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
         
         evals_result = {}
-        metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, treat_all_preds_positive=treat_all_preds_positive)
+        metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
         xgb.train(xgb_params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=params['num_round'], 
                   feval=metric, maximize=True, early_stopping_rounds=num_early_stopping_round, verbose_eval=False)
         
@@ -157,6 +159,7 @@ def main():
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (attention-map computation). Currently restricted to 1.")
     parser.add_argument('--cv-num-folds', default=5, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
+    parser.add_argument('--top-l-prec-coeff', default=1., type=float, help="Coefficient k that is used in computing the top-(k*L)-precision.")
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
     # XGBoost HParams
     parser.add_argument('--num-round-min', default=1, type=int, help="Minimum number of rounds performed by XGBoost. Also equals the number of trees.")
@@ -311,22 +314,31 @@ def main():
         
         assert num_maps == attn_maps.shape[-1]
         
-        attn_maps = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
+        attn_maps_triu = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
+        attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).reshape(-1, num_maps)  # [1*L*L, num_maps]
         target = y['contact'].view(-1)  # [1*L*L]
         msa_mapping = torch.full_like(target, idx)  # [1*L*L]
         
-        # exclude lower triangle and unknown target points, apply diag shift
-        mask = target != -1
-        mask = torch.logical_and(mask, torch.triu(torch.ones_like(mask), args.diag_shift))
+        # exclude unknown target points, apply diag shift, averge over both triangle matrices
+        mask = y['contact'] != -1
+        mask_triu = torch.triu(torch.ones_like(mask), args.diag_shift).view(-1)  # [1*L*L]
         
-        attn_maps = attn_maps[mask, :]
-        target = target[mask]
-        msa_mapping = msa_mapping[mask]
+        mask = mask.view(-1)  # [1*L*L]
+        mask_attn_maps = mask[mask_triu]
+        mask_target = torch.logical_and(mask, mask_triu)
+        
+        attn_maps_triu = attn_maps_triu[mask_triu, :]
+        attn_maps_tril = attn_maps_tril[mask_triu, :]
+        
+        attn_maps = 0.5 * (attn_maps_triu + attn_maps_tril)
+        attn_maps = attn_maps[mask_attn_maps, :]
+        target = target[mask_target]
+        msa_mapping = msa_mapping[mask_target]
         
         attn_maps_list.append(attn_maps)
         targets_list.append(target)
         msa_mapping_list.append(msa_mapping)
-        L_mapping_list.append(L)
+        L_mapping_list.append(degapped_L)
     
     attn_maps = torch.cat(attn_maps_list)  # [B*L*L, num_maps]
     targets = torch.cat(targets_list)  # [B*L*L]
@@ -351,7 +363,7 @@ def main():
     }
     
     objective_fn = partial(hparam_objective, attn_maps=attn_maps, targets=targets, msa_mapping=msa_mapping, L_mapping=L_mapping, 
-                           num_early_stopping_round=args.num_early_stopping_round, cv_num_folds=args.cv_num_folds, 
+                           num_early_stopping_round=args.num_early_stopping_round, cv_num_folds=args.cv_num_folds, k=args.top_l_prec_coeff,
                            treat_all_preds_positive=args.treat_all_preds_positive, gpu_id=gpu_id)
     num_migrants = 1
     migration_topology = num_migrants*np.ones((4, 4), dtype=int)
