@@ -130,7 +130,7 @@ def hparam_objective(params: Dict[str, Any], attn_maps: np.ndarray, targets: np.
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
         
         evals_result = {}
-        metric = partial(xgb_topLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
+        metric = partial(xgb_topkLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
         xgb.train(xgb_params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=params['num_round'], 
                   feval=metric, maximize=True, early_stopping_rounds=num_early_stopping_round, verbose_eval=False)
         
@@ -139,7 +139,7 @@ def hparam_objective(params: Dict[str, Any], attn_maps: np.ndarray, targets: np.
             for k2, v2 in v1.items():
                 results['%s_%s' % (k2, k1)] = v2
         results = pd.DataFrame.from_dict(results)
-        max_objectives.append(results['topLPrec_validation'].max())
+        max_objectives.append(results['top-%sL-Prec_validation' % str(k)].max())
     
     max_objectives = np.array(max_objectives)
     return -max_objectives.mean()
