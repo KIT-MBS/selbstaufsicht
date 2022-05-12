@@ -115,7 +115,8 @@ def main():
     parser.add_argument('--learning-rate', default=0.3, type=float, help="Learning rate used by XGBoost.")
     parser.add_argument('--gamma', default=0.3, type=float, help="Minimum loss reduction required to make a further partition on a leaf node of the tree. Increases model bias.")
     parser.add_argument('--max-depth', default=6, type=int, help="Maximum depth of a tree. Increasing this value will make the model more complex and more likely to overfit. 0 indicates no limit on depth.")
-    parser.add_argument('--min-child-weight', default=1., type=float, help="Minimum sum of instance weight (hessian) needed in a child. Increases model bias.")
+    parser.add_argument('--colsample-bytree', default=0.5, type=float, help="Subsample ratio of columns when constructing each tree.")
+    parser.add_argument('--colsample-bylevel', default=0.5, type=float, help="Subsample ratio of columns for each level.")
     parser.add_argument('--xgb-subsampling-rate', default=1., type=float, help="Subsample ratio of the training instances used by XGBoost. Setting it to 0.5 means that XGBoost would randomly sample half of the training data prior to growing trees, preventing overfitting.")
     parser.add_argument('--xgb-subsampling-mode', default='uniform', type=str, help="The method used to sample the training instances by XGBoost: uniform, gradient_based.")
     parser.add_argument('--scale-pos-weight', default=1., type=float, help="Controls the balance of positive and negative weights, useful for unbalanced classes.")
@@ -299,7 +300,8 @@ def main():
         'eta': args.learning_rate,
         'gamma': args.gamma,
         'max_depth': args.max_depth,
-        'min_child_weight': args.min_child_weight,
+        'colsample_bytree': args.colsample_bytree,
+        'colsample_bylevel': args.colsample_bylevel,
         'subsample': args.xgb_subsampling_rate,
         'sampling_method': args.xgb_subsampling_mode,
         'scale_pos_weight': args.scale_pos_weight,
