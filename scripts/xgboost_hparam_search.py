@@ -135,7 +135,7 @@ def hparam_objective(params: Dict[str, Any], attn_maps: np.ndarray, targets: np.
         booster = xgb.train(xgb_params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=params['num_round'], 
                             feval=metric, maximize=True, early_stopping_rounds=num_early_stopping_round, verbose_eval=False)
         # free GPU memory manually to avoid OOM error
-        booster.del()
+        booster.__del__()
         gc.collect()
         
         results = {}
