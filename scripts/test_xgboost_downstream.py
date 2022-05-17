@@ -70,15 +70,15 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
             stop_flag = k_L == len(y_)
             L_idx = np.argpartition(preds_, -k_L)[-k_L:]  # [k*L]
             
-            preds_ = np.round(sigmoid(preds_[L_idx]))
-            y_ = y_[L_idx]
+            preds__ = np.round(sigmoid(preds_[L_idx]))
+            y__ = y_[L_idx]
             
             if treat_all_preds_positive:
-                tp = sum(y_ == 1)
-                fp = sum(y_ == 0)
+                tp = sum(y__ == 1)
+                fp = sum(y__ == 0)
             else:
-                tp = sum(np.logical_and(preds_ == 1, y_ == 1))
-                fp = sum(np.logical_and(preds_ == 1, y_ == 0))
+                tp = sum(np.logical_and(preds__ == 1, y__ == 1))
+                fp = sum(np.logical_and(preds__ == 1, y__ == 0))
     
             top_l_prec = float(tp) / (tp + fp)
             
@@ -209,7 +209,17 @@ def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_p
         save_dir (str): Directory, where plots are saved.
     """
     
+    x_rel = np.array([key for key in top_l_prec_dict_rel.keys()])
+    y_rel = np.array([val.mean() for val in top_l_prec_dict_rel.values()])
+    std_rel = np.array([val.std(ddof=1) for val in top_l_prec_dict_rel.values()])
+    
+    x_abs = np.array([key for key in top_l_prec_dict_abs.keys()])
+    y_abs = np.array([val.mean() for val in top_l_prec_dict_abs.values()])
+    std_abs = np.array([val.std(ddof=1) for val in top_l_prec_dict_abs.values()])
+    
     fig, ax = plt.subplots(1, 2)
+    
+    
     
     sns.lineplot(data=top_l_prec_dict_rel, ax=ax[0])
     sns.lineplot(data=top_l_prec_dict_abs, ax=ax[1])
@@ -217,9 +227,14 @@ def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_p
     ax[0].set_title("Relative")
     ax[0].set_xlabel("k")
     ax[0].set_ylabel("Top-(k*L)-Precision")
+    ax[0].plot(x_rel, y_rel, 'r-')
+    ax[0].fill_between(x_rel, y_rel - std_rel, y_rel + std_rel, color='r', alpha=0.2)
+    
     ax[1].set_title("Absolute")
     ax[1].set_xlabel("k*L")
     ax[1].set_ylabel("Top-(k*L)-Precision")
+    ax[0].plot(x_abs, y_abs, 'b-')
+    ax[0].fill_between(x_abs, y_abs - std_abs, y_abs + std_abs, color='b', alpha=0.2)
     
     fig.set_size_inches(15, 5)
     fig.suptitle("Relative and Absolute Top-(k*L)-Precision Plots")
