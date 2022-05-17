@@ -57,18 +57,17 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
     top_l_prec_dict_rel = dict()
     top_l_prec_dict_abs = dict()
     
-    num_k, _ = k.shape
-    
     # for each MSA, find top-L and compute true/false positives
     for msa_idx in msa_indices:
         mask = msa_mapping == msa_idx  # [B]
         preds_ = preds[mask]
         y_ = y[mask]
         
-        for k_idx in range(num_k):
+        for k_idx in range(len(k)):
             k_ = k[k_idx]
             L = L_mapping[msa_idx]
             k_L = min(max(1, int(k_*L)), len(y_))
+            stop_flag = k_L == len(y_)
             L_idx = np.argpartition(preds_, -k_L)[-k_L:]  # [k*L]
             
             preds_ = np.round(sigmoid(preds_[L_idx]))
@@ -91,7 +90,7 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
             top_l_prec_dict_rel[k_].append(top_l_prec)
             top_l_prec_dict_abs[k_L].append(top_l_prec)
             
-            if k_L == len(y_):
+            if stop_flag:
                 break
     
     top_l_prec_dict_rel = {k: np.array(v) for k, v in top_l_prec_dict_rel.items()}
