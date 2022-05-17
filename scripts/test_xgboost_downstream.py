@@ -219,11 +219,6 @@ def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_p
     
     fig, ax = plt.subplots(1, 2)
     
-    
-    
-    sns.lineplot(data=top_l_prec_dict_rel, ax=ax[0])
-    sns.lineplot(data=top_l_prec_dict_abs, ax=ax[1])
-    
     ax[0].set_title("Relative")
     ax[0].set_xlabel("k")
     ax[0].set_ylabel("Top-(k*L)-Precision")
