@@ -210,12 +210,16 @@ def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_p
     """
     
     x_rel = np.array([key for key in top_l_prec_dict_rel.keys()])
-    y_rel = np.array([val.mean() for val in top_l_prec_dict_rel.values()])
-    std_rel = np.array([val.std(ddof=1) for val in top_l_prec_dict_rel.values()])
+    sort_indices = np.argsort(x_rel)
+    x_rel = x_rel[sort_indices]
+    y_rel = np.array([val.mean() for val in top_l_prec_dict_rel.values()])[sort_indices]
+    std_rel = np.array([val.std(ddof=1) for val in top_l_prec_dict_rel.values()])[sort_indices]
     
     x_abs = np.array([key for key in top_l_prec_dict_abs.keys()])
-    y_abs = np.array([val.mean() for val in top_l_prec_dict_abs.values()])
-    std_abs = np.array([val.std(ddof=1) for val in top_l_prec_dict_abs.values()])
+    sort_indices = np.argsort(x_abs)
+    x_abs = x_abs[sort_indices]
+    y_abs = np.array([val.mean() for val in top_l_prec_dict_abs.values()])[sort_indices]
+    std_abs = np.array([val.std(ddof=1) for val in top_l_prec_dict_abs.values()])[sort_indices]
     
     fig, ax = plt.subplots(1, 2)
     
@@ -228,8 +232,9 @@ def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_p
     ax[1].set_title("Absolute")
     ax[1].set_xlabel("k*L")
     ax[1].set_ylabel("Top-(k*L)-Precision")
-    ax[0].plot(x_abs, y_abs, 'b-')
-    ax[0].fill_between(x_abs, y_abs - std_abs, y_abs + std_abs, color='b', alpha=0.2)
+    ax[1].set_xscale('log')
+    ax[1].plot(x_abs, y_abs, 'b-')
+    ax[1].fill_between(x_abs, y_abs - std_abs, y_abs + std_abs, color='b', alpha=0.2)
     
     fig.set_size_inches(15, 5)
     fig.suptitle("Relative and Absolute Top-(k*L)-Precision Plots")
