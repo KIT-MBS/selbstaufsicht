@@ -416,7 +416,7 @@ def main():
     
     if args.num_k == 1:
         top_l_prec = xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, args.treat_all_preds_positive)
-        print("Top-%sL-Prec:" % str(args.top_l_prec_coeff), top_l_prec)
+        print("Top-%sL-Prec:" % str(args.min_k), top_l_prec)
     else:
         min_k = args.min_k
         if args.max_k == -1:
