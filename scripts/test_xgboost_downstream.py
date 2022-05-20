@@ -226,6 +226,7 @@ def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_p
     ax[0].set_title("Relative")
     ax[0].set_xlabel("k")
     ax[0].set_ylabel("Top-(k*L)-Precision")
+    ax[0].set_xscale('log')
     ax[0].plot(x_rel, y_rel, 'r-')
     ax[0].fill_between(x_rel, y_rel - std_rel, y_rel + std_rel, color='r', alpha=0.2)
     
