@@ -1,4 +1,5 @@
 import argparse
+from collections import OrderedDict
 from datetime import datetime
 from functools import partial
 import json
@@ -90,13 +91,14 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
             
             top_l_prec_dict[k_][msa_idx] = top_l_prec
             
-            if stop_flag:
+            if stop_flag and relative_k:
                 break
     
     if relative_k:
         return {k: np.array(list(v.values())) for k, v in top_l_prec_dict.items()}
     else:
-        return {k2: {k1: top_l_prec_dict[k1][k2] for k1 in top_l_prec_dict if k2 in top_l_prec_dict[k1]} for k2 in msa_indices}
+        unsorted = {k2: {k1: top_l_prec_dict[k1][k2] for k1 in top_l_prec_dict} for k2 in msa_indices}
+        return {k2: OrderedDict(sorted(unsorted[k2].items(), key=lambda t: t[0])) for k2 in msa_indices}
 
 
 def xgb_topkLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> float:
