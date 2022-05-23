@@ -429,7 +429,7 @@ def main():
         k_range = np.broadcast_to(np.linspace(min_k, max_k, args.num_k)[..., None], (args.num_k, len(test_dl)))  # [num_k, num_msa]
         top_l_prec_dict_rel = xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, treat_all_preds_positive=args.treat_all_preds_positive)
         
-        k_range = np.linspace(1, L_mapping, args.num_k, dtype=int)  # [num_k, num_msa]
+        k_range = np.linspace(1, 0.5*L_mapping**2, args.num_k, dtype=int)  # [num_k, num_msa]
         top_l_prec_dict_abs = xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, relative_k=False, treat_all_preds_positive=args.treat_all_preds_positive)
         
         if args.vis_dir != '' and args.vis_k_plot:
