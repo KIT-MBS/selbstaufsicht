@@ -34,28 +34,28 @@ def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-x))
 
 
-def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: np.ndarray, treat_all_preds_positive: bool = True) -> Tuple[Dict[float, np.ndarray], Dict[int, np.ndarray]]:
+def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: np.ndarray, relative_k: bool = True, treat_all_preds_positive: bool = True) -> Dict[float, np.ndarray]:
     """
-    Custom XGBoost Metric for top-L-precision with support for various k.
+    Custom XGBoost Metric for top-L-precision with support for various k (relative / absolute number of contacts).
 
     Args:
         preds (np.ndarray): Predictions [B] as logits.
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
         L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
-        k (np.ndarray): Coefficients k that are used in computing the top-(k*L)-precision [num_k, num_msa].
+        k (np.ndarray): Coefficients / counts k that are used in computing the top-(k*L)-precision / top-k-precision [num_k, num_msa].
+        relative_k (bool): Whether k contains relative coefficients or absolute counts. Defaults to True.
         treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to True.
 
     Returns:
-        Tuple[Dict[float, np.ndarray], Dict[float, np.ndarray]]: Metric values per k (relative); Metric values per k*L (absolute).
+        Dict[float, np.ndarray]: Metric values per k (relative) / metric values per k per MSA (absolute).
     """
     
     y = dtest.get_label()  # [B]
     
     msa_indices = np.unique(msa_mapping)
     
-    top_l_prec_dict_rel = dict()
-    top_l_prec_dict_abs = dict()
+    top_l_prec_dict = dict()
     
     # for each MSA, find top-L and compute true/false positives
     for msa_idx in msa_indices:
@@ -64,9 +64,12 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
         y_ = y[mask]
         
         for k_idx in range(len(k)):
-            k_ = k[k_idx]
+            k_ = k[k_idx][msa_idx]
             L = L_mapping[msa_idx]
-            k_L = min(max(1, int(k_*L)), len(y_))
+            if relative_k:
+                k_L = min(max(1, int(k_*L)), len(y_))
+            else:
+                k_L = min(max(1, int(k_)), len(y_))
             stop_flag = k_L == len(y_)
             L_idx = np.argpartition(preds_, -k_L)[-k_L:]  # [k*L]
             
@@ -82,21 +85,18 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
     
             top_l_prec = float(tp) / (tp + fp)
             
-            if k_ not in top_l_prec_dict_rel:
-                top_l_prec_dict_rel[k_] = []
-            if k_L not in top_l_prec_dict_abs:
-                top_l_prec_dict_abs[k_L] = []
+            if k_ not in top_l_prec_dict:
+                top_l_prec_dict[k_] = []
             
-            top_l_prec_dict_rel[k_].append(top_l_prec)
-            top_l_prec_dict_abs[k_L].append(top_l_prec)
+            top_l_prec_dict[k_].append(top_l_prec)
             
             if stop_flag:
                 break
     
-    top_l_prec_dict_rel = {k: np.array(v) for k, v in top_l_prec_dict_rel.items()}
-    top_l_prec_dict_abs = {k: np.array(v) for k, v in top_l_prec_dict_abs.items()}
-    
-    return top_l_prec_dict_rel, top_l_prec_dict_abs
+    if relative_k:
+        return {k: np.array(v) for k, v in top_l_prec_dict.items()}
+    else:
+        return [{k: v[msa_idx]} for k, v in top_l_prec_dict.items() for msa_idx in msa_indices if msa_idx < len(v)]
 
 
 def xgb_topkLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> float:
@@ -199,13 +199,13 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         fig.savefig(os.path.join(save_dir, '%d.pdf' % msa_idx))
 
 
-def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_prec_dict_abs: Dict[int, np.ndarray], save_dir: str) -> None:
+def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_prec_list_abs: List[Dict[int, float]], save_dir: str) -> None:
     """
     Creates plots for top-(k*L)-precision over k and (k*L), respectively.
 
     Args:
         top_l_prec_dict_rel (Dict[float, np.ndarray]): Metric values per k (relative). 
-        top_l_prec_dict_abs (Dict[int, np.ndarray]): Metric values per k*L (absolute).
+        top_l_prec_list_abs (List[Dict[int, float]]): Metric values per k per MSA (absolute).
         save_dir (str): Directory, where plots are saved.
     """
     
@@ -215,31 +215,28 @@ def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_p
     y_rel = np.array([val.mean() for val in top_l_prec_dict_rel.values()])[sort_indices]
     std_rel = np.array([val.std(ddof=1) for val in top_l_prec_dict_rel.values()])[sort_indices]
     
-    x_abs = np.array([key for key in top_l_prec_dict_abs.keys()])
-    sort_indices = np.argsort(x_abs)
-    x_abs = x_abs[sort_indices]
-    y_abs = np.array([val.mean() for val in top_l_prec_dict_abs.values()])[sort_indices]
-    std_abs = np.array([val.std(ddof=1) for val in top_l_prec_dict_abs.values()])[sort_indices]
+    fig = plt.gcf()
+    ax = plt.gca()
+    fig.tight_layout()
+    fig.suptitle("Top-(k*L)-Precision for relative k (all MSAs)")
+    ax.set_xlabel("k")
+    ax.set_ylabel("Top-(k*L)-Precision")
+    ax.set_xscale('log')
+    ax.plot(x_rel, y_rel, 'r-')
+    ax.fill_between(x_rel, y_rel - std_rel, y_rel + std_rel, color='r', alpha=0.2)
+    fig.savefig(os.path.join(save_dir, 'topLPrec_relative.pdf'))
     
-    fig, ax = plt.subplots(1, 2)
-    
-    ax[0].set_title("Relative")
-    ax[0].set_xlabel("k")
-    ax[0].set_ylabel("Top-(k*L)-Precision")
-    ax[0].set_xscale('log')
-    ax[0].plot(x_rel, y_rel, 'r-')
-    ax[0].fill_between(x_rel, y_rel - std_rel, y_rel + std_rel, color='r', alpha=0.2)
-    
-    ax[1].set_title("Absolute")
-    ax[1].set_xlabel("k*L")
-    ax[1].set_ylabel("Top-(k*L)-Precision")
-    ax[1].set_xscale('log')
-    ax[1].plot(x_abs, y_abs, 'b-')
-    ax[1].fill_between(x_abs, y_abs - std_abs, y_abs + std_abs, color='b', alpha=0.2)
-    
-    fig.set_size_inches(15, 5)
-    fig.suptitle("Relative and Absolute Top-(k*L)-Precision Plots")
-    fig.savefig(os.path.join(save_dir, 'topLPrec.pdf'))
+    for idx, top_l_prec_dict in enumerate(top_l_prec_list_abs):
+        plt.clf()
+        fig = plt.gcf()
+        ax = plt.gca()
+        fig.tight_layout()
+        fig.suptitle("Top-k-Precision for absolute k (MSA %d)" % idx)
+        ax.set_xlabel("k")
+        ax.set_ylabel("Top-k-Precision")
+        ax.set_xscale('log')
+        ax.plot(top_l_prec_dict.keys(), top_l_prec_dict.values(), 'b-')
+        fig.savefig(os.path.join(save_dir, 'topLPrec_absolute_%d.pdf' % idx))
 
 
 def main():
@@ -429,17 +426,21 @@ def main():
             max_k = max(L_mapping / 2)
         else:
             max_k = args.max_k
-        k_range = np.linspace(min_k, max_k, args.num_k)  # [num_k]
+        k_range = np.broadcast_to(np.linspace(min_k, max_k, args.num_k)[..., None], (args.num_k, len(test_dl)))  # [num_k, num_msa]
+        top_l_prec_dict_rel = xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, treat_all_preds_positive=args.treat_all_preds_positive)
         
-        top_l_prec_dict_rel, top_l_prec_dict_abs = xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, args.treat_all_preds_positive)
-        print("Relative Top-kL_Prec:", top_l_prec_dict_rel)
-        print("Absolute Top-kL_Prec:", top_l_prec_dict_abs)
+        k_range = np.linspace(1, L_mapping, args.num_k, dtype=int)  # [num_k, num_msa]
+        top_l_prec_dict_abs = xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, relative_k=False, treat_all_preds_positive=args.treat_all_preds_positive)
         
         if args.vis_dir != '' and args.vis_k_plot:
-            plot_top_l_prec_over_k(top_l_prec_dict_rel, top_l_prec_dict_abs, args.vis_dir)
+            top_l_prec_plot_dir = os.path.join(args.vis_dir, 'top_l_prec_plots')
+            os.makedirs(top_l_prec_plot_dir, exist_ok=True)
+            plot_top_l_prec_over_k(top_l_prec_dict_rel, top_l_prec_dict_abs, top_l_prec_plot_dir)
         
     if args.vis_dir != '' and args.vis_contact_maps:
-        plot_contact_maps(preds, test_data, msa_mapping, msa_mask, L_mapping, args.vis_dir)
+        contact_map_plot_dir = os.path.join(args.vis_dir, 'contact_maps')
+        os.makedirs(contact_map_plot_dir, exist_ok=True)
+        plot_contact_maps(preds, test_data, msa_mapping, msa_mask, L_mapping, contact_map_plot_dir)
 
 if __name__ == '__main__':
     main()
