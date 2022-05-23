@@ -4,7 +4,7 @@ from functools import partial
 import json
 import random
 import os
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -34,7 +34,7 @@ def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-x))
 
 
-def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: np.ndarray, relative_k: bool = True, treat_all_preds_positive: bool = True) -> Dict[float, np.ndarray]:
+def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: np.ndarray, relative_k: bool = True, treat_all_preds_positive: bool = True) -> Union[Dict[float, np.ndarray], Dict[int, Dict[int, float]]]:
     """
     Custom XGBoost Metric for top-L-precision with support for various k (relative / absolute number of contacts).
 
@@ -48,7 +48,7 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
         treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to True.
 
     Returns:
-        Dict[float, np.ndarray]: Metric values per k (relative) / metric values per k per MSA (absolute).
+        Union[Dict[float, np.ndarray], Dict[int, Dict[int, float]]]: Metric values per k (relative) / metric values per k per MSA (absolute).
     """
     
     y = dtest.get_label()  # [B]
@@ -86,17 +86,17 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
             top_l_prec = float(tp) / (tp + fp)
             
             if k_ not in top_l_prec_dict:
-                top_l_prec_dict[k_] = []
+                top_l_prec_dict[k_] = dict{}
             
-            top_l_prec_dict[k_].append(top_l_prec)
+            top_l_prec_dict[k_][msa_idx] = top_l_prec
             
             if stop_flag:
                 break
     
     if relative_k:
-        return {k: np.array(v) for k, v in top_l_prec_dict.items()}
+        return {k: np.array(list(v.values())) for k, v in top_l_prec_dict.items()}
     else:
-        return [{k: v[msa_idx]} for k, v in top_l_prec_dict.items() for msa_idx in msa_indices if msa_idx < len(v)]
+        return {k2: {k1: v2} for k1, v1 in top_l_prec_dict.items() for k2, v2 in v1.items()}
 
 
 def xgb_topkLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> float:
@@ -199,13 +199,13 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         fig.savefig(os.path.join(save_dir, '%d.pdf' % msa_idx))
 
 
-def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_prec_list_abs: List[Dict[int, float]], save_dir: str) -> None:
+def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_prec_list_abs: Dict[int, Dict[int, float]], save_dir: str) -> None:
     """
     Creates plots for top-(k*L)-precision over k and (k*L), respectively.
 
     Args:
         top_l_prec_dict_rel (Dict[float, np.ndarray]): Metric values per k (relative). 
-        top_l_prec_list_abs (List[Dict[int, float]]): Metric values per k per MSA (absolute).
+        top_l_prec_list_abs (Dict[int, Dict[int, float]]): Metric values per k per MSA (absolute).
         save_dir (str): Directory, where plots are saved.
     """
     
@@ -226,7 +226,7 @@ def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_p
     ax.fill_between(x_rel, y_rel - std_rel, y_rel + std_rel, color='r', alpha=0.2)
     fig.savefig(os.path.join(save_dir, 'topLPrec_relative.pdf'))
     
-    for idx, top_l_prec_dict in enumerate(top_l_prec_list_abs):
+    for idx, top_l_prec_dict in top_l_prec_list_abs.items():
         plt.clf()
         fig = plt.gcf()
         ax = plt.gca()
