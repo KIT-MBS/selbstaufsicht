@@ -148,6 +148,42 @@ def xgb_topkLPrec(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray
     return top_l_prec
 
 
+def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
+    """
+    Custom XGBoost Metric for F1 score.
+
+    Args:
+        preds (np.ndarray): Predictions [B] as logits.
+        dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
+        msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
+        
+    Returns:
+        float: Metric value.
+    """
+    
+    y = dtest.get_label()  # [B]
+    
+    msa_indices = np.unique(msa_mapping)
+    tp = 0
+    fp = 0
+    
+    # for each MSA, compute true/false positives
+    for msa_idx in msa_indices:
+        mask = msa_mapping == msa_idx  # [B]
+        preds_ = preds[mask]
+        y_ = y[mask]
+        
+        preds_ = np.round(sigmoid(preds_))
+        
+        tp += sum(np.logical_and(preds_ == 1, y_ == 1))
+        fp += sum(np.logical_and(preds_ == 1, y_ == 0))
+        fn += sum(np.logical_and(preds_ == 0, y_ == 1))
+    
+    f1_score = float(tp) / (tp + 0.5 * (fp + fn))
+    
+    return f1_score
+
+
 def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, msa_mask: np.ndarray, L_mapping: np.ndarray, save_dir: str) -> None:
     """
     Plots predictions and ground truth of contact maps side by side.
@@ -421,7 +457,9 @@ def main():
     
     if args.num_k == 1:
         top_l_prec = xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, args.treat_all_preds_positive)
+        f1_score = xgb_F1Score(preds, test_data, msa_mapping_filtered)
         print("Top-%sL-Prec:" % str(args.min_k), top_l_prec)
+        print("F1-Score:", f1_score)
     else:
         min_k = args.min_k
         if args.max_k == -1:
