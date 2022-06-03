@@ -379,7 +379,7 @@ def main():
         
         # exclude unknown target points, apply diag shift, averge over both triangle matrices
         mask = y['contact'] != -1
-        mask_triu = torch.triu(torch.ones_like(mask), args.diag_shift).view(-1)  # [1*L*L]
+        mask_triu = torch.triu(torch.ones_like(mask), args.diag_shift+1).view(-1)  # [1*L*L]
         
         mask = mask.view(-1)  # [1*L*L]
         mask_attn_maps = mask[mask_triu]
