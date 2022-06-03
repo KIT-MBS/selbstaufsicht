@@ -140,12 +140,12 @@ def main():
     else:
         device = torch.device('cpu')
         
-    h_params = xgb_contact.get_checkpoint_hparams(args.checkpoint)
+    h_params = xgb_contact.get_checkpoint_hparams(args.checkpoint, device)
     test_dl = xgb_contact.create_dataloader('test', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params)
     
     cull_tokens = xgb_contact.get_cull_tokens(test_dl.dataset)
-    model = xgb_contact.load_backbone(args.checkpoint, device, cull_tokens, h_params)
-    attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping = xgb_contact.compute_attn_maps(model, test_dl, cull_tokens, args.diag_shift, device)  
+    model = xgb_contact.load_backbone(args.checkpoint, device, test_dl.dataset, cull_tokens, h_params)
+    attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping = xgb_contact.compute_attn_maps(model, test_dl, cull_tokens, args.diag_shift, h_params, device)  
     
     test_data = xgb.DMatrix(attn_maps, label=targets)
     

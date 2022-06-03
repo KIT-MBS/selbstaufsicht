@@ -1,3 +1,6 @@
+from collections import OrderedDict
+from functools import partial
+import os
 from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
@@ -108,7 +111,7 @@ def xgb_topkLPrec(preds: np.ndarray, dmat: xgb.DMatrix, msa_mapping: np.ndarray,
         float: Metric value.
     """
     
-    y = dtest.get_label()  # [B]
+    y = dmat.get_label()  # [B]
     
     msa_indices = np.unique(msa_mapping)
     tp = 0
@@ -176,12 +179,13 @@ def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) 
     return f1_score
 
 
-def get_checkpoint_hparams(checkpoint: str) -> Dict[str, Any]:
+def get_checkpoint_hparams(checkpoint: str, device: Any) -> Dict[str, Any]:
     """
     Loads pytorch-lightning checkpoint and returns hyperparameters.
 
     Args:
         checkpoint (str): Path to checkpoint.
+        device (Any): Device on which model runs.
 
     Returns:
         Dict[str, Any]: Hyperparameters.
@@ -207,15 +211,16 @@ def get_cull_tokens(dataset: datasets.CoCoNetDataset) -> List[str]:
     return [dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
 
 
-def load_backbone(checkpoint: str, device: Any, cull_tokens: List[str], hparams: Dict[str, Any]) -> nn.Module:
+def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset, cull_tokens: List[str], h_params: Dict[str, Any]) -> nn.Module:
     """
     Loads pytorch-lightning backbone model.
 
     Args:
         checkpoint (str): Path to checkpoint.
         device (Any): Device on which model runs.
+        dataset (datasets.CoCoNetDataset): CoCoNet dataset that contains the token mapping.
         cull_tokens (List[str]): Cull tokens for contact prediction.
-        hparams (Dict[str, Any]): Hyperparameters of the backbone model.
+        h_params (Dict[str, Any]): Hyperparameters of the backbone model.
 
     Returns:
         nn.Module: Loaded backbone model.
@@ -282,7 +287,7 @@ def load_backbone(checkpoint: str, device: Any, cull_tokens: List[str], hparams:
     return model
     
 
-def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distance_threshold: float, hparams: Dict[str, Any], rng_seed: int = 42, disable_train_data_discarding: bool = False) -> DataLoader:
+def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distance_threshold: float, h_params: Dict[str, Any], rng_seed: int = 42, disable_train_data_discarding: bool = False) -> DataLoader:
     """
     Creates data loader for downstream task with XGBoost model.
 
@@ -291,7 +296,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         batch_size (int): Batch size (currently restricted to 1).
         subsampling_mode (str): Subsampling mode.
         distance_threshold (float): Minimum distance between two atoms in angström that is not considered as a contact.
-        hparams (Dict[str, Any]): Hyperparameters of the backbone model.
+        h_params (Dict[str, Any]): Hyperparameters of the backbone model.
         rng_seed (int, optional): Seed of the random number generator. Defaults to 42.
         disable_train_data_discarding (bool, optional): Disables the size-based discarding of training data. Defaults to False.
 
@@ -308,7 +313,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         dataset = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform, discard_train_size_based=not disable_train_data_discarding, 
                                           diversity_maximization=subsampling_mode=='diversity', max_seq_len=h_params['cropping_size'], 
                                           min_num_seq=h_params['subsampling_depth'])
-        return DataLoader(train_dataset,
+        return DataLoader(dataset,
                           batch_size=batch_size,
                           shuffle=False,
                           num_workers=0,
@@ -325,7 +330,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
                           pin_memory=False)
 
 
-def compute_attn_maps(model: nn.Model, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def compute_attn_maps(model: nn.Model, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Computes attention maps for all data items.
 
@@ -334,6 +339,7 @@ def compute_attn_maps(model: nn.Model, dataloader: DataLoader, cull_tokens: List
         dataloader (DataLoader): Data loader for downstream task.
         cull_tokens (List[str]): Cull tokens for contact prediction.
         diag_shift (int): Diagonal offset by which contacts are ignored.
+        h_params (Dict[str, Any]): Hyperparameters of the backbone model.
         device (Any): Device on which model runs.
 
     Returns:
@@ -346,6 +352,8 @@ def compute_attn_maps(model: nn.Model, dataloader: DataLoader, cull_tokens: List
     msa_mask_list = []
     msa_mapping_filtered_list = []
     L_mapping_list = []
+    
+    num_maps = h_params['num_blocks'] * h_params['num_heads']
     
     for idx, (x, y) in enumerate(dataloader):
         for k, v in x.items():

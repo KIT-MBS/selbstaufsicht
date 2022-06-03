@@ -97,7 +97,7 @@ def main():
     else:
         device = torch.device('cpu')
 
-    h_params = xgb_contact.get_checkpoint_hparams(args.checkpoint)
+    h_params = xgb_contact.get_checkpoint_hparams(args.checkpoint, device)
     train_dl = xgb_contact.create_dataloader('train', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, rng_seed=args.rng_seed, disable_train_data_discarding=args.disable_train_data_discarding)
 
     dt_now = datetime.now()
@@ -113,8 +113,8 @@ def main():
         os.makedirs(log_path)
     
     cull_tokens = xgb_contact.get_cull_tokens(train_dl.dataset)
-    model = xgb_contact.load_backbone(args.checkpoint, device, cull_tokens, h_params)
-    attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, device)
+    model = xgb_contact.load_backbone(args.checkpoint, device, train_dl.dataset, cull_tokens, h_params)
+    attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
     
     params = {
         'booster': args.booster,
