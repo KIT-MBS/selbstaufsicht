@@ -316,7 +316,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
                           generator=data_loader_rng,
                           pin_memory=False)
         
-    else mode:
+    else:
         dataset = datasets.CoCoNetDataset(root, mode, transform=downstream_transform, diversity_maximization=subsampling_mode=='diversity')
         return DataLoader(dataset,
                           batch_size=batch_size,
@@ -325,7 +325,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
                           pin_memory=False)
 
 
-def compute_attn_maps(model: nn.Model, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def compute_attn_maps(model: nn.Model, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Computes attention maps for all data items.
 
@@ -337,12 +337,13 @@ def compute_attn_maps(model: nn.Model, dataloader: DataLoader, cull_tokens: List
         device (Any): Device on which model runs.
 
     Returns:
-        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Attention maps [B*L*L/2, num_maps]; targets [B*L*L/2]; msa_mapping [B*L*L], msa_mapping_filtered [B*L*L], L_mapping [B*L*L/2].
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Attention maps [B*L*L/2, num_maps]; targets [B*L*L/2]; msa_mapping [B*L*L]; msa_mask [B*L*L]; msa_mapping_filtered [B*L*L/2], L_mapping [B].
     """
     
     attn_maps_list = []
     targets_list = []
     msa_mapping_list = []
+    msa_mask_list = []
     msa_mapping_filtered_list = []
     L_mapping_list = []
     
@@ -413,4 +414,4 @@ def compute_attn_maps(model: nn.Model, dataloader: DataLoader, cull_tokens: List
     msa_mapping_filtered = msa_mapping_filtered.cpu().numpy()
     L_mapping = np.array(L_mapping_list)
     
-    return attn_maps, targets, msa_mapping, msa_mapping_filtered, L_mapping
+    return attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping

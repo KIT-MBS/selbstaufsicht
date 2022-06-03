@@ -1,2 +1,2 @@
 from .msa.msa_module import MSAModel
-import .msa.xgb_contact as xgb_contact
+from .xgb import xgb_contact

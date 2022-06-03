@@ -47,7 +47,7 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         mask = msa_mapping == msa_idx  # [B]
         L = L_mapping[msa_idx]
         
-        preds_shaped = sigmoid(preds_[mask].reshape((L, L)))
+        preds_shaped = xgb_contact.sigmoid(preds_[mask].reshape((L, L)))
         preds_shaped += preds_shaped.T
         preds_shaped_binary = np.round(preds_shaped).astype(bool)
         y_shaped = y_[mask].reshape((L, L)).astype(bool)
@@ -140,12 +140,12 @@ def main():
     else:
         device = torch.device('cpu')
         
-    hparams = xgb_contact.get_checkpoint_hparams(args.checkpoint)
-    test_dl = xgb_contact.create_dataloader('test', args.batch_size, args.subsampling_mode, args.distance_threshold, hparams)
+    h_params = xgb_contact.get_checkpoint_hparams(args.checkpoint)
+    test_dl = xgb_contact.create_dataloader('test', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params)
     
     cull_tokens = xgb_contact.get_cull_tokens(test_dl.dataset)
-    model = xgb_contact.load_backbone(args.checkpoint, device, cull_tokens, hparams)
-    attn_maps, targets, msa_mapping, msa_mapping_filtered, L_mapping = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, device)  
+    model = xgb_contact.load_backbone(args.checkpoint, device, cull_tokens, h_params)
+    attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping = xgb_contact.compute_attn_maps(model, test_dl, cull_tokens, args.diag_shift, device)  
     
     test_data = xgb.DMatrix(attn_maps, label=targets)
     
@@ -154,8 +154,8 @@ def main():
     preds = xgb_model.predict(test_data, iteration_range=(0, xgb_model.best_iteration), strict_shape=True)[:, 0]
     
     if args.num_k == 1:
-        top_l_prec = xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, args.treat_all_preds_positive)
-        f1_score = xgb_F1Score(preds, test_data, msa_mapping_filtered)
+        top_l_prec = xgb_contact.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, args.treat_all_preds_positive)
+        f1_score = xgb_contact.xgb_F1Score(preds, test_data, msa_mapping_filtered)
         print("Top-%sL-Prec:" % str(args.min_k), top_l_prec)
         print("F1-Score:", f1_score)
     else:
@@ -165,10 +165,10 @@ def main():
         else:
             max_k = args.max_k
         k_range = np.broadcast_to(np.linspace(min_k, max_k, args.num_k)[..., None], (args.num_k, len(test_dl)))  # [num_k, num_msa]
-        top_l_prec_dict_rel = xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, treat_all_preds_positive=args.treat_all_preds_positive)
+        top_l_prec_dict_rel = xgb_contact.xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, treat_all_preds_positive=args.treat_all_preds_positive)
         
         k_range = np.linspace(1, 0.5*L_mapping**2, args.num_k, dtype=int)  # [num_k, num_msa]
-        top_l_prec_dict_abs = xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, relative_k=False, treat_all_preds_positive=args.treat_all_preds_positive)
+        top_l_prec_dict_abs = xgb_contact.xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, relative_k=False, treat_all_preds_positive=args.treat_all_preds_positive)
         
         if args.vis_dir != '' and args.vis_k_plot:
             top_l_prec_plot_dir = os.path.join(args.vis_dir, 'top_l_prec_plots')
