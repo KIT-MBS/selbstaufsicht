@@ -166,6 +166,7 @@ def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) 
     msa_indices = np.unique(msa_mapping)
     tp = 0
     fp = 0
+    fn = 0
     
     # for each MSA, compute true/false positives
     for msa_idx in msa_indices:
