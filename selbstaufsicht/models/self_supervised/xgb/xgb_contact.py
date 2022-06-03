@@ -330,12 +330,12 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
                           pin_memory=False)
 
 
-def compute_attn_maps(model: nn.Model, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Computes attention maps for all data items.
 
     Args:
-        model (nn.Model): Backbone model.
+        model (nn.Module): Backbone model.
         dataloader (DataLoader): Data loader for downstream task.
         cull_tokens (List[str]): Cull tokens for contact prediction.
         diag_shift (int): Diagonal offset by which contacts are ignored.
