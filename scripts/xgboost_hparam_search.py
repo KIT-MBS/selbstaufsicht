@@ -3,42 +3,23 @@ from functools import partial
 import os
 import random
 import gc
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Tuple
+
 import xgboost as xgb
 import mpi4py
 #mpi4py.rc.initialize=False
 #mpi4py.rc.finalize=False
-
 from mpi4py import MPI
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 import torch
-from torch import nn
-from torch.utils.data import DataLoader
 
 from propulate import Islands
 from propulate.utils import get_default_propagator
 from propulate.propagators import SelectBest, SelectWorst, SelectUniform
 
-from selbstaufsicht import models
-from selbstaufsicht import datasets
-from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks
-from selbstaufsicht.utils import data_loader_worker_init
-
-
-def sigmoid(x: np.ndarray) -> np.ndarray:
-    """
-    Applies sigmoid function.
-    
-    Args:
-        x (np.ndarray): Input data.
-        
-    Returns:
-        np.ndarray: Output data.
-    """
-
-    return 1 / (1 + np.exp(-x))
+from selbstaufsicht.models import xgb_contact
 
 
 def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> Tuple[str, float]:
@@ -68,31 +49,7 @@ def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np
     else:
         raise ValueError("Given data length does not match to msa_mappings: %d != (%d, %d)" % (B, len(msa_mappings[0]), len(msa_mappings[1])))
     
-    msa_indices = np.unique(msa_mapping)
-    tp = 0
-    fp = 0
-    
-    # for each MSA, find top-L and compute true/false positives
-    for msa_idx in msa_indices:
-        mask = msa_mapping == msa_idx  # [B]
-        preds_ = preds[mask]
-        y_ = y[mask]
-        
-        L = L_mapping[msa_idx]
-        kL = min(int(k*L), len(y_))
-        L_idx = np.argpartition(preds_, -kL)[-kL:]  # [k*L]
-        
-        preds_ = np.round(sigmoid(preds_[L_idx]))
-        y_ = y_[L_idx]
-        
-        if treat_all_preds_positive:
-            tp += sum(y_ == 1)
-            fp += sum(y_ == 0)
-        else:
-            tp += sum(np.logical_and(preds_ == 1, y_ == 1))
-            fp += sum(np.logical_and(preds_ == 1, y_ == 0))
-    
-    top_l_prec = float(tp) / (tp + fp)
+    top_l_prec = xgb_contact.xgb_topkLPrec(preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
     
     return 'top-%sL-Prec' % str(k), top_l_prec
 
@@ -206,152 +163,15 @@ def main():
     torch.manual_seed(rng_seed)
     np.random.seed(rng_seed)
     random.seed(rng_seed)
-    data_loader_rng = torch.Generator()
-    data_loader_rng.manual_seed(rng_seed)
     
     device = torch.device('cuda:%d' % gpu_id)
 
-    checkpoint = torch.load(args.checkpoint, map_location=device)
-    h_params = checkpoint['hyper_parameters']
-    downstream_args = {k: v for k, v in vars(args).items()}
+    hparams = xgb_contact.get_checkpoint_hparams(args.checkpoint)
+    train_dl = xgb_contact.create_dataloader('train', args.batch_size, args.subsampling_mode, args.distance_threshold, hparams, rng_seed=args.rng_seed, disable_train_data_discarding=args.disable_train_data_discarding)
     
-    root = os.environ['DATA_PATH']
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold)
-    train_dataset = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform, discard_train_size_based=not args.disable_train_data_discarding, 
-                                                  diversity_maximization=args.subsampling_mode=='diversity', max_seq_len=h_params['cropping_size'], 
-                                                  min_num_seq=h_params['subsampling_depth'])
-    train_dl = DataLoader(train_dataset,
-                          batch_size=args.batch_size,
-                          shuffle=False,
-                          num_workers=0,
-                          worker_init_fn=partial(data_loader_worker_init, rng_seed=rng_seed),
-                          generator=data_loader_rng,
-                          pin_memory=False)
-    
-    jigsaw_euclid_emb = None
-    if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
-        embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
-        jigsaw_euclid_emb = torch.empty((1, embed_size))
-    else:
-        jigsaw_euclid_emb = None
-
-    if 'jigsaw_disable_delimiter' in h_params:
-        jigsaw_delimiter = not h_params['jigsaw_disable_delimiter']
-    else:
-        jigsaw_delimiter = True
-
-    tasks = []
-    if h_params['task_inpainting']:
-        tasks.append("inpainting")
-    if h_params['task_jigsaw']:
-        tasks.append("jigsaw")
-    if h_params['task_contrastive']:
-        tasks.append("contrastive")
-        
-    _, task_heads, task_losses, _, _ = get_tasks(tasks,
-                                                 h_params['feature_dim_head'] * h_params['num_heads'],
-                                                 subsample_depth=h_params['subsampling_depth'],
-                                                 subsample_mode=h_params['subsampling_mode'],
-                                                 crop_size=h_params['cropping_size'],
-                                                 crop_mode=h_params['cropping_mode'],
-                                                 masking=h_params['inpainting_masking_type'],
-                                                 p_mask=h_params['inpainting_masking_p'],
-                                                 jigsaw_partitions=h_params['jigsaw_partitions'],
-                                                 jigsaw_classes=h_params['jigsaw_permutations'],
-                                                 jigsaw_linear=not h_params['jigsaw_nonlinear'],
-                                                 jigsaw_delimiter= jigsaw_delimiter,
-                                                 jigsaw_euclid_emb=jigsaw_euclid_emb,
-                                                 simclr_temperature=h_params['contrastive_temperature'])
-    
-    num_maps = h_params['num_blocks'] * h_params['num_heads']
-    cull_tokens = [train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
-    if 'downstream' in args.checkpoint:
-        task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(num_maps, cull_tokens=cull_tokens)
-        task_losses['contact'] = None
-
-    model = models.self_supervised.MSAModel.load_from_checkpoint(
-        checkpoint_path=args.checkpoint,
-        num_blocks=h_params['num_blocks'],
-        num_heads=h_params['num_heads'],
-        feature_dim_head=h_params['feature_dim_head'],
-        task_heads=task_heads,
-        task_losses=task_losses,
-        alphabet_size=len(train_dataset.token_mapping),
-        padding_token=train_dataset.token_mapping['PADDING_TOKEN'],
-        lr=h_params['learning_rate'],
-        lr_warmup=h_params['learning_rate_warmup'],
-        dropout=0.,
-        emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
-        freeze_backbone=True,
-        h_params=h_params)
-    model.need_attn = True
-    model.to(device)
-    
-    attn_maps_list = []
-    targets_list = []
-    msa_mapping_list = []
-    L_mapping_list = []
-    
-    for idx, (x, y) in enumerate(train_dl):
-        for k, v in x.items():
-            if isinstance(v, torch.Tensor):
-                x[k] = v.to(device)
-        
-        with torch.no_grad():
-            _, attn_maps = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
-        
-        B, _, L = x['msa'].shape
-        assert B == 1
-        
-        mask = torch.ones((L, ), device=device)
-        for token in cull_tokens:
-            mask -= (x['msa'][:, 0].reshape((L, )) == token).int()
-        mask = mask.bool()
-        degapped_L = int(mask.sum())
-        mask = torch.reshape(mask, (B, 1, L))
-        mask = torch.logical_and(mask.reshape((B, 1, L)).expand(B, L, L), mask.reshape((B, L, 1)).expand(B, L, L))
-        mask = mask.reshape((B, 1, L, L)).expand((B, num_maps, L, L))
-
-        attn_maps = torch.cat([m.squeeze(dim=2) for m in attn_maps], dim=1)  # [1, num_maps, L, L]
-        attn_maps = attn_maps.masked_select(mask).reshape(B, num_maps, degapped_L, degapped_L)
-        attn_maps = torch.permute(attn_maps, (0, 2, 3, 1))  # [1, L, L, num_maps]
-        
-        assert num_maps == attn_maps.shape[-1]
-        
-        attn_maps_triu = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
-        attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).reshape(-1, num_maps)  # [1*L*L, num_maps]
-        target = y['contact'].view(-1)  # [1*L*L]
-        msa_mapping = torch.full_like(target, idx)  # [1*L*L]
-        
-        # exclude unknown target points, apply diag shift, averge over both triangle matrices
-        mask = y['contact'] != -1
-        mask_triu = torch.triu(torch.ones_like(mask), args.diag_shift+1).view(-1)  # [1*L*L]
-        
-        mask = mask.view(-1)  # [1*L*L]
-        mask_attn_maps = mask[mask_triu]
-        mask_target = torch.logical_and(mask, mask_triu)
-        
-        attn_maps_triu = attn_maps_triu[mask_triu, :]
-        attn_maps_tril = attn_maps_tril[mask_triu, :]
-        
-        attn_maps = 0.5 * (attn_maps_triu + attn_maps_tril)
-        attn_maps = attn_maps[mask_attn_maps, :]
-        target = target[mask_target]
-        msa_mapping = msa_mapping[mask_target]
-        
-        attn_maps_list.append(attn_maps)
-        targets_list.append(target)
-        msa_mapping_list.append(msa_mapping)
-        L_mapping_list.append(degapped_L)
-    
-    attn_maps = torch.cat(attn_maps_list)  # [B*L*L, num_maps]
-    targets = torch.cat(targets_list)  # [B*L*L]
-    msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L]
-    
-    attn_maps = attn_maps.cpu().numpy()
-    targets = targets.cpu().numpy()
-    msa_mapping = msa_mapping.cpu().numpy()
-    L_mapping = np.array(L_mapping_list)
+    cull_tokens = xgb_contact.get_cull_tokens(train_dl.dataset)
+    model = xgb_contact.load_backbone(args.checkpoint, device, cull_tokens, hparams)
+    attn_maps, targets, _, msa_mapping, L_mapping = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, device)
     
     limits = {
         'num_round': (args.num_round_min, args.num_round_max),
