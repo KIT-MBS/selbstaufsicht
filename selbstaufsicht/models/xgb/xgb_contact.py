@@ -398,11 +398,11 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
         else:
             target = y['contact'].view(-1)  # [1*L*L]
             
-        msa_mapping = torch.full((B*L*L, ), idx, dtype=torch.int64)  # [1*L*L]
+        msa_mapping = torch.full((B * degapped_L * degapped_L, ), idx, dtype=torch.int64)  # [1*L*L]
         
         # exclude unknown target points, apply diag shift, averge over both triangle matrices
         if not 'contact' in y:
-            mask = torch.ones((B, L, L), dtype=torch.bool)  # [1, L, L]
+            mask = torch.ones((B, degapped_L, degapped_L), dtype=torch.bool)  # [1, L, L]
         else:
             mask = y['contact'] != -1
         mask_triu = torch.triu(torch.ones_like(mask), diag_shift+1).view(-1)  # [1*L*L]
