@@ -21,9 +21,9 @@ class InferenceDataset(Dataset):
         x = self.msas[i]
 
         if self.transform is not None:
-            return self.transform({'msa': x}, {'structure': None})
+            return self.transform({'msa': x}, {'structure': []})
 
-        return x, None
+        return x, []
 
     def __len__(self):
         return(len(self.msas))

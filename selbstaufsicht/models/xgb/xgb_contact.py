@@ -393,7 +393,7 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
         
         attn_maps_triu = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
         attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).reshape(-1, num_maps)  # [1*L*L, num_maps]
-        if y is None:
+        if not 'contact' in y:
             target = None
         else:
             target = y['contact'].view(-1)  # [1*L*L]
@@ -401,7 +401,7 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
         msa_mapping = torch.full((B*L*L, ), idx, dtype=torch.int64)  # [1*L*L]
         
         # exclude unknown target points, apply diag shift, averge over both triangle matrices
-        if y is None:
+        if not 'contact' in y:
             mask = torch.ones((B, L, L), dtype=torch.bool)  # [1, L, L]
         else:
             mask = y['contact'] != -1
