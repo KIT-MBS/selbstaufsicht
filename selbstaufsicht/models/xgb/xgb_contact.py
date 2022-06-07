@@ -287,24 +287,25 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
     return model
     
 
-def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distance_threshold: float, h_params: Dict[str, Any], rng_seed: int = 42, disable_train_data_discarding: bool = False) -> DataLoader:
+def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distance_threshold: float, h_params: Dict[str, Any], rng_seed: int = 42, disable_train_data_discarding: bool = False, fasta_files: List[str] = []) -> DataLoader:
     """
     Creates data loader for downstream task with XGBoost model.
 
     Args:
-        mode (str): Train/Test.
+        mode (str): Train/Test/Inference.
         batch_size (int): Batch size (currently restricted to 1).
         subsampling_mode (str): Subsampling mode.
         distance_threshold (float): Minimum distance between two atoms in angström that is not considered as a contact.
         h_params (Dict[str, Any]): Hyperparameters of the backbone model.
         rng_seed (int, optional): Seed of the random number generator. Defaults to 42.
         disable_train_data_discarding (bool, optional): Disables the size-based discarding of training data. Defaults to False.
+        fasta_files (List[str], optional): List of FASTA files for inference, if chosen as mode. Defaults to [],
 
     Returns:
         DataLoader: Data loader for downstream task.
     """
     
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode, threshold=distance_threshold)
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode, threshold=distance_threshold, inference=mode=='inference')
     root = os.environ['DATA_PATH']
     
     if mode == 'train':
@@ -321,13 +322,22 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
                           generator=data_loader_rng,
                           pin_memory=False)
         
-    else:
+    elif mode == 'test':
         dataset = datasets.CoCoNetDataset(root, mode, transform=downstream_transform, diversity_maximization=subsampling_mode=='diversity')
         return DataLoader(dataset,
                           batch_size=batch_size,
                           shuffle=False,
                           num_workers=0,
                           pin_memory=False)
+    elif mode == 'inference':
+        dataset = datasets.InferenceDataset(fasta_files, transform=downstream_transform)
+        return DataLoader(dataset,
+                          batch_size=batch_size,
+                          shuffle=False,
+                          num_workers=0,
+                          pin_memory=False)
+    else:
+        raise ValueError("Unknown dataloader mode: %s" % mode)
 
 
 def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -383,11 +393,18 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
         
         attn_maps_triu = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
         attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).reshape(-1, num_maps)  # [1*L*L, num_maps]
-        target = y['contact'].view(-1)  # [1*L*L]
-        msa_mapping = torch.full_like(target, idx)  # [1*L*L]
+        if y is None:
+            target = None
+        else:
+            target = y['contact'].view(-1)  # [1*L*L]
+            
+        msa_mapping = torch.full((B*L*L, ), idx, dtype=torch.int64)  # [1*L*L]
         
         # exclude unknown target points, apply diag shift, averge over both triangle matrices
-        mask = y['contact'] != -1
+        if y is None:
+            mask = torch.ones((B, L, L), dtype=torch.bool)  # [1, L, L]
+        else:
+            mask = y['contact'] != -1
         mask_triu = torch.triu(torch.ones_like(mask), diag_shift+1).view(-1)  # [1*L*L]
         
         mask = mask.view(-1)  # [1*L*L]
@@ -399,7 +416,8 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
         
         attn_maps = 0.5 * (attn_maps_triu + attn_maps_tril)
         attn_maps = attn_maps[mask_attn_maps, :]
-        target = target[mask_target]
+        if target is not None:
+            target = target[mask_target]
         msa_mapping_filtered = msa_mapping[mask_target]
         
         attn_maps_list.append(attn_maps)
@@ -410,13 +428,18 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
         L_mapping_list.append(degapped_L)
     
     attn_maps = torch.cat(attn_maps_list)  # [B*L*L/2, num_maps]
-    targets = torch.cat(targets_list)  # [B*L*L/2]
+    if targets_list[0] is not None:
+        targets = torch.cat(targets_list)  # [B*L*L/2]
+    else:
+        targets = None
     msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L]
     msa_mask = torch.cat(msa_mask_list)  # [B*L*L]
     msa_mapping_filtered = torch.cat(msa_mapping_filtered_list)  # [B*L*L/2]
     
     attn_maps = attn_maps.cpu().numpy()
-    targets = targets.cpu().numpy()
+    
+    if targets is not None:
+        targets = targets.cpu().numpy()
     msa_mapping = msa_mapping.cpu().numpy()
     msa_mask = msa_mask.cpu().numpy()
     msa_mapping_filtered = msa_mapping_filtered.cpu().numpy()
