@@ -19,7 +19,7 @@ from propulate import Islands
 from propulate.utils import get_default_propagator
 from propulate.propagators import SelectBest, SelectWorst, SelectUniform
 
-from selbstaufsicht.models import xgb_contact
+from selbstaufsicht.models.xgb import xgb_contact
 
 
 def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> Tuple[str, float]:

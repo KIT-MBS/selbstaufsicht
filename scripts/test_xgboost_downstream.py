@@ -14,7 +14,7 @@ import seaborn as sns
 import torch
 import xgboost as xgb
 
-from selbstaufsicht.models import xgb_contact
+from selbstaufsicht.models.xgb import xgb_contact
 
 
 def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, msa_mask: np.ndarray, L_mapping: np.ndarray, save_dir: str) -> None:

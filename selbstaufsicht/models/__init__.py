@@ -1,1 +1,1 @@
-from . import self_supervised
+from . import self_supervised, xgb
