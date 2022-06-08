@@ -9,7 +9,7 @@ from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
-from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryTopLPrecision, BinaryTopLF1Score, BinaryConfusionMatrix
+from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryPrecision, BinaryF1Score, BinaryConfusionMatrix
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
 # NOTE mask and padding tokens can not be reconstructed
@@ -144,7 +144,7 @@ def get_tasks(tasks: List[str],
     return transform, task_heads, task_losses, train_metrics, val_metrics
 
 
-def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., device=None):
+def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., inference=False, device=None):
     transformslist = [
         MSASubsampling(subsample_depth, mode=subsample_mode),
         MSATokenize(rna2index)]
@@ -156,8 +156,9 @@ def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', 
                 num_classes=1)
         )
     transformslist.append(ExplicitPositionalEncoding())
-    transformslist.append(DistanceFromChain(device=device))
-    transformslist.append(ContactFromDistance(threshold))
+    if not inference:
+        transformslist.append(DistanceFromChain(device=device))
+        transformslist.append(ContactFromDistance(threshold))
     downstream_transform = transforms.SelfSupervisedCompose(transformslist)
 
     return downstream_transform
@@ -168,18 +169,18 @@ def get_downstream_metrics():
     val_metrics = ModuleDict()
     test_metrics = ModuleDict()
     
-    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
-                                           'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True), 
-                                           'topLprec_unreduced': BinaryTopLPrecision(reduce=False), 
-                                           'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix(), 'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
-    val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(),
-                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True),
-                                         'topLprec_unreduced': BinaryTopLPrecision(reduce=False),
-                                         'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix(), 'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
-    test_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryTopLPrecision(), 
-                                         'topLprec_coconet': BinaryTopLPrecision(treat_all_preds_positive=True),
-                                         'topLprec_unreduced': BinaryTopLPrecision(reduce=False),
-                                         'topLF1score': BinaryTopLF1Score(), 'confmat': BinaryConfusionMatrix(), 'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
+    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(), 
+                                           'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True), 
+                                           'topLprec_unreduced': BinaryPrecision(reduce=False), 
+                                           'F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(), 'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
+    val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
+                                         'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
+                                         'topLprec_unreduced': BinaryPrecision(reduce=False),
+                                         'F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(), 'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
+    test_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(), 
+                                         'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
+                                         'topLprec_unreduced': BinaryPrecision(reduce=False),
+                                         'F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(), 'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
     return train_metrics, val_metrics, test_metrics
 
 

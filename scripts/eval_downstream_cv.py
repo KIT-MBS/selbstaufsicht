@@ -7,7 +7,7 @@ import numpy as np
 def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Weakly Supervised Contact Prediction Script')
     # Pre-trained model
-    parser.add_argument('--log-path', type=str, help="Path to logging data of the specific downstream run to be analyzed.")
+    parser.add_argument('--log-path', type=str, help="Path to logging data of the specific downstream run to be evaluated.")
 
     args = parser.parse_args()
 

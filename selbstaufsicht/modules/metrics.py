@@ -140,14 +140,15 @@ class EmbeddedJigsawAccuracy(Accuracy):
         super().update(preds_indices, target_indices)
 
 
-class BinaryTopLPrecision(Metric):
-    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, treat_all_preds_positive: bool = False, reduce: bool = True, dist_sync_on_step: bool = False) -> None:
+class BinaryPrecision(Metric):
+    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, k: int = -2, treat_all_preds_positive: bool = False, reduce: bool = True, dist_sync_on_step: bool = False) -> None:
         """
         Initializes binary top-L precision metric with ignore index support.
 
         Args:
             ignore_idx (int, optional): Ignored index in the target values. Defaults to -1.
             diag_shift (int, optional): Diagonal offset for predictions. Defaults to 4.
+            k (int, optional): Top-k predictions that are considered. -1 refers to using all predictions. -2 refers to using L predictions. Defaults to -1.
             treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
             reduce (bool, optional): Whether metric states are reduced by summing up or not. Defaults to True.
             dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
@@ -156,6 +157,7 @@ class BinaryTopLPrecision(Metric):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
         self.ignore_idx = ignore_idx
         self.diag_shift = diag_shift
+        self.k = k
         self.treat_all_preds_positive = treat_all_preds_positive
         self.reduce = reduce
         if self.reduce:
@@ -165,36 +167,42 @@ class BinaryTopLPrecision(Metric):
             self.add_state('tp', default=[], dist_reduce_fx='cat')
             self.add_state('fp', default=[], dist_reduce_fx='cat')
 
-    def _compute_top_l(self, preds: torch.Tensor, target: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _compute_top_k(self, preds: torch.Tensor, target: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Computes top-L predictions and targets.
+        Computes top-k predictions and targets.
 
         Args:
             preds (torch.Tensor): Predictions [B, 2, L, L].
             target (torch.Tensor): Targets [B, L, L].
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: top-L preds [B, L], top-L target [B, L], top-L ignore mask [B, L]
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: top-k preds [B, k], top-k target [B, k], top-k ignore mask [B, k]
         """
 
         assert preds.shape[1] == 2
         B, L, _ = target.shape
+        if self.k == -2:
+            k = L
+        elif self.k == -1:
+            k = sum(range(L-self.diag_shift+1))
+        else:
+            k = self.k
         preds_ = preds[:, 1, :, :].squeeze(1)  # [B, L, L]
         assert preds_.size() == target.size()
 
-        preds_ = torch.triu(preds_, self.diag_shift) + torch.tril(torch.full_like(preds_, -torch.inf), self.diag_shift)
+        preds_ = torch.triu(preds_, self.diag_shift+1) + torch.tril(torch.full_like(preds_, -torch.inf), self.diag_shift)
         preds_[target == self.ignore_idx] = -torch.inf
         preds_ = preds_.view(B, -1)  # [B, L*L]
-        val, idx = torch.topk(preds_, L, dim=-1)  # [B, L]
+        val, idx = torch.topk(preds_, k, dim=-1)  # [B, k]
 
         target_ = target.view(B, -1)  # [B, L*L]
-        target_ = torch.gather(target_, dim=1, index=idx)  # [B, L]
+        target_ = torch.gather(target_, dim=1, index=idx)  # [B, k]
 
         preds_ = torch.argmax(preds, dim=1)  # [B, L, L]
         preds_ = preds_.view(B, -1)  # [B, L*L]
-        preds_ = torch.gather(preds_, dim=1, index=idx)  # [B, L]
+        preds_ = torch.gather(preds_, dim=1, index=idx)  # [B, k]
 
-        ignore_mask = val != -torch.inf  # [B, L]
+        ignore_mask = val != -torch.inf  # [B, k]
 
         return preds_, target_, ignore_mask
 
@@ -207,7 +215,7 @@ class BinaryTopLPrecision(Metric):
             target (torch.Tensor): Targets [B, L, L].
         """
 
-        preds_, target_, ignore_mask = self._compute_top_l(preds, target)
+        preds_, target_, ignore_mask = self._compute_top_k(preds, target)
 
         if self.treat_all_preds_positive:
             tp = torch.logical_and(target_ == 1, ignore_mask).sum()
@@ -225,10 +233,10 @@ class BinaryTopLPrecision(Metric):
 
     def compute(self) -> torch.Tensor:
         """
-        Computes binary top-L precision.
+        Computes binary precision.
 
         Returns:
-            torch.Tensor: Top-L precision.
+            torch.Tensor: Precision.
         """
         
         if self.reduce:
@@ -242,18 +250,19 @@ class BinaryTopLPrecision(Metric):
                 return tp_stack / (tp_stack + fp_stack)
 
 
-class BinaryTopLF1Score(BinaryTopLPrecision):
-    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, dist_sync_on_step: bool = False) -> None:
+class BinaryF1Score(BinaryPrecision):
+    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, k: int = -1, dist_sync_on_step: bool = False) -> None:
         """
         Initializes binary top-l F1 score metric with ignore index support.
 
         Args:
             ignore_idx (int, optional): Ignored index in the target values. Defaults to -1.
             diag_shift (int, optional): Diagonal offset for predictions. Defaults to 4.
+            k (int, optional): Top-k predictions that are considered. -1 refers to using all predictions. Defaults to -1.
             dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
         """
 
-        super().__init__(ignore_idx=ignore_idx, diag_shift=diag_shift, dist_sync_on_step=dist_sync_on_step)
+        super().__init__(ignore_idx=ignore_idx, diag_shift=diag_shift, k=k, dist_sync_on_step=dist_sync_on_step)
         self.add_state('fn', default=torch.tensor(0), dist_reduce_fx='sum')
 
     def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
@@ -265,7 +274,7 @@ class BinaryTopLF1Score(BinaryTopLPrecision):
             target (torch.Tensor): Targets [B, L, L].
         """
 
-        preds_, target_, ignore_mask = self._compute_top_l(preds, target)
+        preds_, target_, ignore_mask = self._compute_top_k(preds, target)
 
         tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), ignore_mask).sum()
         fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), ignore_mask).sum()
