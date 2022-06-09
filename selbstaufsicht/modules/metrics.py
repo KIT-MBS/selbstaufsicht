@@ -148,7 +148,7 @@ class BinaryPrecision(Metric):
         Args:
             ignore_idx (int, optional): Ignored index in the target values. Defaults to -1.
             diag_shift (int, optional): Diagonal offset for predictions. Defaults to 4.
-            k (int, optional): Top-k predictions that are considered. -1 refers to using all predictions. -2 refers to using L predictions. Defaults to -1.
+            k (int, optional): Top-k predictions that are considered. -1 refers to using all predictions. -2 refers to using L predictions. Defaults to -2.
             treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
             reduce (bool, optional): Whether metric states are reduced by summing up or not. Defaults to True.
             dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
@@ -250,7 +250,49 @@ class BinaryPrecision(Metric):
                 return tp_stack / (tp_stack + fp_stack)
 
 
-class BinaryF1Score(BinaryPrecision):
+class BinaryRecall(BinaryPrecision):
+    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, k: int = -1, dist_sync_on_step: bool = False) -> None:
+        """
+        Initializes binary top-l recall metric with ignore index support.
+
+        Args:
+            ignore_idx (int, optional): Ignored index in the target values. Defaults to -1.
+            diag_shift (int, optional): Diagonal offset for predictions. Defaults to 4.
+            k (int, optional): Top-k predictions that are considered. -1 refers to using all predictions. Defaults to -1.
+            dist_sync_on_step (bool, optional): Synchronize metric state across processes at each forward() before returning the value at the step. Defaults to False.
+        """
+
+        super().__init__(ignore_idx=ignore_idx, diag_shift=diag_shift, k=k, dist_sync_on_step=dist_sync_on_step)
+        self.add_state('fn', default=torch.tensor(0), dist_reduce_fx='sum')
+
+    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
+        """
+        Updates internal metric states by comparing predicted and target values.
+
+        Args:
+            preds (torch.Tensor): Predictions [B, 2, L, L].
+            target (torch.Tensor): Targets [B, L, L].
+        """
+
+        preds_, target_, ignore_mask = self._compute_top_k(preds, target)
+
+        tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), ignore_mask).sum()
+        fn = torch.logical_and(torch.logical_and(preds_ == 0, target_ == 1), ignore_mask).sum()
+
+        self.tp += tp
+        self.fn += fn
+
+    def compute(self) -> torch.Tensor:
+        """
+        Computes binary recall.
+
+        Returns:
+            torch.Tensor: Recall.
+        """
+
+        return self.tp.float() / (self.tp.float() + self.fn.float())
+
+class BinaryF1Score(BinaryRecall):
     def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, k: int = -1, dist_sync_on_step: bool = False) -> None:
         """
         Initializes binary top-l F1 score metric with ignore index support.
@@ -263,7 +305,6 @@ class BinaryF1Score(BinaryPrecision):
         """
 
         super().__init__(ignore_idx=ignore_idx, diag_shift=diag_shift, k=k, dist_sync_on_step=dist_sync_on_step)
-        self.add_state('fn', default=torch.tensor(0), dist_reduce_fx='sum')
 
     def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         """

@@ -3,7 +3,7 @@ from torch.nn import CrossEntropyLoss
 import torch.testing as testing
 import pytest
 
-from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss, BinaryPrecision, BinaryF1Score, BinaryConfusionMatrix
+from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix
 from selbstaufsicht.utils import lehmer_encode, perm_metric, perm_gram_matrix, embed_finite_metric_space
 
 
@@ -237,6 +237,52 @@ def test_binary_top_l_precision():
     assert fp == 2
     assert top_l_precision == 3 / 5
     
+    
+def test_binary_recall():
+    top_l_recall_metric = BinaryRecall(diag_shift=1, k=-2)
+    preds = torch.Tensor([[[[0.1, 0.4, 0.3, 0.8], 
+                            [0.4, 0.2, 0.9, 0.7],
+                            [0.3, 0.9, 0.1, 0.2],
+                            [0.8, 0.7, 0.2, 0.2]], 
+                           [[0.9, 0.6, 0.7, 0.2], 
+                            [0.6, 0.8, 0.1, 0.3],
+                            [0.7, 0.1, 0.9, 0.8],
+                            [0.2, 0.3, 0.8, 0.8]]],
+                          [[[0.9, 0.6, 0.7, 0.2], 
+                            [0.6, 0.8, 0.1, 0.3],
+                            [0.7, 0.1, 0.9, 0.8],
+                            [0.2, 0.3, 0.8, 0.8]], 
+                           [[0.1, 0.4, 0.3, 0.8], 
+                            [0.4, 0.2, 0.9, 0.7],
+                            [0.3, 0.9, 0.1, 0.2],
+                            [0.8, 0.7, 0.2, 0.2]]]])
+    target = torch.Tensor([[[ 1, 0,  1,  1], 
+                            [ 0, 1,  0,  1],
+                            [ 1, 0,  1,  0],
+                            [ 1, 1,  0,  1]], 
+                           [[ 0, 1,  0, -1], 
+                            [ 1, 0,  1,  0],
+                            [ 0, 1,  0, -1],
+                            [-1, 0, -1,  0]]])
+    
+    top_l_recall = top_l_recall_metric(preds, target)
+    tp = top_l_recall_metric.tp
+    fn = top_l_recall_metric.fn
+    
+    assert tp == 1
+    assert fn == 2
+    assert top_l_recall == 1 / 3
+    
+    recall_metric = BinaryF1Score(diag_shift=0, k=-1)
+    
+    recall = recall_metric(preds, target)
+    tp = recall_metric.tp
+    fn = recall_metric.fn
+    
+    assert tp == 2
+    assert fn == 3
+    assert recall == 2 / 5
+    
 
 def test_binary_f1_score():
     top_l_f1_score_metric = BinaryF1Score(diag_shift=1, k=-2)
@@ -276,30 +322,6 @@ def test_binary_f1_score():
     assert top_l_f1_score == 2 / 5
     
     f1_score_metric = BinaryF1Score(diag_shift=0, k=-1)
-    preds = torch.Tensor([[[[0.1, 0.4, 0.3, 0.8], 
-                            [0.4, 0.2, 0.9, 0.7],
-                            [0.3, 0.9, 0.1, 0.2],
-                            [0.8, 0.7, 0.2, 0.2]], 
-                           [[0.9, 0.6, 0.7, 0.2], 
-                            [0.6, 0.8, 0.1, 0.3],
-                            [0.7, 0.1, 0.9, 0.8],
-                            [0.2, 0.3, 0.8, 0.8]]],
-                          [[[0.9, 0.6, 0.7, 0.2], 
-                            [0.6, 0.8, 0.1, 0.3],
-                            [0.7, 0.1, 0.9, 0.8],
-                            [0.2, 0.3, 0.8, 0.8]], 
-                           [[0.1, 0.4, 0.3, 0.8], 
-                            [0.4, 0.2, 0.9, 0.7],
-                            [0.3, 0.9, 0.1, 0.2],
-                            [0.8, 0.7, 0.2, 0.2]]]])
-    target = torch.Tensor([[[ 1, 0,  1,  1], 
-                            [ 0, 1,  0,  1],
-                            [ 1, 0,  1,  0],
-                            [ 1, 1,  0,  1]], 
-                           [[ 0, 1,  0, -1], 
-                            [ 1, 0,  1,  0],
-                            [ 0, 1,  0, -1],
-                            [-1, 0, -1,  0]]])
     
     f1_score = f1_score_metric(preds, target)
     tp = f1_score_metric.tp
