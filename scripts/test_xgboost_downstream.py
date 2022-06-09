@@ -155,9 +155,13 @@ def main():
     
     if args.num_k == 1:
         top_l_prec = xgb_contact.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, args.treat_all_preds_positive)
-        f1_score = xgb_contact.xgb_F1Score(preds, test_data, msa_mapping_filtered)
-        print("Top-%sL-Prec:" % str(args.min_k), top_l_prec)
-        print("F1-Score:", f1_score)
+        global_precision = xgb_contact.xgb_precision(preds, test_data, msa_mapping_filtered)
+        global_recall = xgb_contact.xgb_recall(preds, test_data, msa_mapping_filtered)
+        global_f1_score = xgb_contact.xgb_F1Score(preds, test_data, msa_mapping_filtered)
+        print("Top-%sL-Precision:" % str(args.min_k), top_l_prec)
+        print("Global Precision:", global_precision)
+        print("Global Recall:", global_recall)
+        print("Global F1-Score:", global_f1_score)
     else:
         min_k = args.min_k
         if args.max_k == -1:

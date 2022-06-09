@@ -142,9 +142,79 @@ def xgb_topkLPrec(preds: np.ndarray, dmat: xgb.DMatrix, msa_mapping: np.ndarray,
     return top_l_prec
 
 
+def xgb_precision(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
+    """
+    Custom XGBoost Metric for global precision.
+
+    Args:
+        preds (np.ndarray): Predictions [B] as logits.
+        dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
+        msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
+        
+    Returns:
+        float: Metric value.
+    """
+    
+    y = dtest.get_label()  # [B]
+    
+    msa_indices = np.unique(msa_mapping)
+    tp = 0
+    fp = 0
+    
+    # for each MSA, compute true positives, false negatives
+    for msa_idx in msa_indices:
+        mask = msa_mapping == msa_idx  # [B]
+        preds_ = preds[mask]
+        y_ = y[mask]
+        
+        preds_ = np.round(sigmoid(preds_))
+        
+        tp += sum(np.logical_and(preds_ == 1, y_ == 1))
+        fp += sum(np.logical_and(preds_ == 1, y_ == 0))
+    
+    precision = float(tp) / (tp + fp)
+    
+    return precision
+
+
+def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
+    """
+    Custom XGBoost Metric for global recall.
+
+    Args:
+        preds (np.ndarray): Predictions [B] as logits.
+        dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
+        msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
+        
+    Returns:
+        float: Metric value.
+    """
+    
+    y = dtest.get_label()  # [B]
+    
+    msa_indices = np.unique(msa_mapping)
+    tp = 0
+    fn = 0
+    
+    # for each MSA, compute true positives, false negatives
+    for msa_idx in msa_indices:
+        mask = msa_mapping == msa_idx  # [B]
+        preds_ = preds[mask]
+        y_ = y[mask]
+        
+        preds_ = np.round(sigmoid(preds_))
+        
+        tp += sum(np.logical_and(preds_ == 1, y_ == 1))
+        fn += sum(np.logical_and(preds_ == 0, y_ == 1))
+    
+    recall = float(tp) / (tp + fn)
+    
+    return recall
+
+
 def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
     """
-    Custom XGBoost Metric for F1 score.
+    Custom XGBoost Metric for global F1 score.
 
     Args:
         preds (np.ndarray): Predictions [B] as logits.
@@ -162,7 +232,7 @@ def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) 
     fp = 0
     fn = 0
     
-    # for each MSA, compute true/false positives
+    # for each MSA, compute true/false positives, false negatives
     for msa_idx in msa_indices:
         mask = msa_mapping == msa_idx  # [B]
         preds_ = preds[mask]
