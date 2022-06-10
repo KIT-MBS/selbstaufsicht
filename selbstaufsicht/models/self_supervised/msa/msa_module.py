@@ -145,9 +145,9 @@ class MSAModel(pl.LightningModule):
         """
 
         x, y = batch_data
-        
+
         assert not (self.training and test)
-        
+
         if self.training:
             mode = "training"
             metrics = self.train_metrics
@@ -194,15 +194,14 @@ class MSAModel(pl.LightningModule):
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
         if 'contact' in self.tasks:
-            # NOTE invoke tensorboard with --samples_per_plugin images=batches to show more images
+            # NOTE invoke tensorboard with --samples_per_plugin images=<num_batches> to show more images
             if mode == 'validation':
-                # NOTE plot all attention heads
-                attn_maps = torch.cat([m.squeeze(dim=2) for m in x['attn_maps']], dim=1)  # [B, num_blocks * H, L, L]
-                for i in range(attn_maps.size(1)):
+                # NOTE plot attention maps per block summed over heads
+                for i, a in enumerate(x['attn_maps']):
                     plt.figure()
-                    fig = sns.heatmap(attn_maps[0, i].cpu().numpy(), fmt='').get_figure()
+                    fig = sns.heatmap(torch.sum(torch.squeeze(a[0], dim=1), dim=0).cpu().numpy(), fmt='').get_figure()
                     plt.close(fig)
-                    self.logger.experiment.add_figure(f'map_{i}', fig, self.current_epoch)
+                    self.logger.experiment.add_figure(f'map_block_{i}', fig, self.current_epoch)
 
                 # NOTE plot contact prediction scores
                 plt.figure()
@@ -305,7 +304,7 @@ class MSAModel(pl.LightningModule):
         plt.close(fig_)
 
         self.logger.experiment.add_figure("contact_%s_roc" % mode, fig_, self.current_epoch)
-    
+
     def _create_correctness_histogram(self, conf_mat_metric: Any, mode: str) -> None:
         """
         Computes and plots correctness histogram, i.e., TP, FP, TN, FN per MSA.
@@ -321,17 +320,17 @@ class MSAModel(pl.LightningModule):
         conf_mat = conf_mat / num_total_per_msa
         conf_mat = conf_mat.numpy()
         x_range = np.arange(num_msa)
-        
+
         df = pd.DataFrame(np.c_[conf_mat[0, 0], conf_mat[1, 0], conf_mat[1, 1], conf_mat[0, 1]], index=x_range, columns=["TP", "FP", "TN", "FN"])
         ax = df.plot.bar(figsize=(num_msa*0.8, 7), rot=0, color=['red', 'royalblue', 'lime', 'fuchsia'])
         fig = ax.get_figure()
         plt.legend(loc='upper right')
-        
+
         plt.close(fig)
 
         self.logger.experiment.add_figure("contact_%s_correctness_histogram" % mode, fig, self.current_epoch)
         conf_mat_metric.reset()
-        
+
     def _create_topLprec_histogram(self, top_l_precision_metric: Any, mode: str) -> None:
         """
         Computes and plots top-L precision histogram, i.e., top-L precision per MSA.
@@ -346,7 +345,7 @@ class MSAModel(pl.LightningModule):
         top_l_precision = top_l_precision.cpu().numpy()
         top_l_precision_mean = top_l_precision.mean()
         x_range = np.arange(num_msa)
-        
+
         fig_ = plt.figure(figsize=(num_msa, 7))
         plt.bar(x_range, top_l_precision, color='r', label="Top-L precision")
         plt.plot([min(x_range), max(x_range)], [top_l_precision_mean, top_l_precision_mean], color='b', linewidth=3., label="Mean")
@@ -409,7 +408,7 @@ class MSAModel(pl.LightningModule):
         """
 
         return self._step(batch_data, batch_idx)
-    
+
     def test_step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int) -> None:
         """
         Performs a single test step: First passes cropped, subsampled and tokenized MSAs through the backbone model,
@@ -442,7 +441,7 @@ class MSAModel(pl.LightningModule):
         """
 
         self._epoch_end(outputs)
-    
+
     def test_epoch_end(self, outputs: List[Any]) -> None:
         """
         Is invoked at the end of a test epoch.
