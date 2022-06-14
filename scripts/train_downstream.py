@@ -142,7 +142,7 @@ def main():
                                                      jigsaw_delimiter= jigsaw_delimiter,
                                                      jigsaw_euclid_emb=jigsaw_euclid_emb,
                                                      simclr_temperature=h_params['contrastive_temperature'],
-                                                     jigsaw_boot_ratio=h`-params['jigsaw_boot_ratio'],
+                                                     jigsaw_boot_ratio=h_params['jigsaw_boot_ratio'],
                                                      per_token=h_params['boot_per_token'],
                                                      boot_same=h_params['boot_same'],
                                                      frozen=h_params['frozen'],
@@ -178,6 +178,7 @@ def main():
                     dropout=args.dropout,
                     emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
                     freeze_backbone=args.freeze_backbone,
+                    max_seqlen=h_params['cropping_size']+20,
                     h_params=h_params)
         model.tasks = ['contact']
         model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[kfold_cv_downstream.train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
