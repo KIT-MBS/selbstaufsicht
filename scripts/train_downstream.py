@@ -119,6 +119,8 @@ def main():
         tasks.append("jigsaw")
     if h_params['task_contrastive']:
         tasks.append("contrastive")
+    if h_params['task_jigsaw_boot']:
+        tasks.append("jigsaw_boot")
         
     for fold_idx in range(args.cv_num_folds):
         if args.cv_num_folds >= 2:
@@ -139,7 +141,12 @@ def main():
                                                      jigsaw_linear=not h_params['jigsaw_nonlinear'],
                                                      jigsaw_delimiter= jigsaw_delimiter,
                                                      jigsaw_euclid_emb=jigsaw_euclid_emb,
-                                                     simclr_temperature=h_params['contrastive_temperature'])
+                                                     simclr_temperature=h_params['contrastive_temperature'],
+                                                     jigsaw_boot_ratio=h`-params['jigsaw_boot_ratio'],
+                                                     per_token=h_params['boot_per_token'],
+                                                     boot_same=h_params['boot_same'],
+                                                     frozen=h_params['frozen'],
+                                                     seq_dist=h_params['seq_dist'])
 
         if args.re_init:
             model = models.self_supervised.MSAModel(
