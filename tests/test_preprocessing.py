@@ -2,9 +2,7 @@ from copy import deepcopy
 import torch
 from torch.distributions import Categorical
 import torch.testing as testing
-import pytest
 
-import numpy as np
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Align import MultipleSeqAlignment
@@ -22,55 +20,54 @@ def test_msa_tokenize(tokenized_sample):
                                       [17, 5, 5, 4, 3, 5, 4, 1],
                                       [17, 4, 5, 4, 5, 5, 4, 5]])
     testing.assert_close(tokenized_sample[0]['msa'], tokenized_msa_ref, rtol=0, atol=0)
-    
+
 
 def test_get_replace_mask():
     mask = torch.tensor([[0, 1, 1, 1],
                          [1, 0, 1, 1],
                          [1, 1, 0, 1],
                          [1, 1, 1, 0]], dtype=torch.bool)
-    masking_type_sampling = torch.tensor([[0, 1, 2, 2], 
-                                          [0, 1, 2, 2], 
+    masking_type_sampling = torch.tensor([[0, 1, 2, 2],
+                                          [0, 1, 2, 2],
                                           [0, 1, 2, 2],
                                           [0, 1, 2, 2]])
     static_mask_token = 42
     nonstatic_mask_tokens = [11, 22, 33]
-    
+
     replace_mask = _get_replace_mask(mask, masking_type_sampling, static_mask_token, nonstatic_mask_tokens)
     replace_mask_ref = torch.tensor([42, 11, 33, 22, 22, 42, 11, 42, 33])
     mask_ref = torch.tensor([[0, 1, 1, 1],
                              [0, 0, 1, 1],
                              [0, 1, 0, 1],
                              [0, 1, 1, 0]], dtype=torch.bool)
-    
+
     assert mask[mask == 1].numel() == replace_mask.numel()
     testing.assert_close(replace_mask, replace_mask_ref, atol=0, rtol=0)
     testing.assert_close(mask, mask_ref, atol=0, rtol=0)
-    
-    
+
     N = 1_000_000
     masking_type_p = torch.Tensor([0.1, 0.3, 0.6])
     mask = torch.ones((N,), dtype=torch.bool)
     masking_type_distribution = Categorical(masking_type_p)
     masking_type_sampling = masking_type_distribution.sample(mask.size())
-    
+
     replace_mask = _get_replace_mask(mask, masking_type_sampling, static_mask_token, nonstatic_mask_tokens)
     ratio_unchanged = mask[mask == 0].numel() / N
     ratio_static = replace_mask[replace_mask == static_mask_token].numel() / N
     ratio_nonstatic_1 = replace_mask[replace_mask == nonstatic_mask_tokens[0]].numel() / N
     ratio_nonstatic_2 = replace_mask[replace_mask == nonstatic_mask_tokens[1]].numel() / N
     ratio_nonstatic_3 = replace_mask[replace_mask == nonstatic_mask_tokens[2]].numel() / N
-    
+
     assert mask[mask == 1].numel() == replace_mask.numel()
     testing.assert_close(ratio_unchanged, masking_type_p[0].item(), atol=1e-3, rtol=1e-2)
     testing.assert_close(ratio_static, masking_type_p[1].item(), atol=1e-3, rtol=1e-2)
     testing.assert_close(ratio_nonstatic_1, masking_type_p[2].item() / 3, atol=1e-3, rtol=1e-2)
     testing.assert_close(ratio_nonstatic_2, masking_type_p[2].item() / 3, atol=1e-3, rtol=1e-2)
     testing.assert_close(ratio_nonstatic_3, masking_type_p[2].item() / 3, atol=1e-3, rtol=1e-2)
-    
+
 
 def test_msa_mask_token_static(tokenized_sample):
-    masking = RandomMSAMasking(p=.5, p_static=1., p_nonstatic=0., p_unchanged=0., mode='token', 
+    masking = RandomMSAMasking(p=.5, p_static=1., p_nonstatic=0., p_unchanged=0., mode='token',
                                static_mask_token=rna2index['MASK_TOKEN'], nonstatic_mask_tokens=nonstatic_mask_tokens)
     positional = ExplicitPositionalEncoding()
 
@@ -102,10 +99,10 @@ def test_msa_mask_token_static(tokenized_sample):
     testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
     testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
     testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
-    
+
 
 def test_msa_mask_token_nonstatic(tokenized_sample):
-    masking = RandomMSAMasking(p=.5, p_static=0., p_nonstatic=1., p_unchanged=0., mode='token', 
+    masking = RandomMSAMasking(p=.5, p_static=0., p_nonstatic=1., p_unchanged=0., mode='token',
                                static_mask_token=rna2index['MASK_TOKEN'], nonstatic_mask_tokens=nonstatic_mask_tokens)
     positional = ExplicitPositionalEncoding()
 
@@ -131,7 +128,7 @@ def test_msa_mask_token_nonstatic(tokenized_sample):
 
     y_ref = {'inpainting': torch.tensor(
         [5, 5, 4, 3, 3, 5, 3, 5, 4, 4, 5, 4, 5, 5])}
-    
+
     testing.assert_close(
         x['aux_features'], x_ref['aux_features'], atol=1e-4, rtol=1e-3)
     testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
@@ -140,7 +137,7 @@ def test_msa_mask_token_nonstatic(tokenized_sample):
 
 
 def test_msa_mask_column_static(tokenized_sample):
-    masking = RandomMSAMasking(p=.5, p_static=1., p_nonstatic=0., p_unchanged=0., mode='column', 
+    masking = RandomMSAMasking(p=.5, p_static=1., p_nonstatic=0., p_unchanged=0., mode='column',
                                static_mask_token=rna2index['MASK_TOKEN'], nonstatic_mask_tokens=nonstatic_mask_tokens)
     positional = ExplicitPositionalEncoding()
 
@@ -164,10 +161,10 @@ def test_msa_mask_column_static(tokenized_sample):
     testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
     testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
     testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
-    
+
 
 def test_msa_mask_column_nonstatic(tokenized_sample):
-    masking = RandomMSAMasking(p=.5, p_static=0., p_nonstatic=1., p_unchanged=0., mode='column', 
+    masking = RandomMSAMasking(p=.5, p_static=0., p_nonstatic=1., p_unchanged=0., mode='column',
                                static_mask_token=rna2index['MASK_TOKEN'], nonstatic_mask_tokens=nonstatic_mask_tokens)
     positional = ExplicitPositionalEncoding()
 
@@ -194,7 +191,7 @@ def test_msa_mask_column_nonstatic(tokenized_sample):
 
 
 def test_msa_mask_block_static(tokenized_sample):
-    masking = RandomMSAMasking(p=.5, p_static=1., p_nonstatic=0., p_unchanged=0., mode='block', 
+    masking = RandomMSAMasking(p=.5, p_static=1., p_nonstatic=0., p_unchanged=0., mode='block',
                                static_mask_token=rna2index['MASK_TOKEN'], nonstatic_mask_tokens=nonstatic_mask_tokens)
     positional = ExplicitPositionalEncoding()
 
@@ -219,10 +216,10 @@ def test_msa_mask_block_static(tokenized_sample):
     testing.assert_close(x['msa'], x_ref['msa'], rtol=0, atol=0)
     testing.assert_close(x['mask'], x_ref['mask'], rtol=0, atol=0)
     testing.assert_close(y['inpainting'], y_ref['inpainting'], rtol=0, atol=0)
-    
+
 
 def test_msa_mask_block_nonstatic(tokenized_sample):
-    masking = RandomMSAMasking(p=.5, p_static=0., p_nonstatic=1., p_unchanged=0., mode='block', 
+    masking = RandomMSAMasking(p=.5, p_static=0., p_nonstatic=1., p_unchanged=0., mode='block',
                                static_mask_token=rna2index['MASK_TOKEN'], nonstatic_mask_tokens=nonstatic_mask_tokens)
     positional = ExplicitPositionalEncoding()
 

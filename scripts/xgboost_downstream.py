@@ -29,9 +29,9 @@ def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np
     Returns:
         Tuple[str, float]: Metric name; metric value.
     """
-    
+
     y = dtrain.get_label()  # [B]
-    
+
     # Dirty hack: Find out by data length, whether training or validation is active. Only works, if training and validation dataset have different lengths.
     B = len(y)
     if len(msa_mappings[0]) == B:
@@ -40,9 +40,9 @@ def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np
         msa_mapping = msa_mappings[1]
     else:
         raise ValueError("Given data length does not match to msa_mappings: %d != (%d, %d)" % (B, len(msa_mappings[0]), len(msa_mappings[1])))
-    
+
     top_l_prec = xgb_contact.xgb_topkLPrec(preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
-    
+
     return 'top-%sL-Prec' % str(k), top_l_prec
 
 
@@ -91,7 +91,7 @@ def main():
     torch.manual_seed(args.rng_seed)
     np.random.seed(args.rng_seed)
     random.seed(args.rng_seed)
-    
+
     if not args.no_gpu and torch.cuda.is_available():
         device = torch.device('cuda:0')
     else:
@@ -103,19 +103,19 @@ def main():
     dt_now = datetime.now()
     log_exp_name = h_params['log_exp_name'] if args.log_exp_name == "" else args.log_exp_name
     log_run_name = "downstream__xgb__k_%s__" % str(args.top_l_prec_coeff).replace('.', '_') + h_params['log_run_name'] if args.log_run_name == "" else dt_now.strftime(args.log_run_name)
-    
+
     if log_exp_name == "":
         log_path = os.path.join(args.log_dir, log_run_name)
     else:
         log_path = os.path.join(args.log_dir, log_exp_name, log_run_name)
-        
+
     if not os.path.exists(log_path):
         os.makedirs(log_path)
-    
+
     cull_tokens = xgb_contact.get_cull_tokens(train_dl.dataset)
     model = xgb_contact.load_backbone(args.checkpoint, device, train_dl.dataset, cull_tokens, h_params)
     attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
-    
+
     params = {
         'booster': args.booster,
         'eta': args.learning_rate,
@@ -130,58 +130,66 @@ def main():
         'objective': 'binary:logitraw',
         'seed': args.rng_seed
     }
-    
+
     if args.booster == 'dart':
         params['rate_drop'] = args.dart_dropout
-        
+
     if args.no_gpu:
         params['tree_method'] = 'hist'
     else:
         params['tree_method'] = 'gpu_hist'
-    
+
     if args.cv_num_folds == 1:
         val_size = int(args.validation_ratio * attn_maps.shape[0])
         indices = np.random.permutation(attn_maps.shape[0])
-        
+
         train_attn_maps, val_attn_maps = attn_maps[indices[val_size:], :], attn_maps[indices[:val_size], :]
         train_targets, val_targets = targets[indices[val_size:]], targets[indices[:val_size]]
         train_msa_mapping, val_msa_mapping = msa_mapping[indices[val_size:]], msa_mapping[indices[:val_size]]
-        
+
         train_data = xgb.DMatrix(train_attn_maps, label=train_targets)
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
-        
+
         evals_result = {}
         metric = partial(xgb_topkLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=args.treat_all_preds_positive)
-        xgb_model = xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, 
+        xgb_model = xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round,
                               feval=metric, maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
         xgb_model.save_model(os.path.join(log_path, 'model_checkpoint.json'))
-        
+
         results = {}
         for k1, v1 in evals_result.items():
             for k2, v2 in v1.items():
                 results['%s_%s' % (k2, k1)] = v2
         results = pd.DataFrame.from_dict(results)
         results.to_csv(os.path.join(log_path, 'train_log.csv'))
-        
+
     elif args.cv_num_folds > 1:
-        data = xgb.DMatrix(attn_maps, label=targets)
+        # data = xgb.DMatrix(attn_maps, label=targets)
         splits = [split for split in KFold(args.cv_num_folds, shuffle=not args.disable_shuffle, random_state=args.rng_seed).split(range(attn_maps.shape[0]))]
-        
+
         for idx in range(args.cv_num_folds):
             train_indices, val_indices = splits[idx]
 
             train_attn_maps, val_attn_maps = attn_maps[train_indices, :], attn_maps[val_indices, :]
             train_targets, val_targets = targets[train_indices], targets[val_indices]
             train_msa_mapping, val_msa_mapping = msa_mapping[train_indices], msa_mapping[val_indices]
-            
+
             train_data = xgb.DMatrix(train_attn_maps, label=train_targets)
             val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
-            
+
             evals_result = {}
             metric = partial(xgb_topkLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=args.treat_all_preds_positive)
-            xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round, 
-                    feval=metric, maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
-            
+            xgb.train(
+                    params,
+                    train_data,
+                    evals=[(train_data, 'train'), (val_data, 'validation')],
+                    evals_result=evals_result,
+                    num_boost_round=args.num_round,
+                    feval=metric,
+                    maximize=True,
+                    early_stopping_rounds=args.num_early_stopping_round,
+                    verbose_eval=not args.disable_progress_bar)
+
             results = {}
             for k1, v1 in evals_result.items():
                 for k2, v2 in v1.items():

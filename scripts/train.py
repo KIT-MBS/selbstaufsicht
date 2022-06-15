@@ -78,12 +78,11 @@ def main():
     parser.add_argument('--contrastive-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
 
     parser.add_argument('--jigsaw-boot-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
-    parser.add_argument('--jigsaw-boot-ratio',default=0.5,type=float,help="How many sequences from MSA to be bootstrapped")
-    parser.add_argument('--boot-per-token',action='store_true',help="Per token loss")
-    parser.add_argument('--boot-same',action='store_true',help="Compute per token loss between the replaced sequence and the new one")
-    parser.add_argument('--frozen', action='store_true',help='applies the same permutation to all seqs in the MSA')
-    parser.add_argument('--seq-dist', action='store_true',help='evaluates the sequences by distance to MSA')
-
+    parser.add_argument('--jigsaw-boot-ratio', default=0.5, type=float, help="How many sequences from MSA to be bootstrapped")
+    parser.add_argument('--boot-per-token', action='store_true', help="Per token loss")
+    parser.add_argument('--boot-same', action='store_true', help="Compute per token loss between the replaced sequence and the new one")
+    parser.add_argument('--frozen', action='store_true', help='applies the same permutation to all seqs in the MSA')
+    parser.add_argument('--seq-dist', action='store_true', help='evaluates the sequences by distance to MSA')
 
     # Logging
     parser.add_argument('--log-every', default=100, type=int, help='how often to add logging rows(does not write to disk)')
@@ -110,7 +109,6 @@ def main():
     if args.task_jigsaw_boot:
         tasks.append("jigsaw_boot")
         task_loss_weights["jigsaw_boot"] = args.jigsaw_boot_loss_weight
-
 
     torch.manual_seed(args.rng_seed)
     np.random.seed(args.rng_seed)

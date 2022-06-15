@@ -24,7 +24,7 @@ def main():
         val_col_name = list(df.columns.values)[-1]
         idx = df[val_col_name].idxmax()
         top_l_prec = float(df[val_col_name].iloc[[idx]])
-        
+
         num_trees = float(idx+1)
         top_l_prec = float(top_l_prec)
         num_trees_arr.append(num_trees)
@@ -40,6 +40,7 @@ def main():
     top_l_prec_std = top_l_prec_arr.std(ddof=1)
 
     print(f"{num_folds}-fold cross-validation: {top_l_prec_mean} +- {top_l_prec_std} top-L-precision with {num_trees_mean} +- {num_trees_std} trees.")
+
 
 if __name__ == '__main__':
     main()

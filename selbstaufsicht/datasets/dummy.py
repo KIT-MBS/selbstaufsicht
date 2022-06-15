@@ -5,6 +5,7 @@ from Bio.Align import MultipleSeqAlignment
 from .shrinked_force_permutations import ShrinkedForcePermutationsDataset
 from ..utils import rna2index
 
+
 class DummyDataset(ShrinkedForcePermutationsDataset):
     def __init__(self, transform=None):
         super().__init__()
@@ -32,4 +33,3 @@ class DummyDataset(ShrinkedForcePermutationsDataset):
                         ]),
                         ]
         self._init_num_data_samples()
-        

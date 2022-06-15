@@ -2,7 +2,7 @@ import torch
 from torch.nn.functional import multi_head_attention_forward
 import torch.testing as testing
 
-from selbstaufsicht.modules import AxialSelfAttention2d, MultiHeadSelfAttention2d, TiedAxialSelfAttention2d, Transmorpher2d, TransmorpherBlock2d
+from selbstaufsicht.modules import AxialSelfAttention2d, MultiHeadSelfAttention2d, TiedAxialSelfAttention2d
 import selbstaufsicht.modules.differentiable_functions as df
 
 
@@ -103,8 +103,8 @@ def test_AxialAttention2d():
 
     out_ref = torch.tensor([[[[-0.8079, -1.0793, 1.3916,  0.4956],
                               [-0.2964, -1.2992, 1.4874,  0.1082]],
-                             [[ 0.2213, -1.3585, 1.4227, -0.2856],
-                              [ 0.2671, -1.3195, 1.4300, -0.3776]]]])
+                             [[0.2213, -1.3585, 1.4227, -0.2856],
+                              [0.2671, -1.3195, 1.4300, -0.3776]]]])
     row_attn_ref = torch.tensor([[[[[1.5118e-01, 8.4882e-01],
                                     [2.0143e-03, 9.9799e-01]],
                                    [[2.2873e-05, 9.9998e-01],
@@ -166,8 +166,8 @@ def test_TiedAxialAttention2d():
 
     out_ref = torch.tensor([[[[-0.2907, -1.3007, 1.4875,  0.1039],
                               [-0.2902, -1.3009, 1.4875,  0.1035]],
-                             [[ 0.2675, -1.3192, 1.4300, -0.3783],
-                              [ 0.2678, -1.3192, 1.4299, -0.3785]]]])
+                             [[0.2675, -1.3192, 1.4300, -0.3783],
+                              [0.2678, -1.3192, 1.4299, -0.3785]]]])
     row_attn_ref = torch.tensor([[[[[1.5440e-04, 9.9985e-01],
                                     [2.7360e-07, 1.0000e+00]]],
                                   [[[1.0000e+00, 1.3277e-07],
@@ -208,7 +208,7 @@ def test_padding_mask_TiedAxialAttention2d():
     _, row_attn = module(x, padding_mask)
     row_attn_pad = row_attn[pad_B, :, 0, :, pad_L]
     row_attn_pad_ref = torch.zeros((num_heads, L))
-    
+
     testing.assert_close(row_attn_pad, row_attn_pad_ref,
                          rtol=0, atol=0)
 
@@ -220,7 +220,7 @@ def test_TiedAxialAttention2d_chunking():
     E = 5
     L = 6
     p_dropout = 0.
-    
+
     q = torch.randn(B, E, L, H, DH, requires_grad=True)
     k = torch.randn(B, E, L, H, DH, requires_grad=True)
     v = torch.randn(B, E, L, H, DH, requires_grad=True)
@@ -228,16 +228,16 @@ def test_TiedAxialAttention2d_chunking():
     dropout = df.Dropout(p_dropout)
     softmax = df.Softmax()
     attn_chunk_size = 2
-    
+
     regular_tied_attn = TiedAxialSelfAttention2d(H, DH, dropout=p_dropout)
-    
+
     y_chunked = TiedAxialSelfAttention2d.ColAttnChunked.apply(q, k, v, attn_mask, dropout, softmax, attn_chunk_size)
     loss = y_chunked.sum()
     loss.backward()
     q_grad_chunked = q.grad.clone()
     k_grad_chunked = k.grad.clone()
     v_grad_chunked = v.grad.clone()
-    
+
     # reset grad
     q.grad.detach_()
     k.grad.detach_()
@@ -245,19 +245,19 @@ def test_TiedAxialAttention2d_chunking():
     q.grad.zero_()
     k.grad.zero_()
     v.grad.zero_()
-    
+
     y_regular = regular_tied_attn.col_attn(q, k, v, attn_mask, False)
     loss = y_regular.sum()
     loss.backward()
     q_grad_regular = q.grad.clone()
     k_grad_regular = k.grad.clone()
     v_grad_regular = v.grad.clone()
-    
+
     testing.assert_close(y_chunked, y_regular)
     testing.assert_close(q_grad_chunked, q_grad_regular)
     testing.assert_close(k_grad_chunked, k_grad_regular)
     testing.assert_close(v_grad_chunked, v_grad_regular)
-    
+
 
 # NOTE: Ref data used for comparison is the output of the current implementation (date: 10/19/2021)
 # NOTE: Crashes in CI Job, but not locally. Reason unknown, so this test is omitted for now

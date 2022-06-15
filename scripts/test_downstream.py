@@ -1,9 +1,6 @@
 import argparse
-from datetime import datetime
-import random
 import os
 
-import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -13,7 +10,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
-from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, MSACollator, get_tasks, get_downstream_metrics
+from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
 
 
 def main():
@@ -35,12 +32,12 @@ def main():
         checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
     else:
         checkpoint = torch.load(args.checkpoint)
-        
+
     h_params = checkpoint['hyper_parameters']
-    
+
     downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'])
     root = os.environ['DATA_PATH']
-    test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode=='diversity')
+    test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode == 'diversity')
 
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
@@ -61,7 +58,7 @@ def main():
         tasks.append("jigsaw")
     if h_params['task_contrastive']:
         tasks.append("contrastive")
-        
+
     _, _, test_metrics = get_downstream_metrics()
     _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                  h_params['feature_dim_head'] * h_params['num_heads'],
@@ -74,17 +71,17 @@ def main():
                                                  jigsaw_partitions=h_params['jigsaw_partitions'],
                                                  jigsaw_classes=h_params['jigsaw_permutations'],
                                                  jigsaw_linear=not h_params['jigsaw_nonlinear'],
-                                                 jigsaw_delimiter= jigsaw_delimiter,
+                                                 jigsaw_delimiter=jigsaw_delimiter,
                                                  jigsaw_euclid_emb=jigsaw_euclid_emb,
                                                  simclr_temperature=h_params['contrastive_temperature'])
-    task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[test_dataset.token_mapping[l] for l in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
+    task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[test_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
     task_losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-h_params['downstream__loss_contact_weight'], h_params['downstream__loss_contact_weight']]), ignore_index=-1)
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
-        checkpoint_path = args.checkpoint,
-        num_blocks = h_params['num_blocks'],
-        num_heads = h_params['num_heads'],
-        feature_dim_head = h_params['feature_dim_head'],
+        checkpoint_path=args.checkpoint,
+        num_blocks=h_params['num_blocks'],
+        num_heads=h_params['num_heads'],
+        feature_dim_head=h_params['feature_dim_head'],
         task_heads=task_heads,
         task_losses=task_losses,
         alphabet_size=len(test_dataset.token_mapping),
@@ -106,6 +103,7 @@ def main():
                       logger=tb_logger,
                       enable_progress_bar=not args.disable_progress_bar)
     trainer.test(model, test_dl, verbose=True)
+
 
 if __name__ == '__main__':
     main()

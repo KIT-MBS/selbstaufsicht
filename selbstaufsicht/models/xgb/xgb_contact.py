@@ -11,17 +11,17 @@ import xgboost as xgb
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
-from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, MSACollator, get_tasks, get_downstream_metrics
+from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks
 from selbstaufsicht.utils import data_loader_worker_init
 
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
     """
     Applies sigmoid function.
-    
+
     Args:
         x (np.ndarray): Input data.
-        
+
     Returns:
         np.ndarray: Output data.
     """
@@ -45,19 +45,19 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
     Returns:
         Union[Dict[float, np.ndarray], Dict[int, Dict[int, float]]]: Metric values per k (relative) / metric values per k per MSA (absolute).
     """
-    
+
     y = dtest.get_label()  # [B]
-    
+
     msa_indices = np.unique(msa_mapping)
-    
+
     top_l_prec_dict = dict()
-    
+
     # for each MSA, find top-L and compute true/false positives
     for msa_idx in msa_indices:
         mask = msa_mapping == msa_idx  # [B]
         preds_ = preds[mask]
         y_ = y[mask]
-        
+
         for k_idx in range(len(k)):
             k_ = k[k_idx][msa_idx]
             L = L_mapping[msa_idx]
@@ -67,27 +67,27 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
                 k_L = min(max(1, int(k_)), len(y_))
             stop_flag = k_L == len(y_)
             L_idx = np.argpartition(preds_, -k_L)[-k_L:]  # [k*L]
-            
+
             preds__ = np.round(sigmoid(preds_[L_idx]))
             y__ = y_[L_idx]
-            
+
             if treat_all_preds_positive:
                 tp = sum(y__ == 1)
                 fp = sum(y__ == 0)
             else:
                 tp = sum(np.logical_and(preds__ == 1, y__ == 1))
                 fp = sum(np.logical_and(preds__ == 1, y__ == 0))
-    
+
             top_l_prec = float(tp) / (tp + fp)
-            
+
             if k_ not in top_l_prec_dict:
                 top_l_prec_dict[k_] = dict()
-            
+
             top_l_prec_dict[k_][msa_idx] = top_l_prec
-            
+
             if stop_flag and relative_k:
                 break
-    
+
     if relative_k:
         return {k: np.array(list(v.values())) for k, v in top_l_prec_dict.items()}
     else:
@@ -110,35 +110,35 @@ def xgb_topkLPrec(preds: np.ndarray, dmat: xgb.DMatrix, msa_mapping: np.ndarray,
     Returns:
         float: Metric value.
     """
-    
+
     y = dmat.get_label()  # [B]
-    
+
     msa_indices = np.unique(msa_mapping)
     tp = 0
     fp = 0
-    
+
     # for each MSA, find top-L and compute true/false positives
     for msa_idx in msa_indices:
         mask = msa_mapping == msa_idx  # [B]
         preds_ = preds[mask]
         y_ = y[mask]
-        
+
         L = L_mapping[msa_idx]
         kL = min(max(1, int(k*L)), len(y_))
         L_idx = np.argpartition(preds_, -kL)[-kL:]  # [k*L]
-        
+
         preds_ = np.round(sigmoid(preds_[L_idx]))
         y_ = y_[L_idx]
-        
+
         if treat_all_preds_positive:
             tp += sum(y_ == 1)
             fp += sum(y_ == 0)
         else:
             tp += sum(np.logical_and(preds_ == 1, y_ == 1))
             fp += sum(np.logical_and(preds_ == 1, y_ == 0))
-    
+
     top_l_prec = float(tp) / (tp + fp)
-    
+
     return top_l_prec
 
 
@@ -150,30 +150,30 @@ def xgb_precision(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray
         preds (np.ndarray): Predictions [B] as logits.
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
-        
+
     Returns:
         float: Metric value.
     """
-    
+
     y = dtest.get_label()  # [B]
-    
+
     msa_indices = np.unique(msa_mapping)
     tp = 0
     fp = 0
-    
+
     # for each MSA, compute true positives, false negatives
     for msa_idx in msa_indices:
         mask = msa_mapping == msa_idx  # [B]
         preds_ = preds[mask]
         y_ = y[mask]
-        
+
         preds_ = np.round(sigmoid(preds_))
-        
+
         tp += sum(np.logical_and(preds_ == 1, y_ == 1))
         fp += sum(np.logical_and(preds_ == 1, y_ == 0))
-    
+
     precision = float(tp) / (tp + fp)
-    
+
     return precision
 
 
@@ -185,30 +185,30 @@ def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -
         preds (np.ndarray): Predictions [B] as logits.
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
-        
+
     Returns:
         float: Metric value.
     """
-    
+
     y = dtest.get_label()  # [B]
-    
+
     msa_indices = np.unique(msa_mapping)
     tp = 0
     fn = 0
-    
+
     # for each MSA, compute true positives, false negatives
     for msa_idx in msa_indices:
         mask = msa_mapping == msa_idx  # [B]
         preds_ = preds[mask]
         y_ = y[mask]
-        
+
         preds_ = np.round(sigmoid(preds_))
-        
+
         tp += sum(np.logical_and(preds_ == 1, y_ == 1))
         fn += sum(np.logical_and(preds_ == 0, y_ == 1))
-    
+
     recall = float(tp) / (tp + fn)
-    
+
     return recall
 
 
@@ -220,32 +220,32 @@ def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) 
         preds (np.ndarray): Predictions [B] as logits.
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
-        
+
     Returns:
         float: Metric value.
     """
-    
+
     y = dtest.get_label()  # [B]
-    
+
     msa_indices = np.unique(msa_mapping)
     tp = 0
     fp = 0
     fn = 0
-    
+
     # for each MSA, compute true/false positives, false negatives
     for msa_idx in msa_indices:
         mask = msa_mapping == msa_idx  # [B]
         preds_ = preds[mask]
         y_ = y[mask]
-        
+
         preds_ = np.round(sigmoid(preds_))
-        
+
         tp += sum(np.logical_and(preds_ == 1, y_ == 1))
         fp += sum(np.logical_and(preds_ == 1, y_ == 0))
         fn += sum(np.logical_and(preds_ == 0, y_ == 1))
-    
+
     f1_score = float(tp) / (tp + 0.5 * (fp + fn))
-    
+
     return f1_score
 
 
@@ -260,10 +260,10 @@ def get_checkpoint_hparams(checkpoint: str, device: Any) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Hyperparameters.
     """
-    
+
     checkpoint = torch.load(checkpoint, map_location=device)
     h_params = checkpoint['hyper_parameters']
-    
+
     return h_params
 
 
@@ -277,7 +277,7 @@ def get_cull_tokens(dataset: datasets.CoCoNetDataset) -> List[str]:
     Returns:
         List[str]: Cull tokens.
     """
-    
+
     return [dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
 
 
@@ -295,7 +295,7 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
     Returns:
         nn.Module: Loaded backbone model.
     """
-    
+
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
@@ -315,7 +315,7 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
         tasks.append("jigsaw")
     if h_params['task_contrastive']:
         tasks.append("contrastive")
-    
+
     _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                  h_params['feature_dim_head'] * h_params['num_heads'],
                                                  subsample_depth=h_params['subsampling_depth'],
@@ -327,10 +327,10 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
                                                  jigsaw_partitions=h_params['jigsaw_partitions'],
                                                  jigsaw_classes=h_params['jigsaw_permutations'],
                                                  jigsaw_linear=not h_params['jigsaw_nonlinear'],
-                                                 jigsaw_delimiter= jigsaw_delimiter,
+                                                 jigsaw_delimiter=jigsaw_delimiter,
                                                  jigsaw_euclid_emb=jigsaw_euclid_emb,
                                                  simclr_temperature=h_params['contrastive_temperature'])
-    
+
     num_maps = h_params['num_blocks'] * h_params['num_heads']
     if 'downstream' in checkpoint:
         task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(num_maps, cull_tokens=cull_tokens)
@@ -353,9 +353,9 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
         h_params=h_params)
     model.need_attn = True
     model.to(device)
-    
+
     return model
-    
+
 
 def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distance_threshold: float, h_params: Dict[str, Any], rng_seed: int = 42, disable_train_data_discarding: bool = False, fasta_files: List[str] = []) -> DataLoader:
     """
@@ -374,15 +374,15 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
     Returns:
         DataLoader: Data loader for downstream task.
     """
-    
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode, threshold=distance_threshold, inference=mode=='inference')
+
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode, threshold=distance_threshold, inference=mode == 'inference')
     root = os.environ['DATA_PATH']
-    
+
     if mode == 'train':
         data_loader_rng = torch.Generator()
         data_loader_rng.manual_seed(rng_seed)
-        dataset = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform, discard_train_size_based=not disable_train_data_discarding, 
-                                          diversity_maximization=subsampling_mode=='diversity', max_seq_len=h_params['cropping_size'], 
+        dataset = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform, discard_train_size_based=not disable_train_data_discarding,
+                                          diversity_maximization=subsampling_mode == 'diversity', max_seq_len=h_params['cropping_size'],
                                           min_num_seq=h_params['subsampling_depth'])
         return DataLoader(dataset,
                           batch_size=batch_size,
@@ -391,9 +391,9 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
                           worker_init_fn=partial(data_loader_worker_init, rng_seed=rng_seed),
                           generator=data_loader_rng,
                           pin_memory=False)
-        
+
     elif mode == 'test':
-        dataset = datasets.CoCoNetDataset(root, mode, transform=downstream_transform, diversity_maximization=subsampling_mode=='diversity')
+        dataset = datasets.CoCoNetDataset(root, mode, transform=downstream_transform, diversity_maximization=subsampling_mode == 'diversity')
         return DataLoader(dataset,
                           batch_size=batch_size,
                           shuffle=False,
@@ -425,27 +425,27 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
     Returns:
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Attention maps [B*L*L/2, num_maps]; targets [B*L*L/2]; msa_mapping [B*L*L]; msa_mask [B*L*L]; msa_mapping_filtered [B*L*L/2], L_mapping [B].
     """
-    
+
     attn_maps_list = []
     targets_list = []
     msa_mapping_list = []
     msa_mask_list = []
     msa_mapping_filtered_list = []
     L_mapping_list = []
-    
+
     num_maps = h_params['num_blocks'] * h_params['num_heads']
-    
+
     for idx, (x, y) in enumerate(dataloader):
         for k, v in x.items():
             if isinstance(v, torch.Tensor):
                 x[k] = v.to(device)
-        
+
         with torch.no_grad():
             _, attn_maps = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
-        
+
         B, _, L = x['msa'].shape
         assert B == 1
-        
+
         mask = torch.ones((L, ), device=device)
         for token in cull_tokens:
             mask -= (x['msa'][:, 0].reshape((L, )) == token).int()
@@ -458,45 +458,45 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
         attn_maps = torch.cat([m.squeeze(dim=2) for m in attn_maps], dim=1)  # [1, num_maps, L, L]
         attn_maps = attn_maps.masked_select(mask).reshape(B, num_maps, degapped_L, degapped_L)
         attn_maps = torch.permute(attn_maps, (0, 2, 3, 1))  # [1, L, L, num_maps]
-        
+
         assert num_maps == attn_maps.shape[-1]
-        
+
         attn_maps_triu = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
         attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).reshape(-1, num_maps)  # [1*L*L, num_maps]
-        if not 'contact' in y:
+        if 'contact' not in y:
             target = None
         else:
             target = y['contact'].view(-1)  # [1*L*L]
-            
+
         msa_mapping = torch.full((B * degapped_L * degapped_L, ), idx, dtype=torch.int64)  # [1*L*L]
-        
+
         # exclude unknown target points, apply diag shift, averge over both triangle matrices
-        if not 'contact' in y:
+        if 'contact' not in y:
             mask = torch.ones((B, degapped_L, degapped_L), dtype=torch.bool)  # [1, L, L]
         else:
             mask = y['contact'] != -1
         mask_triu = torch.triu(torch.ones_like(mask), diag_shift+1).view(-1)  # [1*L*L]
-        
+
         mask = mask.view(-1)  # [1*L*L]
         mask_attn_maps = mask[mask_triu]
         mask_target = torch.logical_and(mask, mask_triu)
-        
+
         attn_maps_triu = attn_maps_triu[mask_triu, :]
         attn_maps_tril = attn_maps_tril[mask_triu, :]
-        
+
         attn_maps = 0.5 * (attn_maps_triu + attn_maps_tril)
         attn_maps = attn_maps[mask_attn_maps, :]
         if target is not None:
             target = target[mask_target]
         msa_mapping_filtered = msa_mapping[mask_target]
-        
+
         attn_maps_list.append(attn_maps)
         targets_list.append(target)
         msa_mapping_list.append(msa_mapping)
         msa_mask_list.append(mask_target)
         msa_mapping_filtered_list.append(msa_mapping_filtered)
         L_mapping_list.append(degapped_L)
-    
+
     attn_maps = torch.cat(attn_maps_list)  # [B*L*L/2, num_maps]
     if targets_list[0] is not None:
         targets = torch.cat(targets_list)  # [B*L*L/2]
@@ -505,14 +505,14 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
     msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L]
     msa_mask = torch.cat(msa_mask_list)  # [B*L*L]
     msa_mapping_filtered = torch.cat(msa_mapping_filtered_list)  # [B*L*L/2]
-    
+
     attn_maps = attn_maps.cpu().numpy()
-    
+
     if targets is not None:
         targets = targets.cpu().numpy()
     msa_mapping = msa_mapping.cpu().numpy()
     msa_mask = msa_mask.cpu().numpy()
     msa_mapping_filtered = msa_mapping_filtered.cpu().numpy()
     L_mapping = np.array(L_mapping_list)
-    
+
     return attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping

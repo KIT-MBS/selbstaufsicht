@@ -151,7 +151,7 @@ class RandomMSAShuffling():
                  num_classes: int = None,
                  euclid_emb: torch.Tensor = None,
                  contrastive: bool = False,
-                 frozen: bool=False):        
+                 frozen: bool = False):
         """
         Initializes random MSA shuffling.
 
@@ -175,7 +175,7 @@ class RandomMSAShuffling():
 
         if permutations is None:
             self.perm_indices = list(range(1, math.factorial(num_partitions)))
-            self.frozen=frozen
+            self.frozen = frozen
             random.shuffle(self.perm_indices)
             # NOTE always include 'no transformation'
             self.perm_indices.insert(0, 0)
@@ -212,13 +212,13 @@ class RandomMSAShuffling():
         if 'jigsaw' in y:
             # NOTE: ugly, only works for fixed subsampling mode
             if self.frozen:
-                perm_sampling=y['jigsaw'][0]
+                perm_sampling = y['jigsaw'][0]
             else:
                 perm_sampling = y['jigsaw'][:num_seq]
         else:
             if self.frozen:
-                perm_sampling = torch.randint(0,self.num_classes,(1,))*torch.ones((num_seq,))
-                perm_sampling=perm_sampling.type(torch.LongTensor)
+                perm_sampling = torch.randint(0, self.num_classes, (1,))*torch.ones((num_seq,))
+                perm_sampling = perm_sampling.type(torch.LongTensor)
             else:
                 perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
         shuffled_msa = _jigsaw(x['msa'],
@@ -238,7 +238,7 @@ class RandomMSAShuffling():
                 self.euclid_emb = self.euclid_emb.type_as(x['msa']).float()
                 self.euclid_emb_device_flag = True
             if self.frozen:
-                y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :][0]           
+                y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :][0]
             else:
                 y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :]
 
@@ -253,59 +253,58 @@ class RandomMSAShuffling():
 
         return x, y
 
+
 class MSAboot():
-    
-    def __init__(self,ratio: float=0.5, per_token: bool=False, boot_same: bool=False,seq_dist:bool=False)->None:
 
-        self.ratio=ratio
-        self.per_token=per_token
-        self.boot_same=boot_same
-        self.seq_dist=seq_dist
+    def __init__(self, ratio: float = 0.5, per_token: bool = False, boot_same: bool = False, seq_dist: bool = False) -> None:
 
+        self.ratio = ratio
+        self.per_token = per_token
+        self.boot_same = boot_same
+        self.seq_dist = seq_dist
 
-    def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor])->Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
 
-        num_seq=x['msa'].shape[0]
-        num_col=x['msa'].shape[1]
+        num_seq = x['msa'].shape[0]
+        num_col = x['msa'].shape[1]
 
-        ind_rand=torch.ones((int(np.floor(self.ratio*num_seq)),num_seq)).multinomial(num_samples=num_col,replacement=True)
+        ind_rand = torch.ones((int(np.floor(self.ratio*num_seq)), num_seq)).multinomial(num_samples=num_col, replacement=True)
 
-        msa_boot=_jigsaw_boot(x['msa'],self.ratio,ind_rand)
+        msa_boot = _jigsaw_boot(x['msa'], self.ratio, ind_rand)
 
-        msa_boot_expanded=msa_boot.unsqueeze(1).expand(num_seq,num_seq,num_col)
-        msa_repeated=x['msa'].repeat(num_seq,1,1)
+        msa_boot_expanded = msa_boot.unsqueeze(1).expand(num_seq, num_seq, num_col)
+        msa_repeated = x['msa'].repeat(num_seq, 1, 1)
 
-        msa_bool=torch.eq(msa_boot_expanded,msa_repeated)
+        msa_bool = torch.eq(msa_boot_expanded, msa_repeated)
 
         if not self.per_token:
-            y_boot=torch.any(torch.all(msa_bool,keepdim=True,axis=2),axis=1).reshape(num_seq,)
+            y_boot = torch.any(torch.all(msa_bool, keepdim=True, axis=2), axis=1).reshape(num_seq,)
 
-            y['jigsaw_boot']=y_boot.type(torch.LongTensor)
+            y['jigsaw_boot'] = y_boot.type(torch.LongTensor)
         else:
             if not self.boot_same:
-                y_ind=torch.argmax(torch.sum(msa_bool,keepdim=True,axis=2),axis=1)
+                # y_ind=torch.argmax(torch.sum(msa_bool,keepdim=True,axis=2),axis=1)
 
-                y_boot=torch.eq(msa_boot,x['msa'][torch.argmax(torch.sum(msa_bool,keepdim=True,axis=2),axis=1)].reshape(num_seq,num_col))
+                y_boot = torch.eq(msa_boot, x['msa'][torch.argmax(torch.sum(msa_bool, keepdim=True, axis=2), axis=1)].reshape(num_seq, num_col))
 
             else:
-                y_boot=torch.eq(msa_boot,x['msa'])
+                y_boot = torch.eq(msa_boot, x['msa'])
 
             if self.seq_dist:
 
-                y_boot=y_boot.sum(axis=1).div(y_boot.shape[1])
-                y_boot=y_boot.type(torch.FloatTensor)
-                
-                y['jigsaw_boot']=y_boot.reshape(num_seq,)
+                y_boot = y_boot.sum(axis=1).div(y_boot.shape[1])
+                y_boot = y_boot.type(torch.FloatTensor)
+
+                y['jigsaw_boot'] = y_boot.reshape(num_seq,)
             else:
 
-                y_boot=y_boot.type(torch.LongTensor)
+                y_boot = y_boot.type(torch.LongTensor)
 
-                y['jigsaw_boot']=y_boot.reshape(num_col*num_seq,)
+                y['jigsaw_boot'] = y_boot.reshape(num_col*num_seq,)
 
+        x['msa'] = msa_boot
 
-        x['msa']=msa_boot
-
-        return x,y
+        return x, y
 
 
 class MSASubsampling():
@@ -407,7 +406,7 @@ class DistanceFromChain():
             chunk_size (int, optional): Chunk size in residuum dimension. Defaults to 600.
         """
 
-        self.device=device
+        self.device = device
         self.chunk_size = chunk_size
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
@@ -475,7 +474,7 @@ class ContactFromDistance():
         self.threshold = threshold
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
-        contacts = torch.zeros_like(y['distances'], dtype = torch.long)
+        contacts = torch.zeros_like(y['distances'], dtype=torch.long)
         contacts[y['distances'] < self.threshold] = 1.
         contacts[y['distances'] == torch.inf] = -1.
 
@@ -540,8 +539,7 @@ def _jigsaw(msa: torch.Tensor, permutations: torch.Tensor, delimiter_token: int 
     return jigsawed_msa
 
 
-
-def _jigsaw_boot(msa: torch.Tensor,ratio: float, ind_rand: torch.Tensor) -> torch.Tensor:
+def _jigsaw_boot(msa: torch.Tensor, ratio: float, ind_rand: torch.Tensor) -> torch.Tensor:
     """
     Shuffles the given MSA according to the given permutations.
     Args:
@@ -554,19 +552,19 @@ def _jigsaw_boot(msa: torch.Tensor,ratio: float, ind_rand: torch.Tensor) -> torc
         torch.Tensor: Shuffled, tokenized MSA [E, L].
     """
 
-    msa_copy=torch.clone(msa)
+    msa_copy = torch.clone(msa)
 
-    num_seq=msa.shape[0]
-    num_seq_r=int(np.floor(num_seq*ratio))
-    num_col=msa.shape[1]
+    num_seq = msa.shape[0]
+    num_seq_r = int(np.floor(num_seq*ratio))
+    num_col = msa.shape[1]
 
-    ind_col=torch.arange(0,num_col)
-    ind_rand_r=torch.randperm(num_seq)[range(num_seq_r)]
+    ind_col = torch.arange(0, num_col)
+    ind_rand_r = torch.randperm(num_seq)[range(num_seq_r)]
 
-
-    msa_copy[ind_rand_r,]=msa[ind_rand,ind_col]
+    msa_copy[ind_rand_r, ] = msa[ind_rand, ind_col]
 
     return msa_copy
+
 
 def _get_replace_mask(mask: torch.Tensor, masking_type_sampling: torch.Tensor, static_mask_token: int,
                       nonstatic_mask_tokens: List[int]) -> torch.Tensor:
@@ -725,8 +723,10 @@ def _token_mask_msa(msa: torch.Tensor, p: float, masking_type_distribution: Dist
     return msa, mask, masked
 
 
-def _get_masking_fn(mode: str, start_token: bool) -> Callable[[torch.Tensor, float, Distribution, int, List[int]],
-                                                               Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+def _get_masking_fn(mode: str, start_token: bool) -> Callable[
+        [torch.Tensor, float, Distribution, int, List[int]],
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        ]:
     """
     Returns the masking function that corresponds to the given masking mode.
 
@@ -788,10 +788,10 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indic
     """
 
     # diversity maximization should not be used in combination with contrastive
-    assert not contrastive    
+    assert not contrastive
     assert indices.shape[0] == nseqs
     assert len(msa) >= nseqs
-    
+
     msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
     return msa
 

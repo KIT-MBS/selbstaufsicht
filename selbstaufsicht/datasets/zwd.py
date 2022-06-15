@@ -2,18 +2,16 @@ import os
 import subprocess as sp
 from typing import Callable
 
-import torch
-
 from Bio import AlignIO
 
 from .shrinked_force_permutations import ShrinkedForcePermutationsDataset
 
 
 class ZwdDataset(ShrinkedForcePermutationsDataset):
-    def __init__(self, root: str , transform: Callable = None):
+    def __init__(self, root: str, transform: Callable = None):
         super().__init__(transform=transform)
         self.root = root
-        
+
         if not os.path.isfile(root + '/not-for-Rfam'):
             sp.call(['git', 'clone', 'https://bitbucket.org/zashaw/zashaweinbergdata.git', f'{root}/'])
 
@@ -34,5 +32,5 @@ class ZwdDataset(ShrinkedForcePermutationsDataset):
                     file_path = self.root + f'/{line}'
                     with open(file_path, 'rt', encoding='utf-8') as f:
                         self.samples.append(AlignIO.read(f, 'stockholm'))
-        
+
         self._init_num_data_samples()

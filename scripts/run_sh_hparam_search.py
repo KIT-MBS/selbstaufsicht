@@ -1,5 +1,4 @@
 import glob
-import os
 import subprocess
 
 # Starts bash scripts for random-search-based hyperparameter optimization.

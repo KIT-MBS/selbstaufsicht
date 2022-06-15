@@ -1,6 +1,5 @@
 import torch
 import torch.testing as testing
-import pytest
 
 import selbstaufsicht.modules.differentiable_functions as df
 
@@ -8,24 +7,24 @@ import selbstaufsicht.modules.differentiable_functions as df
 def test_softmax_f():
     x = torch.randn(5, 5)
     softmax = df.Softmax()
-    
+
     y = softmax(x, dim=0)
     y_expected = x.softmax(dim=0)
     testing.assert_close(y, y_expected)
-    
+
     x = torch.randn(5, 5, requires_grad=True)
     y = softmax(x, dim=-1)
     y.sum().backward()
     x_grad = x.grad.clone()
-    
+
     # reset grad
     x.grad.detach_()
     x.grad.zero_()
-    
+
     y_expected = x.softmax(dim=-1)
     y_expected.sum().backward()
     x_grad_expected = x.grad.clone()
-    
+
     testing.assert_close(y, y_expected)
     testing.assert_close(x_grad, x_grad_expected)
 
@@ -33,7 +32,7 @@ def test_softmax_f():
 def test_dropout_f():
     x = torch.randn(1000, 1000, requires_grad=True)
     dropout = df.Dropout(p=0)
-    
+
     y = dropout(x)
     y_expected = x
     y.sum().backward()
@@ -41,11 +40,11 @@ def test_dropout_f():
     x_grad_expected = torch.ones_like(x)
     testing.assert_close(y, y_expected)
     testing.assert_close(x_grad, x_grad_expected)
-    
+
     # reset grad
     x.grad.detach_()
     x.grad.zero_()
-    
+
     dropout = df.Dropout(p=1)
     y = dropout(x)
     y_expected = torch.zeros_like(x)
@@ -54,11 +53,11 @@ def test_dropout_f():
     x_grad_expected = y_expected
     testing.assert_close(y, y_expected)
     testing.assert_close(x_grad, x_grad_expected)
-    
+
     # reset grad
     x.grad.detach_()
     x.grad.zero_()
-    
+
     ratio_expected = 0.5
     dropout = df.Dropout(p=ratio_expected)
     y = dropout(x)

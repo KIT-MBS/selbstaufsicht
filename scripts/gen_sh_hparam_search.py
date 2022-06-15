@@ -7,7 +7,7 @@ import torch
 
 # AUXILIARY TYPES AND FUNCTIONS
 VarRange = namedtuple('VarRange', ['min', 'max', 'type'])
-rescale_rand = lambda rand_val, min_val, max_val: min_val + (max_val - min_val) * rand_val 
+rescale_rand = lambda rand_val, min_val, max_val: min_val + (max_val - min_val) * rand_val
 
 # DEFINE PARSER
 parser = argparse.ArgumentParser(description='Selbstaufsicht Random-Search Hyperparameter Optimization - Batch Generation Script')
@@ -70,11 +70,11 @@ parser.add_argument('--rng-seed-max', default=4294967295, type=int, help="Maximu
 args = parser.parse_args()
 
 # DEFINE CONSTANT PARAMETERS
-constant_parameters = ['dataset', 
-                       'num_data_samples', 
-                       'xfam_version', 
-                       'xfam_mode', 
-                       'num_epochs', 
+constant_parameters = ['dataset',
+                       'num_data_samples',
+                       'xfam_version',
+                       'xfam_mode',
+                       'num_epochs',
                        'batch_size',
                        'learning_rate_warmup',
                        'precision',
@@ -104,14 +104,15 @@ inpainting_masking_type_range = args.inpainting_masking_types.split(',')
 jigsaw_partitions_range = VarRange(args.jigsaw_partitions_min, args.jigsaw_partitions_max, int)
 contrastive_temperature_range = VarRange(args.contrastive_temperature_min, args.contrastive_temperature_max, float)
 rng_seed_range = VarRange(args.rng_seed_min, args.rng_seed_max, int)
-ranges = {'--num-blocks ': num_blocks_range, 
-        '--feature-dim-head ': feature_dim_head_range, 
-        '--num-heads ': num_heads_range, 
-        '--learning-rate ': learning_rate_range, 
-        '--dropout ': dropout_range, 
-        '--task-': task_range, 
-        '--inpainting-masking-type ': inpainting_masking_type_range, 
-        '--jigsaw-partitions ': jigsaw_partitions_range, 
+ranges = {
+        '--num-blocks ': num_blocks_range,
+        '--feature-dim-head ': feature_dim_head_range,
+        '--num-heads ': num_heads_range,
+        '--learning-rate ': learning_rate_range,
+        '--dropout ': dropout_range,
+        '--task-': task_range,
+        '--inpainting-masking-type ': inpainting_masking_type_range,
+        '--jigsaw-partitions ': jigsaw_partitions_range,
         '--contrastive-temperature ': contrastive_temperature_range,
         '--rng-seed ': rng_seed_range}
 
@@ -165,20 +166,21 @@ def create_script():
             raise ValueError("Unexpected type_val:", type_val)
         variables[arg_name] = rand_val
         if type(rand_val) is float:
-                rand_val = format(rand_val, '.6f')
+            rand_val = format(rand_val, '.6f')
         val_split = str(rand_val).split('+')
         for val in val_split:
             command_segments.append("%s%s " % (arg_name, val))
-    log_run_name = "t_%s__nb_%d__dh_%d__nh_%d__lr_%.6f__dr_%.1f__inp_%s__jig_%d__con_%.1f__rng_%d" % (variables['--task-'],
-                                                                                            variables['--num-blocks '],
-                                                                                            variables['--feature-dim-head '],
-                                                                                            variables['--num-heads '],
-                                                                                            variables['--learning-rate '],
-                                                                                            variables['--dropout '],
-                                                                                            variables['--inpainting-masking-type '],
-                                                                                            variables['--jigsaw-partitions '],
-                                                                                            variables['--contrastive-temperature '],
-                                                                                            variables['--rng-seed '])
+    log_run_name = "t_%s__nb_%d__dh_%d__nh_%d__lr_%.6f__dr_%.1f__inp_%s__jig_%d__con_%.1f__rng_%d" % (
+            variables['--task-'],
+            variables['--num-blocks '],
+            variables['--feature-dim-head '],
+            variables['--num-heads '],
+            variables['--learning-rate '],
+            variables['--dropout '],
+            variables['--inpainting-masking-type '],
+            variables['--jigsaw-partitions '],
+            variables['--contrastive-temperature '],
+            variables['--rng-seed '])
     log_run_name = log_run_name.replace('.', '-')
     command_segments.append("--log-run-name %s_$SLURM_JOB_ID " % log_run_name)
     jigsaw_permutations = min(math.factorial(variables['--jigsaw-partitions ']), args.jigsaw_permutations_max)
@@ -190,7 +192,7 @@ def create_script():
     lines.append(command)
 
     sh_filename = '%s__%s.sh' % (args.file_prefix, log_run_name)
-        
+
     with open(sh_filename, "w") as filestream:
         filestream.writelines(lines)
 

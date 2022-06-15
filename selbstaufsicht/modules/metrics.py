@@ -238,7 +238,7 @@ class BinaryPrecision(Metric):
         Returns:
             torch.Tensor: Precision.
         """
-        
+
         if self.reduce:
             return self.tp.float() / (self.tp.float() + self.fp.float())
         else:
@@ -291,6 +291,7 @@ class BinaryRecall(BinaryPrecision):
         """
 
         return self.tp.float() / (self.tp.float() + self.fn.float())
+
 
 class BinaryF1Score(BinaryRecall):
     def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, k: int = -1, dist_sync_on_step: bool = False) -> None:
@@ -378,7 +379,7 @@ class BinaryConfusionMatrix(Metric):
         fp = torch.logical_and(preds_ == 1, target == 0).sum()
         tn = torch.logical_and(preds_ == 0, target == 0).sum()
         fn = torch.logical_and(preds_ == 0, target == 1).sum()
-        
+
         if self.reduce:
             self.tp += tp
             self.fp += fp
