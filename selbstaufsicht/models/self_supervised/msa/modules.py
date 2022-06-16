@@ -101,6 +101,7 @@ class JigsawHead(nn.Module):
         if self.euclid_emb:
             return self.proj(latent)  # [B, E, NClasses]
         else:
+            output = self.proj(latent)
             if self.boot:
                 if self.seq_dist:
                     return output.reshape(output.shape[1],)
