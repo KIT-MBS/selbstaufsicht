@@ -206,7 +206,6 @@ class RandomMSAShuffling():
         Returns:
             Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: x: Shuffled, tokenized MSA [E, L]; y: Jigsaw label (permutation index per sequence) [E].
         """
-
         num_seq = x['msa'].size(0)
 
         if 'jigsaw' in y:
@@ -228,7 +227,12 @@ class RandomMSAShuffling():
                                mintrailer=self.mintrailer)
         x['msa'] = shuffled_msa
         if self.euclid_emb is None:
-            y['jigsaw'] = perm_sampling
+            
+            if self.frozen:
+                y['jigsaw']=perm_sampling[0]
+                y['jigsaw']=y['jigsaw'].reshape(1)
+            else:
+                y['jigsaw'] = perm_sampling
         else:
             if self.perm_indices is None:
                 # TODO: Implement inverse lehmer code to solve?
@@ -250,7 +254,6 @@ class RandomMSAShuffling():
                                        delimiter_token=self.delimiter_token,
                                        minleader=self.minleader,
                                        mintrailer=self.mintrailer)
-
         return x, y
 
 

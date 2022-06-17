@@ -92,7 +92,7 @@ def get_tasks(tasks: List[str],
                 num_partitions=jigsaw_partitions,
                 num_classes=jigsaw_classes,
                 euclid_emb=jigsaw_euclid_emb,
-                contrastive=contrastive)
+                contrastive=contrastive,frozen=frozen)
         )
     if 'inpainting' in tasks:
         transformslist.append(
@@ -230,7 +230,7 @@ def get_downstream_metrics():
 
 
 class MSACollator():
-    def __init__(self, msa_padding_token: int, inpainting_mask_padding_token: int = 0, jigsaw_padding_token: int = -1) -> None:
+    def __init__(self, msa_padding_token: int, inpainting_mask_padding_token: int = 0, jigsaw_padding_token: int = -1,frozen: bool = False) -> None:
         """
         Initializes MSA collator.
 
@@ -250,6 +250,9 @@ class MSACollator():
             'contrastive': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
             'jigsaw_boot': _flatten_collate
             }
+
+        if frozen:
+            self.collate_fn['jigsaw'] = _flatten_collate
 
     def __call__(self, batch: List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """

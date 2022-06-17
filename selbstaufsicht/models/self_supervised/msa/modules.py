@@ -97,7 +97,11 @@ class JigsawHead(nn.Module):
         """
 
         # latent is of shape [B, E, L, D]
-        latent = latent[:, :, 0, :]  # [B, E, D]
+        if self.frozen:
+            latent = latent[:,0,0,:] #[B,D]
+        else:
+            latent = latent[:, :, 0, :]  # [B, E, D]
+        
         if self.euclid_emb:
             return self.proj(latent)  # [B, E, NClasses]
         else:
