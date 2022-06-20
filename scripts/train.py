@@ -39,7 +39,6 @@ def main():
     parser.add_argument('--learning-rate-warmup', default=400, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--dropout', default=0.3, type=float, help="Dropout probability")
     parser.add_argument('--precision', default=16, type=int, help="Precision used for computations")
-    parser.add_argument('--attn-chunk-size', default=0, type=int, help="Chunk size in attention computation. Chunking causes sequential computation, which increases training time, but decreases memory pressure. Sizes below one activate the non-chunking implementation.")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--disable-random-split', action='store_true', help="disables the random dataset split")
@@ -225,8 +224,7 @@ def main():
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,
         emb_grad_freq_scale=not args.disable_emb_grad_freq_scale,
-        h_params=args,
-        attn_chunk_size=args.attn_chunk_size
+        h_params=args
     )
     tb_logger = TensorBoardLogger(save_dir=args.log_dir, name=args.log_exp_name, version=log_run_name)
     trainer = Trainer(max_epochs=args.num_epochs,
