@@ -3,7 +3,6 @@ from torch.nn.functional import multi_head_attention_forward
 import torch.testing as testing
 
 from selbstaufsicht.modules import AxialSelfAttention2d, MultiHeadSelfAttention2d, TiedAxialSelfAttention2d, Transmorpher2d, TransmorpherBlock2d
-import selbstaufsicht.modules.differentiable_functions as df
 
 
 def test_MultiHeadAttention2d():
