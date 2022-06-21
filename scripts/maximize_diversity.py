@@ -8,7 +8,7 @@ from typing import Any, List
 
 from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize
-from selbstaufsicht.models.self_supervised.msa.diversity_maximization import maximize_diversity_msa_greedy, maximize_diversity_msa_mats
+from selbstaufsicht.models.self_supervised.msa.diversity_maximization import maximize_diversity_msa_greedy
 from selbstaufsicht.utils import rna2index
 
 
@@ -27,7 +27,6 @@ def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht MSA Diversity Maximization Script')
     # Diversity maximization
     parser.add_argument('--num-samples', default=50, type=int, help="Number of samples whose diversity is to be maximized.")
-    parser.add_argument('--solver', default='greedy', type=str, help='Solver used for the maximum-diversity-problem: greedy, mats.')
     parser.add_argument('--dataset', default='train', type=str, help='Dataset: train, test.')
     # MA/TS algorithm
     parser.add_argument('--num-iter', default=5, type=int, help="Number of outer iterations performed by the evolutionary algorithm.")
@@ -58,15 +57,8 @@ def main():
     
     process_ids = [idx for idx in range(1, args.num_jobs+1)]
     
-    if args.solver == 'greedy':
-        solver = maximize_diversity_msa_greedy
-        solver_args = zip(data, repeat(args.num_samples), repeat(args.verbose), process_ids)
-    elif args.solver == 'mats':
-        solver = maximize_diversity_msa_mats
-        solver_args = zip(data, repeat(args.num_samples), repeat(args.num_iter), repeat(args.cls), repeat(args.imp_cutoff), repeat(args.num_sdv), repeat(args.min_te), repeat(args.max_te), 
-                          repeat(args.pop_size), repeat(args.pop_rt), repeat(args.perturb_frac), repeat(args.max_reinit), repeat(args.verbose), process_ids)
-    else:
-        raise ValueError("Unknown approach: %s" % args.solver)
+    solver = maximize_diversity_msa_greedy
+    solver_args = zip(data, repeat(args.num_samples), repeat(args.verbose), process_ids)
     
     mp_pool = mp.Pool(processes=args.num_jobs)
     results = mp_pool.starmap(solver, solver_args)  # [num_jobs, num_msa_per_job, num_samples]
