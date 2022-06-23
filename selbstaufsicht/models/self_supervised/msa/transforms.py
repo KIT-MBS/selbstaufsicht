@@ -170,12 +170,12 @@ class RandomMSAShuffling():
             ValueError: Either \"permutations\" or \"num_partitions\" and \"num_classes\" need to be specified.
         """
 
+        self.frozen = frozen
         if permutations is None and (num_partitions is None or num_classes is None):
             raise ValueError("Permutations have to be given explicitely or parameters to generate them.")
 
         if permutations is None:
             self.perm_indices = list(range(1, math.factorial(num_partitions)))
-            self.frozen = frozen
             random.shuffle(self.perm_indices)
             # NOTE always include 'no transformation'
             self.perm_indices.insert(0, 0)
@@ -227,7 +227,7 @@ class RandomMSAShuffling():
                                mintrailer=self.mintrailer)
         x['msa'] = shuffled_msa
         if self.euclid_emb is None:
-            
+
             if self.frozen:
                 y['jigsaw']=perm_sampling[0]
                 y['jigsaw']=y['jigsaw'].reshape(1)
