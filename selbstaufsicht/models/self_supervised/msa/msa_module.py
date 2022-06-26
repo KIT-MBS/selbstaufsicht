@@ -41,7 +41,6 @@ class MSAModel(pl.LightningModule):
             train_metrics: Dict[str, nn.ModuleDict] = None,
             val_metrics: Dict[str, nn.ModuleDict] = None,
             need_attn: bool = False,
-            attn_chunk_size: int = 0,
             freeze_backbone: bool = False,
             device: Union[str, torch.device] = None,
             dtype: torch.dtype = None) -> None:
@@ -70,7 +69,6 @@ class MSAModel(pl.LightningModule):
             train_metrics (Dict[str, nn.ModuleDict], optional): Training metrics for upstream tasks. Defaults to None.
             val_metrics (Dict[str, nn.ModuleDict], optional): Validation metrics for upstream tasks. Defaults to None.
             need_attn (bool, optional): Whether to extract attention maps or not. Defaults to False.
-            attn_chunk_size (int, optional): Chunk size in attention computation. Defaults to 0.
             freeze_backbone (bool, optional): Freezes backbone parameters during downstream task. Defaults to False.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
@@ -108,7 +106,6 @@ class MSAModel(pl.LightningModule):
         self.lr = lr
         self.lr_warmup = lr_warmup
         self.need_attn = need_attn
-        self.attn_chunk_size = attn_chunk_size
         self.freeze_backbone = freeze_backbone
         self.save_hyperparameters(h_params)
 
@@ -127,7 +124,7 @@ class MSAModel(pl.LightningModule):
 
         # NOTE feature dim = -1
         x = self.embedding(x) + self.positional_embedding(aux_features)
-        return self.backbone(x, padding_mask, self.need_attn, self.attn_chunk_size)
+        return self.backbone(x, padding_mask, self.need_attn)
 
     def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int, test: bool = False) -> Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]:
         """
