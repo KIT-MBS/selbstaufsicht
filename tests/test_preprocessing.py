@@ -74,14 +74,14 @@ def test_msa_mask_token_static(tokenized_sample):
     x, y = masking(*tokenized_sample)
     x, y = positional(x, y)
 
-    x_ref = {'aux_features': torch.tensor([[1,
+    x_ref = {'aux_features': torch.tensor([[0,
+                                            1,
                                             2,
                                             3,
                                             4,
                                             5,
                                             6,
-                                            7,
-                                            8]]),
+                                            7, ]]),
              'msa': torch.tensor([[17,  3, 19,  4, 19,  5, 19,  3],
                                   [17, 19,  3,  4,  1,  5,  4, 19],
                                   [17,  5, 19,  4, 19, 19, 19,  1],
@@ -109,14 +109,14 @@ def test_msa_mask_token_nonstatic(tokenized_sample):
     x, y = masking(*tokenized_sample)
     x, y = positional(x, y)
 
-    x_ref = {'aux_features': torch.tensor([[1,
+    x_ref = {'aux_features': torch.tensor([[0,
+                                            1,
                                             2,
                                             3,
                                             4,
                                             5,
                                             6,
-                                            7,
-                                            8]]),
+                                            7, ]]),
              'msa': torch.tensor([[17, 3, 5, 4, 0, 5, 5, 3],
                                   [17, 0, 3, 4, 1, 5, 4, 3],
                                   [17, 5, 4, 4, 2, 3, 2, 1],
@@ -144,7 +144,7 @@ def test_msa_mask_column_static(tokenized_sample):
     x, y = masking(*tokenized_sample)
     x, y = positional(x, y)
 
-    x_ref = {'aux_features': torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]]),
+    x_ref = {'aux_features': torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7]]),
              'msa': torch.tensor([[17, 3, 5, 19, 5, 19, 4, 19],
                                   [17, 3, 3, 19, 1, 19, 4, 19],
                                   [17, 5, 5, 19, 3, 19, 4, 19],
@@ -171,7 +171,7 @@ def test_msa_mask_column_nonstatic(tokenized_sample):
     x, y = masking(*tokenized_sample)
     x, y = positional(x, y)
 
-    x_ref = {'aux_features': torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]]),
+    x_ref = {'aux_features': torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7]]),
              'msa': torch.tensor([[17, 3, 5, 0, 5, 0, 4, 4],
                                   [17, 3, 3, 4, 1, 0, 4, 4],
                                   [17, 5, 5, 2, 3, 4, 4, 5],
@@ -198,7 +198,7 @@ def test_msa_mask_block_static(tokenized_sample):
     x, y = masking(*tokenized_sample)
     x, y = positional(x, y)
 
-    x_ref = {'aux_features': torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]]),
+    x_ref = {'aux_features': torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7]]),
              'msa': torch.tensor([[17, 3, 5, 19, 19, 19, 4, 3],
                                   [17, 3, 3, 19, 19, 19, 4, 3],
                                   [17, 5, 5, 19, 19, 19, 4, 1],
@@ -226,7 +226,7 @@ def test_msa_mask_block_nonstatic(tokenized_sample):
     x, y = masking(*tokenized_sample)
     x, y = positional(x, y)
 
-    x_ref = {'aux_features': torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]]),
+    x_ref = {'aux_features': torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7]]),
              'msa': torch.tensor([[17, 3, 5, 5, 4, 3, 4, 3],
                                   [17, 3, 3, 5, 5, 2, 4, 3],
                                   [17, 5, 5, 0, 0, 4, 4, 1],

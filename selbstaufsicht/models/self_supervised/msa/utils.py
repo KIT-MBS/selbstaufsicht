@@ -74,6 +74,8 @@ def get_tasks(tasks: List[str],
 
     if not set(tasks) <= {'inpainting', 'jigsaw', 'contrastive', 'jigsaw_boot'}:
         raise ValueError('unknown task id')
+    # TODO alphabet as parameter?
+    max_seqlen = crop_size + int('START_TOKEN' in rna2index) + int(jigsaw_delimiter) * (jigsaw_partitions + 1)
 
     contrastive = False
     if 'contrastive' in tasks:
@@ -92,7 +94,8 @@ def get_tasks(tasks: List[str],
                 num_partitions=jigsaw_partitions,
                 num_classes=jigsaw_classes,
                 euclid_emb=jigsaw_euclid_emb,
-                contrastive=contrastive,frozen=frozen)
+                contrastive=contrastive,
+                frozen=frozen)
         )
     if 'inpainting' in tasks:
         transformslist.append(
@@ -110,7 +113,7 @@ def get_tasks(tasks: List[str],
     if 'jigsaw_boot' in tasks:
         transformslist.append(MSAboot(ratio=jigsaw_boot_ratio, per_token=per_token, boot_same=boot_same, seq_dist=seq_dist))
 
-    transformslist.append(ExplicitPositionalEncoding())
+    transformslist.append(ExplicitPositionalEncoding(max_seqlen=max_seqlen))
 
     transform = transforms.SelfSupervisedCompose(transformslist)
 
@@ -230,7 +233,7 @@ def get_downstream_metrics():
 
 
 class MSACollator():
-    def __init__(self, msa_padding_token: int, inpainting_mask_padding_token: int = 0, jigsaw_padding_token: int = -1,frozen: bool = False) -> None:
+    def __init__(self, msa_padding_token: int, inpainting_mask_padding_token: int = 0, jigsaw_padding_token: int = -1, frozen: bool = False) -> None:
         """
         Initializes MSA collator.
 

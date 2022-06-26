@@ -85,6 +85,7 @@ class MSACropping():
             if contrastive_msa.get_alignment_length() > self.length:
                 contrastive_msa = self.cropping_fn(contrastive_msa, self.length, True)
             x['contrastive'] = contrastive_msa
+
         return x, y
 
 
@@ -229,8 +230,8 @@ class RandomMSAShuffling():
         if self.euclid_emb is None:
 
             if self.frozen:
-                y['jigsaw']=perm_sampling[0]
-                y['jigsaw']=y['jigsaw'].reshape(1)
+                y['jigsaw'] = perm_sampling[0]
+                y['jigsaw'] = y['jigsaw'].reshape(1)
             else:
                 y['jigsaw'] = perm_sampling
         else:
@@ -381,7 +382,7 @@ class ExplicitPositionalEncoding():
         seqlen = msa.size(-1)
         if seqlen > self.max_seqlen:
             raise ValueError(f'Sequence dimension in input too large: {seqlen} > {self.max_seqlen}')
-        absolute = torch.arange(1, seqlen + 1, dtype=torch.long).unsqueeze(0)
+        absolute = torch.arange(0, seqlen, dtype=torch.long).unsqueeze(0)
         if 'aux_features' not in x:
             x['aux_features'] = absolute
         else:

@@ -212,19 +212,22 @@ def main():
     train_dl = DataLoader(train_ds,
                           batch_size=args.batch_size,
                           shuffle=not args.disable_shuffle,
-                          collate_fn=MSACollator(train_ds.token_mapping['PADDING_TOKEN'],frozen=args.frozen),
+                          collate_fn=MSACollator(train_ds.token_mapping['PADDING_TOKEN'], frozen=args.frozen),
                           num_workers=args.num_workers,
                           worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
                           generator=data_loader_rng, pin_memory=num_gpus > 0)
     val_dl = DataLoader(val_ds,
                         batch_size=args.batch_size,
                         shuffle=False,
-                        collate_fn=MSACollator(val_ds.token_mapping['PADDING_TOKEN'],frozen=args.frozen),
+                        collate_fn=MSACollator(val_ds.token_mapping['PADDING_TOKEN'], frozen=args.frozen),
                         num_workers=args.num_workers,
                         worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
                         generator=data_loader_rng,
                         pin_memory=num_gpus > 0)
 
+    # TODO the MSA should probably cropped to maxlen - all the other tokens
+    # max_seqlen = args.cropping_size + int('START_TOKEN' in rna2index) + int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions - 1)
+    max_seqlen = args.cropping_size + 1 + int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions + 1)
     model = models.self_supervised.MSAModel(
         args.num_blocks,
         args.num_heads,
@@ -236,7 +239,7 @@ def main():
         val_metrics=val_metrics,
         alphabet_size=len(train_ds.token_mapping),
         padding_token=train_ds.token_mapping['PADDING_TOKEN'],
-        max_seqlen=args.cropping_size+30,
+        max_seqlen=max_seqlen,
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,
