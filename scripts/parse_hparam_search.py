@@ -9,6 +9,7 @@ from tensorflow.data import TFRecordDataset
 
 # Parsing script for random-search-based hyperparameter optimization.
 
+
 # DEFINE PARSER
 def init():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Random-Search Hyperparameter Optimization - Parsing Script')
@@ -25,23 +26,23 @@ def init():
 # cf. https://stackoverflow.com/a/58314091
 def convert_tb_data(root_dir, sort_by='step', df_names=[]):
     """Convert local TensorBoard data into a dict of Pandas DataFrames.
-    
+
     Function takes the root directory path and recursively parses
-    all events data.    
+    all events data.
     If the `sort_by` value is provided then it will use that column
     to sort values; typically `wall_time` or `step`.
-    
+
     *Note* that the whole data is converted into a DataFrame.
     Depending on the data size this might take a while. If it takes
     too long then narrow it to some sub-directories.
-    
+
     Paramters:
         root_dir: (str) path to root dir with tensorboard data.
         sort_by: (optional str) column name to sort by.
-    
+
     Returns:
         Dict of pandas.DataFrames with [wall_time, step, value] columns, keyed by name.
-    
+
     """
 
     def convert_tfevent(filepath):
@@ -51,7 +52,7 @@ def convert_tb_data(root_dir, sort_by='step', df_names=[]):
             event = event_pb2.Event.FromString(serialized_example.numpy())
             if len(event.summary.value) and event.summary.value[0].tag in df_names:
                 parsed_events.append(parse_tfevent(event))
-                
+
         return pd.DataFrame(parsed_events)
 
     def parse_tfevent(tfevent):
@@ -61,9 +62,9 @@ def convert_tb_data(root_dir, sort_by='step', df_names=[]):
             step=tfevent.step,
             value=float(tfevent.summary.value[0].simple_value),
         )
-    
+
     columns_order = ['wall_time', 'name', 'step', 'value']
-    
+
     out = []
     for (root, _, filenames) in os.walk(root_dir):
         for filename in filenames:
@@ -80,7 +81,7 @@ def convert_tb_data(root_dir, sort_by='step', df_names=[]):
     if sort_by is not None:
         for name, df in all_df.items():
             all_df[name] = df.sort_values(sort_by).reset_index(drop=True)
-    
+
     return all_df
 
 
@@ -109,7 +110,7 @@ def get_task_data(args):
         df_names.append('jigsaw_validation_acc')
     else:
         raise ValueError("Invalid task configuration!")
-    
+
     return task_name, df_names
 
 
@@ -129,9 +130,9 @@ def parse_hparam(filename):
                 hparam[k] = int(v)
             else:
                 hparam[k] = v
-    
+
     return hparam
-        
+
 
 def parse():
     args = init()
@@ -140,14 +141,14 @@ def parse():
     filenames = glob.glob('%s*' % root_path)
     num_filenames = len(filenames)
     data = {df_name: [] for df_name in df_names}
-    
+
     for idx, filename in enumerate(filenames):
         print("%d / %d" % (idx+1, num_filenames))
-        
+
         hparam = parse_hparam(filename)
         for df_name in data.keys():
             data[df_name].append(hparam.copy())
-        
+
         all_df = convert_tb_data(filename, df_names=df_names)
         if len(all_df) == 0:
             for df_name in data.keys():
@@ -160,11 +161,11 @@ def parse():
                 data[name][-1]['value'] = 0.
             else:
                 data[name][-1]['value'] = last_row['value']
-    
+
     # data structure: metric -> run -> hparam
     with open('%s.pkl' % task_name, 'wb') as f:
         pickle.dump(data, f)
-    
+
 
 if __name__ == '__main__':
     parse()

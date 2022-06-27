@@ -1,6 +1,5 @@
 import argparse
 import gzip
-import logging
 import sys
 from time import time
 

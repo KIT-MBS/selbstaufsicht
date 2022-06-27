@@ -6,7 +6,6 @@ import random
 
 import numpy as np
 import torch
-from torch import nn
 from torch.utils.data import DataLoader
 
 from pytorch_lightning import Trainer
@@ -18,7 +17,7 @@ from selbstaufsicht import models
 from selbstaufsicht import datasets
 from selbstaufsicht.modules import SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
-from selbstaufsicht.utils import data_loader_worker_init
+# from selbstaufsicht.utils import data_loader_worker_init
 
 
 def main():
@@ -74,17 +73,17 @@ def main():
     h_params = checkpoint['hyper_parameters']
     downstream_args = {'downstream__' + k: v for k, v in vars(args).items()}
     h_params.update(downstream_args)
-    
+
     if args.test and args.cv_num_folds >= 2:
         raise ValueError("Testing only works with disabled cross validation!")
-    
+
     downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold)
-    kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform, num_folds=args.cv_num_folds, val_ratio=args.validation_ratio, batch_size=args.batch_size, shuffle=not args.disable_shuffle, 
-                                                     rng_seed=args.rng_seed, discard_train_size_based=not args.disable_train_data_discarding, diversity_maximization=args.subsampling_mode=='diversity',
+    kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform, num_folds=args.cv_num_folds, val_ratio=args.validation_ratio, batch_size=args.batch_size, shuffle=not args.disable_shuffle,
+                                                     rng_seed=args.rng_seed, discard_train_size_based=not args.disable_train_data_discarding, diversity_maximization=args.subsampling_mode == 'diversity',
                                                      max_seq_len=h_params['cropping_size'], min_num_seq=h_params['subsampling_depth'])
     if args.test:
-        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root, 'test', transform=downstream_transform, discard_train_size_based=not args.disable_train_data_discarding, 
-                                               diversity_maximization=args.subsampling_mode=='diversity', max_seq_len=h_params['cropping_size'], min_num_seq=h_params['subsampling_depth'])
+        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root, 'test', transform=downstream_transform, discard_train_size_based=not args.disable_train_data_discarding,
+                                               diversity_maximization=args.subsampling_mode == 'diversity', max_seq_len=h_params['cropping_size'], min_num_seq=h_params['subsampling_depth'])
         test_dl = DataLoader(test_dataset,
                              batch_size=args.batch_size,
                              shuffle=False,
@@ -99,7 +98,7 @@ def main():
         log_exp_name = log_run_name
     h_params['downstream__log_dir'] = log_dir
     h_params['downstream__log_exp_name'] = log_exp_name
-    
+
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
@@ -119,12 +118,14 @@ def main():
         tasks.append("jigsaw")
     if h_params['task_contrastive']:
         tasks.append("contrastive")
-        
+    if h_params['task_jigsaw_boot']:
+        tasks.append("jigsaw_boot")
+
     for fold_idx in range(args.cv_num_folds):
         if args.cv_num_folds >= 2:
             log_run_name = 'fold_%d' % (fold_idx + 1)
         h_params['downstream__log_run_name'] = log_run_name
-        
+
         train_metrics, val_metrics, test_metrics = get_downstream_metrics()
         _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                      h_params['feature_dim_head'] * h_params['num_heads'],
@@ -137,9 +138,14 @@ def main():
                                                      jigsaw_partitions=h_params['jigsaw_partitions'],
                                                      jigsaw_classes=h_params['jigsaw_permutations'],
                                                      jigsaw_linear=not h_params['jigsaw_nonlinear'],
-                                                     jigsaw_delimiter= jigsaw_delimiter,
+                                                     jigsaw_delimiter=jigsaw_delimiter,
                                                      jigsaw_euclid_emb=jigsaw_euclid_emb,
-                                                     simclr_temperature=h_params['contrastive_temperature'])
+                                                     simclr_temperature=h_params['contrastive_temperature'],
+                                                     jigsaw_boot_ratio=h_params['jigsaw_boot_ratio'],
+                                                     per_token=h_params['boot_per_token'],
+                                                     boot_same=h_params['boot_same'],
+                                                     frozen=h_params['frozen'],
+                                                     seq_dist=h_params['seq_dist'])
 
         if args.re_init:
             model = models.self_supervised.MSAModel(
@@ -171,6 +177,7 @@ def main():
                     dropout=args.dropout,
                     emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
                     freeze_backbone=args.freeze_backbone,
+                    max_seqlen=h_params['cropping_size']+20,
                     h_params=h_params)
         model.tasks = ['contact']
         model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[kfold_cv_downstream.train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
@@ -180,7 +187,7 @@ def main():
         model.val_metrics = val_metrics
         if args.test:
             model.test_metrics = test_metrics
-            
+
         if args.loss == 'cross-entropy':
             model.losses['contact'] = SigmoidCrossEntropyLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
         elif args.loss == 'focal':
@@ -189,7 +196,7 @@ def main():
             model.losses['contact'] = DiceLoss(ignore_index=-1)
         else:
             raise ValueError("Unknown loss: %s" % args.loss)
-        
+
         kfold_cv_downstream.setup_fold_index(fold_idx)
 
         train_dl = kfold_cv_downstream.train_dataloader()
@@ -197,7 +204,7 @@ def main():
 
         tb_logger = TensorBoardLogger(save_dir=log_dir, name=log_exp_name, version=log_run_name)
         checkpoint_callback = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
-        
+
         trainer = Trainer(max_epochs=args.num_epochs,
                           gpus=args.num_gpus,
                           auto_select_gpus=num_gpus > 0,
@@ -218,14 +225,15 @@ def main():
         if log_exp_name != "":
             checkpoint_path += '%s/' % log_exp_name
         checkpoint_path += '%s/checkpoints/' % log_run_name
-        
+
         # seaching for the latest file is a little bit hacky, but should work
         checkpoint_list = glob.glob('%s*.ckpt' % checkpoint_path)
         latest_checkpoint = max(checkpoint_list, key=os.path.getctime)
-        
+
         model.downstream_loss_device_flag = False
 
         trainer.test(model, test_dl, ckpt_path=latest_checkpoint, verbose=True)
-    
+
+
 if __name__ == '__main__':
     main()

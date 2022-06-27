@@ -47,7 +47,7 @@ with gzip.open(path + filename, 'rt', encoding='latin1') as f:
                 print(rfam_ids[i], len(a), len(seq_records))
                 if len(a) < len(seq_records):
                     full_file_path = root + f'/Rfam/14.6/full/train/{rfam_ids[i]}.sto'
-                    cm_path =  root + f'/Rfam/14.6/cms/{rfam_ids[i]}.cm'
+                    cm_path = root + f'/Rfam/14.6/cms/{rfam_ids[i]}.cm'
                     if not os.path.isfile(full_file_path):
                         print("AAAAAAA")
                         subprocess.call(['cmsearch', '-A', full_file_path, cm_path, fasta_filepath])

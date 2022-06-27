@@ -2,12 +2,13 @@ from functools import partial
 import torch
 from typing import Dict, List, Tuple, Union
 
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, MSELoss
+from torchmetrics import MeanAbsoluteError
 from torch.nn import Module, ModuleDict
 from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
-from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling
+from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling, MSAboot
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
 from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
@@ -33,6 +34,11 @@ def get_tasks(tasks: List[str],
               jigsaw_euclid_emb: torch.Tensor = None,
               jigsaw_delimiter: bool = True,
               simclr_temperature: float = 100.,
+              jigsaw_boot_ratio: float = 0.5,
+              per_token: bool = False,
+              boot_same: bool = False,
+              frozen: bool = False,
+              seq_dist: bool = False
               ) -> Tuple[transforms.SelfSupervisedCompose, Dict[str, Module], Dict[str, Module], Dict[str, ModuleDict]]:
     """
     Configures task heads, losses, data transformations, and evaluation metrics for given task parameters.
@@ -66,8 +72,10 @@ def get_tasks(tasks: List[str],
         loss functions for upstream tasks; further training/validation metrics for upstream tasks
     """
 
-    if not set(tasks) <= {'inpainting', 'jigsaw', 'contrastive'}:
+    if not set(tasks) <= {'inpainting', 'jigsaw', 'contrastive', 'jigsaw_boot'}:
         raise ValueError('unknown task id')
+    # TODO alphabet as parameter?
+    max_seqlen = crop_size + int('START_TOKEN' in rna2index) + int(jigsaw_delimiter) * (jigsaw_partitions + 1)
 
     contrastive = False
     if 'contrastive' in tasks:
@@ -86,7 +94,8 @@ def get_tasks(tasks: List[str],
                 num_partitions=jigsaw_partitions,
                 num_classes=jigsaw_classes,
                 euclid_emb=jigsaw_euclid_emb,
-                contrastive=contrastive)
+                contrastive=contrastive,
+                frozen=frozen)
         )
     if 'inpainting' in tasks:
         transformslist.append(
@@ -101,7 +110,10 @@ def get_tasks(tasks: List[str],
                 contrastive=contrastive)
         )
 
-    transformslist.append(ExplicitPositionalEncoding())
+    if 'jigsaw_boot' in tasks:
+        transformslist.append(MSAboot(ratio=jigsaw_boot_ratio, per_token=per_token, boot_same=boot_same, seq_dist=seq_dist))
+
+    transformslist.append(ExplicitPositionalEncoding(max_seqlen=max_seqlen))
 
     transform = transforms.SelfSupervisedCompose(transformslist)
 
@@ -117,11 +129,15 @@ def get_tasks(tasks: List[str],
             val_acc_metric = EmbeddedJigsawAccuracy(jigsaw_euclid_emb, ignore_value=jigsaw_padding_token)
             loss_fn = EmbeddedJigsawLoss(ignore_value=jigsaw_padding_token)
         else:
-            train_acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
-            val_acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
+            if frozen:
+                train_acc_metric = Accuracy(class_dim=-1, ignore_index=jigsaw_padding_token)
+                val_acc_metric = Accuracy(class_dim=-1, ignore_index=jigsaw_padding_token)
+            else:
+                train_acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
+                val_acc_metric = Accuracy(class_dim=-2, ignore_index=jigsaw_padding_token)
             loss_fn = CrossEntropyLoss(ignore_index=jigsaw_padding_token)
 
-        head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear, euclid_emb=jigsaw_euclid_emb is not None)
+        head = JigsawHead(dim, jigsaw_classes, proj_linear=jigsaw_linear, euclid_emb=jigsaw_euclid_emb is not None, frozen=frozen)
         task_heads['jigsaw'] = head
         task_losses['jigsaw'] = loss_fn
         train_metrics['jigsaw'] = ModuleDict({'acc': train_acc_metric})
@@ -140,6 +156,26 @@ def get_tasks(tasks: List[str],
         task_losses['contrastive'] = NT_Xent_Loss(simclr_temperature)
         train_metrics['contrastive'] = ModuleDict({})
         val_metrics['contrastive'] = ModuleDict({})
+    if 'jigsaw_boot' in tasks:
+        if not per_token:
+            head = JigsawHead(dim, num_classes=2, proj_linear=True, euclid_emb=False, boot=True)
+            task_heads['jigsaw_boot'] = head
+            task_losses['jigsaw_boot'] = CrossEntropyLoss()
+            train_metrics['jigsaw_boot'] = ModuleDict({'acc': Accuracy()})
+            val_metrics['jigsaw_boot'] = ModuleDict({'acc': Accuracy()})
+        else:
+            if seq_dist:
+                head = JigsawHead(dim, num_classes=1, proj_linear=True, euclid_emb=False, boot=True, seq_dist=True)
+                task_heads['jigsaw_boot'] = head
+                task_losses['jigsaw_boot'] = MSELoss()
+                train_metrics['jigsaw_boot'] = ModuleDict({'mae': MeanAbsoluteError()})
+                val_metrics['jigsaw_boot'] = ModuleDict({'mae': MeanAbsoluteError()})
+            else:
+                head = InpaintingHead(dim, 2, boot=True)
+                task_heads['jigsaw_boot'] = head
+                task_losses['jigsaw_boot'] = CrossEntropyLoss()
+                train_metrics['jigsaw_boot'] = ModuleDict({'acc': Accuracy()})
+                val_metrics['jigsaw_boot'] = ModuleDict({'acc': Accuracy()})
 
     return transform, task_heads, task_losses, train_metrics, val_metrics
 
@@ -168,30 +204,36 @@ def get_downstream_metrics():
     train_metrics = ModuleDict()
     val_metrics = ModuleDict()
     test_metrics = ModuleDict()
-    
-    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(), 
-                                           'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True), 
-                                           'topLprec_unreduced': BinaryPrecision(reduce=False), 
-                                           'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(), 
-                                           'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(), 
+
+    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
+                                           'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
+                                           'topLprec_unreduced': BinaryPrecision(reduce=False),
+                                           'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
+                                           'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
                                            'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
+
     val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
                                          'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
                                          'topLprec_unreduced': BinaryPrecision(reduce=False),
-                                         'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(), 
-                                         'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(), 
+                                         'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
+                                         'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
                                          'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
-    test_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(), 
-                                         'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
-                                         'topLprec_unreduced': BinaryPrecision(reduce=False),
-                                         'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(), 
-                                         'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(), 
-                                         'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
+
+    test_metrics['contact'] = ModuleDict(
+            {
+                'acc': Accuracy(class_dim=1, ignore_index=-1),
+                'topLprec': BinaryPrecision(),
+                'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
+                'topLprec_unreduced': BinaryPrecision(reduce=False),
+                'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
+                'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
+                'confmat_unreduced': BinaryConfusionMatrix(reduce=False)
+            })
     return train_metrics, val_metrics, test_metrics
 
 
 class MSACollator():
-    def __init__(self, msa_padding_token: int, inpainting_mask_padding_token: int = 0, jigsaw_padding_token: int = -1) -> None:
+    def __init__(self, msa_padding_token: int, inpainting_mask_padding_token: int = 0, jigsaw_padding_token: int = -1, frozen: bool = False) -> None:
         """
         Initializes MSA collator.
 
@@ -209,7 +251,11 @@ class MSACollator():
             'inpainting': _flatten_collate,
             'jigsaw': partial(_pad_collate_nd, pad_val=jigsaw_padding_token),
             'contrastive': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
-        }
+            'jigsaw_boot': _flatten_collate
+            }
+
+        if frozen:
+            self.collate_fn['jigsaw'] = _flatten_collate
 
     def __call__(self, batch: List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """

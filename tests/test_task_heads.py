@@ -32,8 +32,8 @@ def test_inpainting_head():
                             [0.7314, 0.1561, -0.0317, -0.2996]])
 
     testing.assert_close(out, out_ref, atol=1e-4, rtol=1e-3)
-    
-    
+
+
 def test_jigsaw_head():
     num_classes = 4
     bs, S, L, D = 2, 3, 4, 8
@@ -42,18 +42,18 @@ def test_jigsaw_head():
     latent = torch.rand((bs, S, L, D))
 
     out = model(latent, None)
-    out_ref = torch.tensor([[[ 0.8108,  0.4767,  0.5279],
-                             [ 0.4546,  0.6611,  0.2488],
-                             [ 0.0308, -0.2844, -0.1313],
+    out_ref = torch.tensor([[[0.8108,  0.4767,  0.5279],
+                             [0.4546,  0.6611,  0.2488],
+                             [0.0308, -0.2844, -0.1313],
                              [-0.3818, -0.1364, -0.0970]],
-                            [[ 0.5761,  0.8939,  0.7092],
-                             [ 0.1075,  0.5034,  0.4774],
+                            [[0.5761,  0.8939,  0.7092],
+                             [0.1075,  0.5034,  0.4774],
                              [-0.0964,  0.1073,  0.0135],
-                             [ 0.0473, -0.3953, -0.2209]]])
+                             [0.0473, -0.3953, -0.2209]]])
 
     testing.assert_close(out, out_ref, atol=1e-4, rtol=1e-3)
-    
-    
+
+
 def test_contrastive_head():
     bs, S, L, D = 2, 3, 4, 8
 
@@ -62,6 +62,6 @@ def test_contrastive_head():
 
     out = model(latent, None)
     out_ref = torch.tensor([[-0.0048, -0.3309, -0.0306, 0.1585, -0.3924, -0.3743, -0.1985, 0.4601],
-                            [ 0.0364, -0.2817, -0.0870, 0.1965, -0.3521, -0.2907, -0.1541, 0.5072]])
+                            [0.0364, -0.2817, -0.0870, 0.1965, -0.3521, -0.2907, -0.1541, 0.5072]])
 
     testing.assert_close(out, out_ref, atol=1e-4, rtol=1e-3)

@@ -1,6 +1,6 @@
 import argparse
 from itertools import chain, repeat
-import itertools
+# import itertools
 import multiprocessing as mp
 import os
 import torch
@@ -15,7 +15,7 @@ from selbstaufsicht.utils import rna2index
 def distribute_data(data: List[Any], num_jobs: int) -> List[List[Any]]:
     len_data_per_job = len(data) // num_jobs
     len_rest_data = len(data) % num_jobs
-    
+
     distributed_data = [data[idx*(len_data_per_job+1):(idx+1)*(len_data_per_job+1)] for idx in range(len_rest_data)]
     offset = len_rest_data*(len_data_per_job+1)
     distributed_data += [data[offset+idx*len_data_per_job:offset+(idx+1)*len_data_per_job] for idx in range(num_jobs-len_rest_data)]
@@ -46,28 +46,28 @@ def main():
     parser.add_argument('--verbose', action='store_true', help="Activates verbose output.")
 
     args = parser.parse_args()
-    
+
     if args.dataset not in {'train', 'test'}:
         raise ValueError("Unknown dataset: %s" % args.dataset)
-    
+
     root = os.environ['DATA_PATH']
     data = datasets.CoCoNetDataset(root, args.dataset, transform=MSATokenize(rna2index), discard_train_size_based=True)
     data = [data[idx][0]['msa'] for idx in range(len(data))]
     data = distribute_data(data, args.num_jobs)  # [num_jobs, num_msa_per_job, num_seq, len_seq]
-    
+
     process_ids = [idx for idx in range(1, args.num_jobs+1)]
-    
+
     solver = maximize_diversity_msa_greedy
     solver_args = zip(data, repeat(args.num_samples), repeat(args.verbose), process_ids)
-    
+
     mp_pool = mp.Pool(processes=args.num_jobs)
     results = mp_pool.starmap(solver, solver_args)  # [num_jobs, num_msa_per_job, num_samples]
     results = list(chain.from_iterable(results))  # [num_jobs*num_msa_per_job, num_samples]
     results = torch.stack(results)  # [num_jobs*num_msa_per_job, num_samples]
-    
-    log_path = os.path.join(args.log_dir, 'coconet_%s_diversity_maximization.pt' % args.dataset) 
+
+    log_path = os.path.join(args.log_dir, 'coconet_%s_diversity_maximization.pt' % args.dataset)
     torch.save(results, log_path)
-    
-    
+
+
 if __name__ == '__main__':
     main()

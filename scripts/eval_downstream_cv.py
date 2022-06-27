@@ -17,7 +17,6 @@ def main():
     num_epochs_arr = []
     top_l_prec_arr = []
 
-
     for fold_dir in fold_dirs:
         checkpoint_path = os.path.join(args.log_path, fold_dir, 'checkpoints')
         checkpoint = [item for item in os.listdir(checkpoint_path) if 'downstream' in item]
@@ -41,6 +40,7 @@ def main():
     top_l_prec_std = top_l_prec_arr.std(ddof=1)
 
     print(f"{num_folds}-fold cross-validation: {top_l_prec_mean} +- {top_l_prec_std} top-L-precision after {num_epochs_mean} +- {num_epochs_std} epochs.")
+
 
 if __name__ == '__main__':
     main()

@@ -1,6 +1,5 @@
 import copy
-import math
-from typing import Any, List, Tuple, Type, Union
+from typing import List, Tuple, Type, Union
 
 import torch
 from torch import nn
@@ -335,7 +334,6 @@ class TiedAxialSelfAttention2d(nn.Module):
             col_out, col_attn_maps = self.col_attn(q, k, v, attn_mask, need_attn_maps)
         else:
             col_out = self.col_attn(q, k, v, attn_mask, need_attn_maps)
-
 
         out = out + col_out
         out = self.norm2(out)

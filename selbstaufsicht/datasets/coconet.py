@@ -24,7 +24,7 @@ class CoCoNetDataset(Dataset):
     train the downstream 'unsupervised' contact prediction and the train dataset for
     testing
     """
-    def __init__(self, root, split, transform=None, download=True, discard_train_size_based=True, 
+    def __init__(self, root, split, transform=None, download=True, discard_train_size_based=True,
                  diversity_maximization=False, max_seq_len: int = 400, min_num_seq: int = 50):
         self.root = pathlib.Path(root)
         self.transform = transform
@@ -35,18 +35,18 @@ class CoCoNetDataset(Dataset):
 
         split_dir = 'RNA_DATASET' if split == 'train' else 'RNA_TESTSET'
         msa_index_filename = 'CCNListOfMSAFiles.txt'
-        
+
         self.indices = None
         if diversity_maximization:
             indices_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'coconet_%s_diversity_maximization.pt' % split)
             self.indices = torch.load(indices_path)
-        
+
         # NOTE: these MSAs are excluded, since they are problematic
         # too long sequences
         self.max_seq_len = max_seq_len
         # too few sequences
         self.min_num_seq = min_num_seq
-        # the hammerhead ribozyme somehow shows bad ppv performance, also in previous research using DCA methods 
+        # the hammerhead ribozyme somehow shows bad ppv performance, also in previous research using DCA methods
         discarded_msa = {('3zp8', 'A')}
 
         with open(pathlib.Path(self.root / 'coconet' / split_dir / msa_index_filename), 'rt') as f:
@@ -76,7 +76,7 @@ class CoCoNetDataset(Dataset):
                 pdb_id = pdb_file.split('_')[0]
                 structure = PDBParser().get_structure(pdb_id, f)
                 pdb_id = pdb_id.replace('.pdb', '')
-                
+
                 num_seq = len(msa)
                 seq_len = msa.get_alignment_length()
                 if (pdb_id, chain_id) in discarded_msa or ((split == 'test' or discard_train_size_based) and (num_seq < self.min_num_seq or seq_len > self.max_seq_len)):

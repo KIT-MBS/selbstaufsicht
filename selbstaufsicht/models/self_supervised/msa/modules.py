@@ -4,7 +4,7 @@ import torch.nn as nn
 
 
 class InpaintingHead(nn.Module):
-    def __init__(self, d: int, num_classes: int, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
+    def __init__(self, d: int, num_classes: int, device: Union[str, torch.device] = None, dtype: torch.dtype = None, boot: bool = False) -> None:
         """
         Initializes the head module for the inpaiting upstream task.
 
@@ -20,6 +20,7 @@ class InpaintingHead(nn.Module):
         # TODO assuming the last layer in an encoder block is a nonlinearity
         self.num_classes = num_classes
         self.proj = nn.Linear(d, num_classes, **factory_kwargs)
+        self.boot = boot
 
     # NOTE the output is basically flattened (of  shape (-1, num_classes)) since the number of masked tokens per sample in the batch is not the same
     def forward(self, latent: torch.Tensor, x: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -36,7 +37,8 @@ class InpaintingHead(nn.Module):
 
         # latent is of shape [B, E, L, D]
         output = self.proj(latent)  # [B, E, L, NClasses]
-        output = output[x['mask']]
+        if not self.boot:
+            output = output[x['mask']]
 
         output = output.reshape(-1, self.num_classes)  # [B*E*L, NCLasses]
         return output
@@ -50,7 +52,8 @@ class JigsawHead(nn.Module):
                  euclid_emb: bool = False,
                  layer_norm_eps: float = 1e-5,
                  device: Union[str, torch.device] = None,
-                 dtype: torch.dtype = None) -> None:
+                 dtype: torch.dtype = None, boot: bool = False, frozen: bool = False,
+                 seq_dist: bool = False) -> None:
         """
         Initializes the head module for the jigsaw upstream task.
 
@@ -76,6 +79,10 @@ class JigsawHead(nn.Module):
                 nn.ReLU(),
                 nn.Linear(d, num_classes, bias=False, **factory_kwargs),
             )
+        self.num_classes = num_classes
+        self.boot = boot
+        self.frozen = frozen
+        self.seq_dist = seq_dist
 
     def forward(self, latent: torch.Tensor, x: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
@@ -90,11 +97,25 @@ class JigsawHead(nn.Module):
         """
 
         # latent is of shape [B, E, L, D]
-        latent = latent[:, :, 0, :]  # [B, E, D]
+        if self.frozen:
+            latent = latent[:, 0, 0, :]  # [B,D]
+        else:
+            latent = latent[:, :, 0, :]  # [B, E, D]
+
         if self.euclid_emb:
             return self.proj(latent)  # [B, E, NClasses]
         else:
-            return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
+            output = self.proj(latent)
+            if self.boot:
+                if self.seq_dist:
+                    return output.reshape(output.shape[1],)
+                else:
+                    return output.reshape(-1, self.num_classes)
+            else:
+                if self.frozen:
+                    return self.proj(latent)
+                else:
+                    return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
 
 
 # TODO different hidden and out dim?

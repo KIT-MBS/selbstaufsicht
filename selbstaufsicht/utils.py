@@ -99,7 +99,7 @@ def perm_metric(perm1: torch.Tensor, perm2: torch.Tensor) -> int:
             seen[cur] = True
             dist += 1
 
-    assert torch.all(seen == True)
+    assert torch.all(seen).item()
     return dist
 
 
@@ -115,12 +115,12 @@ def perm_gram_matrix(perms: torch.Tensor) -> torch.Tensor:
     """
 
     n = perms.shape[0]
-    ret = torch.zeros((n,n), dtype=torch.int64)
+    ret = torch.zeros((n, n), dtype=torch.int64)
     for i in range(n-1):
-        for j in range(i+1,n):
+        for j in range(i+1, n):
             tmp = perm_metric(perms[i], perms[j])
-            ret[i,j] = tmp
-            ret[j,i] = tmp
+            ret[i, j] = tmp
+            ret[j, i] = tmp
 
     return ret
 
@@ -141,19 +141,19 @@ def embed_finite_metric_space(d0: torch.Tensor, eps: float = 1e-4, dist_lower_bo
     n = d0.shape[0]
     X = cp.Variable((n-1, n-1), symmetric=True)
     z = cp.Variable((1,))
-    constraints = [ X >> 0 ]
-    constraints += [ z >= 0 ]
+    constraints = [X >> 0]
+    constraints += [z >= 0]
     min_distance = torch.inf
     d0 = d0.numpy()
 
     # define linear program
     for i in range(n-1):
-        constraints += [ X[i, i] <= d0[i+1 ,0]**2 ]
-        constraints += [ X[i, i] >= z * d0[i+1, 0]**2 ]
+        constraints += [X[i, i] <= d0[i+1, 0]**2]
+        constraints += [X[i, i] >= z * d0[i+1, 0]**2]
         min_distance = min(d0[i+1, 0], min_distance)
-        for j in range(i+1,n-1):
-            constraints += [ X[i, i] + X[j, j] - 2.0 * X[i, j] <= d0[i+1, j+1]**2 ]
-            constraints += [ X[i, i] + X[j, j] - 2.0 * X[i, j] >= z * d0[i+1, j+1]**2 ]
+        for j in range(i+1, n-1):
+            constraints += [X[i, i] + X[j, j] - 2.0 * X[i, j] <= d0[i+1, j+1]**2]
+            constraints += [X[i, i] + X[j, j] - 2.0 * X[i, j] >= z * d0[i+1, j+1]**2]
             min_distance = min(d0[i+1, j+1], min_distance)
 
     prob = cp.Problem(cp.Maximize(z), constraints)
@@ -170,8 +170,8 @@ def embed_finite_metric_space(d0: torch.Tensor, eps: float = 1e-4, dist_lower_bo
     # check result
     max_dist = 1.0
     for i in range(n-1):
-        for j in range(i+1,n):
-            max_dist = min(max_dist, torch.linalg.vector_norm(ret[i,:] - ret[j,:]) / d0[i,j])
+        for j in range(i+1, n):
+            max_dist = min(max_dist, torch.linalg.vector_norm(ret[i, :] - ret[j, :]) / d0[i, j])
 
     z_sqrt = torch.sqrt(torch.tensor(z.value))
     if torch.abs(z_sqrt - max_dist) > eps:
@@ -186,7 +186,7 @@ def embed_finite_metric_space(d0: torch.Tensor, eps: float = 1e-4, dist_lower_bo
 
         delta_sq = (max_dist - dist_lower_bound)**2 * min_distance**2
         ind2 = torch.where(max_entries_cumsum >= delta_sq)[0]
-        ret = ret[:,ind[ind2]]
+        ret = ret[:, ind[ind2]]
 
     # shift embedding into non-negative area of the vector space
     shift_vec = torch.amin(ret, dim=0)

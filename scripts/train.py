@@ -51,6 +51,7 @@ def main():
     parser.add_argument('--task-inpainting', action='store_true', help="Activates the inpainting task")
     parser.add_argument('--task-jigsaw', action='store_true', help="Activates the jigsaw task")
     parser.add_argument('--task-contrastive', action='store_true', help="Activates the contrastive task")
+    parser.add_argument('--task-jigsaw-boot', action='store_true', help="Activates the bootstrapping task")
     # Upstream task configuration
     parser.add_argument('--subsampling-depth', default=50, type=int, help="Number of subsampled sequences")
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, fixed")
@@ -74,6 +75,14 @@ def main():
     parser.add_argument('--jigsaw-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
     parser.add_argument('--contrastive-temperature', default=100., type=float, help="SimCLR temperature in the contrastive task")
     parser.add_argument('--contrastive-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
+
+    parser.add_argument('--jigsaw-boot-loss-weight', default=1., type=float, help="Relative task loss weight. Is normalized before use.")
+    parser.add_argument('--jigsaw-boot-ratio', default=0.5, type=float, help="How many sequences from MSA to be bootstrapped")
+    parser.add_argument('--boot-per-token', action='store_true', help="Per token loss")
+    parser.add_argument('--boot-same', action='store_true', help="Compute per token loss between the replaced sequence and the new one")
+    parser.add_argument('--frozen', action='store_true', help='applies the same permutation to all seqs in the MSA')
+    parser.add_argument('--seq-dist', action='store_true', help='evaluates the sequences by distance to MSA')
+
     # Logging
     parser.add_argument('--log-every', default=100, type=int, help='how often to add logging rows(does not write to disk)')
     parser.add_argument('--log-dir', default='lightning_logs/', type=str, help='Logging directory. Default: \"lightning_logs/\"')
@@ -96,6 +105,9 @@ def main():
     if args.task_contrastive:
         tasks.append("contrastive")
         task_loss_weights["contrastive"] = args.contrastive_loss_weight
+    if args.task_jigsaw_boot:
+        tasks.append("jigsaw_boot")
+        task_loss_weights["jigsaw_boot"] = args.jigsaw_boot_loss_weight
 
     torch.manual_seed(args.rng_seed)
     np.random.seed(args.rng_seed)
@@ -148,8 +160,12 @@ def main():
                                                                                jigsaw_linear=not args.jigsaw_nonlinear,
                                                                                jigsaw_euclid_emb=jigsaw_euclid_emb,
                                                                                jigsaw_delimiter=not args.jigsaw_disable_delimiter,
-                                                                               simclr_temperature=args.contrastive_temperature)
-
+                                                                               simclr_temperature=args.contrastive_temperature,
+                                                                               jigsaw_boot_ratio=args.jigsaw_boot_ratio,
+                                                                               per_token=args.boot_per_token,
+                                                                               boot_same=args.boot_same,
+                                                                               frozen=args.frozen,
+                                                                               seq_dist=args.seq_dist)
     root = os.environ['DATA_PATH']
     dataset_name = args.dataset.lower()
     # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
@@ -195,19 +211,22 @@ def main():
     train_dl = DataLoader(train_ds,
                           batch_size=args.batch_size,
                           shuffle=not args.disable_shuffle,
-                          collate_fn=MSACollator(train_ds.token_mapping['PADDING_TOKEN']),
+                          collate_fn=MSACollator(train_ds.token_mapping['PADDING_TOKEN'], frozen=args.frozen),
                           num_workers=args.num_workers,
                           worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
                           generator=data_loader_rng, pin_memory=num_gpus > 0)
     val_dl = DataLoader(val_ds,
                         batch_size=args.batch_size,
                         shuffle=False,
-                        collate_fn=MSACollator(val_ds.token_mapping['PADDING_TOKEN']),
+                        collate_fn=MSACollator(val_ds.token_mapping['PADDING_TOKEN'], frozen=args.frozen),
                         num_workers=args.num_workers,
                         worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
                         generator=data_loader_rng,
                         pin_memory=num_gpus > 0)
 
+    # TODO the MSA should probably cropped to maxlen - all the other tokens
+    # max_seqlen = args.cropping_size + int('START_TOKEN' in rna2index) + int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions - 1)
+    max_seqlen = args.cropping_size + 1 + int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions + 1)
     model = models.self_supervised.MSAModel(
         args.num_blocks,
         args.num_heads,
@@ -219,7 +238,7 @@ def main():
         val_metrics=val_metrics,
         alphabet_size=len(train_ds.token_mapping),
         padding_token=train_ds.token_mapping['PADDING_TOKEN'],
-        max_seqlen=args.cropping_size,
+        max_seqlen=max_seqlen,
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,

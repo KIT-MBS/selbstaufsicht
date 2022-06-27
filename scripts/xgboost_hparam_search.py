@@ -1,14 +1,14 @@
 import argparse
 from functools import partial
-import os
+# import os
 import random
 import gc
 from typing import Any, Dict, Tuple
 
 import xgboost as xgb
-import mpi4py
-#mpi4py.rc.initialize=False
-#mpi4py.rc.finalize=False
+# import mpi4py
+# mpi4py.rc.initialize=False
+# mpi4py.rc.finalize=False
 from mpi4py import MPI
 import numpy as np
 import pandas as pd
@@ -17,7 +17,8 @@ import torch
 
 from propulate import Islands
 from propulate.utils import get_default_propagator
-from propulate.propagators import SelectBest, SelectWorst, SelectUniform
+from propulate.propagators import SelectBest, SelectWorst
+# from propulate.propagators import SelectUniform
 
 from selbstaufsicht.models.xgb import xgb_contact
 
@@ -37,9 +38,9 @@ def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np
     Returns:
         Tuple[str, float]: Metric name; metric value.
     """
-    
+
     y = dtrain.get_label()  # [B]
-    
+
     # Dirty hack: Find out by data length, whether training or validation is active. Only works, if training and validation dataset have different lengths.
     B = len(y)
     if len(msa_mappings[0]) == B:
@@ -48,19 +49,19 @@ def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np
         msa_mapping = msa_mappings[1]
     else:
         raise ValueError("Given data length does not match to msa_mappings: %d != (%d, %d)" % (B, len(msa_mappings[0]), len(msa_mappings[1])))
-    
+
     top_l_prec = xgb_contact.xgb_topkLPrec(preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
-    
+
     return 'top-%sL-Prec' % str(k), top_l_prec
 
 
-def hparam_objective(params: Dict[str, Any], attn_maps: np.ndarray, targets: np.ndarray, msa_mapping: np.ndarray, L_mapping: np.ndarray, 
+def hparam_objective(params: Dict[str, Any], attn_maps: np.ndarray, targets: np.ndarray, msa_mapping: np.ndarray, L_mapping: np.ndarray,
                      num_early_stopping_round: int, cv_num_folds: int, k: float, treat_all_preds_positive: bool, gpu_id: int) -> float:
-    data = xgb.DMatrix(attn_maps, label=targets)
+    # data = xgb.DMatrix(attn_maps, label=targets)
     rng_seed = random.randint(0, 2**32-1)
     splits = [split for split in KFold(cv_num_folds, shuffle=True, random_state=rng_seed).split(range(attn_maps.shape[0]))]
     max_objectives = []
-    
+
     xgb_params = {
         'booster': 'dart',
         'objective': 'binary:logitraw',
@@ -76,35 +77,35 @@ def hparam_objective(params: Dict[str, Any], attn_maps: np.ndarray, targets: np.
         'scale_pos_weight': params['scale_pos_weight'],
         'rate_drop': params['dart_dropout']
     }
-    
+
     for idx in range(cv_num_folds):
         train_indices, val_indices = splits[idx]
 
         train_attn_maps, val_attn_maps = attn_maps[train_indices, :], attn_maps[val_indices, :]
         train_targets, val_targets = targets[train_indices], targets[val_indices]
         train_msa_mapping, val_msa_mapping = msa_mapping[train_indices], msa_mapping[val_indices]
-        
+
         train_data = xgb.DMatrix(train_attn_maps, label=train_targets)
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
-        
+
         evals_result = {}
         metric = partial(xgb_topkLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
-        booster = xgb.train(xgb_params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=params['num_round'], 
+        booster = xgb.train(xgb_params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=params['num_round'],
                             feval=metric, maximize=True, early_stopping_rounds=num_early_stopping_round, verbose_eval=False)
         # free GPU memory manually to avoid OOM error
         booster.__del__()
         gc.collect()
-        
+
         results = {}
         for k1, v1 in evals_result.items():
             for k2, v2 in v1.items():
                 results['%s_%s' % (k2, k1)] = v2
         results = pd.DataFrame.from_dict(results)
         max_objectives.append(results['top-%sL-Prec_validation' % str(k)].max())
-    
+
     max_objectives = np.array(max_objectives)
     return -max_objectives.mean()
-    
+
 
 def main():
     parser = argparse.ArgumentParser(description='Selbstaufsicht Weakly Supervised Contact Prediction Script (XGBoost version)')
@@ -154,25 +155,25 @@ def main():
     parser.add_argument('--prop-num-generations', default=3, type=int, help="Number of generations in the evolutionary algorithm.")
 
     args = parser.parse_args()
-    
+
     xgb.set_config(verbosity=0)
-    
+
     gpu_id = MPI.COMM_WORLD.Get_rank() % args.num_gpu_per_node
     rng_seed = MPI.COMM_WORLD.Get_rank()
 
     torch.manual_seed(rng_seed)
     np.random.seed(rng_seed)
     random.seed(rng_seed)
-    
+
     device = torch.device('cuda:%d' % gpu_id)
 
     h_params = xgb_contact.get_checkpoint_hparams(args.checkpoint, device)
     train_dl = xgb_contact.create_dataloader('train', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, rng_seed=args.rng_seed, disable_train_data_discarding=args.disable_train_data_discarding)
-    
+
     cull_tokens = xgb_contact.get_cull_tokens(train_dl.dataset)
     model = xgb_contact.load_backbone(args.checkpoint, device, train_dl.dataset, cull_tokens, h_params)
     attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
-    
+
     limits = {
         'num_round': (args.num_round_min, args.num_round_max),
         'learning_rate': (args.learning_rate_min, args.learning_rate_max),
@@ -185,8 +186,8 @@ def main():
         'scale_pos_weight': (args.scale_pos_weight_min, args.scale_pos_weight_max),
         'dart_dropout': (args.dart_dropout_min, args.dart_dropout_max)
     }
-    
-    objective_fn = partial(hparam_objective, attn_maps=attn_maps, targets=targets, msa_mapping=msa_mapping, L_mapping=L_mapping, 
+
+    objective_fn = partial(hparam_objective, attn_maps=attn_maps, targets=targets, msa_mapping=msa_mapping, L_mapping=L_mapping,
                            num_early_stopping_round=args.num_early_stopping_round, cv_num_folds=args.cv_num_folds, k=args.top_l_prec_coeff,
                            treat_all_preds_positive=args.treat_all_preds_positive, gpu_id=gpu_id)
     num_migrants = 1
@@ -195,7 +196,7 @@ def main():
     propagator = get_default_propagator(args.prop_pop_size, limits, args.prop_mate_p, args.prop_mut_p, args.prop_rand_p)
     islands = Islands(objective_fn, propagator, generations=args.prop_num_generations,
                       num_isles=4, isle_sizes=[4, 4, 4, 4], migration_topology=migration_topology,
-                      load_checkpoint = "pop_cpt.p",
+                      load_checkpoint="pop_cpt.p",
                       save_checkpoint="pop_cpt.p",
                       migration_probability=args.prop_migr_p,
                       emigration_propagator=SelectBest, immigration_propagator=SelectWorst,

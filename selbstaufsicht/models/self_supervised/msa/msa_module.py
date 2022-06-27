@@ -158,7 +158,7 @@ class MSAModel(pl.LightningModule):
 
         latent = None
         if 'contact' in self.tasks:
-            if not self.downstream_loss_device_flag  and hasattr(self.losses['contact'], 'weight'):
+            if not self.downstream_loss_device_flag and hasattr(self.losses['contact'], 'weight'):
                 self.losses['contact'].weight = self.losses['contact'].weight.to(self.device)
                 self.downstream_loss_device_flag = True
 
@@ -207,7 +207,7 @@ class MSAModel(pl.LightningModule):
                 self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
                 # NOTE plot contact predictions
                 plt.figure()
-                fig = sns.heatmap((preds['contact'][0, 1]>=0.5).float().cpu().numpy(), fmt='').get_figure()
+                fig = sns.heatmap((preds['contact'][0, 1] >= 0.5).float().cpu().numpy(), fmt='').get_figure()
                 plt.close(fig)
                 self.logger.experiment.add_figure('contact_pred', fig, self.current_epoch)
 
