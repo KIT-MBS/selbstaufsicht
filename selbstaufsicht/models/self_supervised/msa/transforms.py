@@ -36,32 +36,24 @@ class MSATokenize():
         """
 
         x['msa'] = torch.tensor([[self.mapping[letter] for letter in sequence.upper()] for sequence in x['msa']], dtype=torch.long)
-        if 'contrastive' in x:
-            x['contrastive'] = torch.tensor([[self.mapping[letter] for letter in sequence.upper()] for sequence in x['contrastive']], dtype=torch.long)
-
         if 'START_TOKEN' in self.mapping:
             prefix = torch.full((x['msa'].size(0), 1), self.mapping['START_TOKEN'], dtype=torch.int)
             x['msa'] = torch.cat([prefix, x['msa']], dim=-1)
-            if 'contrastive' in x:
-                prefix = torch.full((x['contrastive'].size(0), 1), self.mapping['START_TOKEN'], dtype=torch.int)
-                x['contrastive'] = torch.cat([prefix, x['contrastive']], dim=-1)
 
         return x, y
 
 
 class MSACropping():
-    def __init__(self, length: int, contrastive: bool = False, mode: str = 'random-dependent') -> None:
+    def __init__(self, length: int, mode: str = 'random-dependent') -> None:
         """
         Initializes MSA cropping transform.
 
         Args:
             length (int): Maximum uncropped sequence length.
-            contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
             mode (str, optional): Cropping mode. Currently implemented: random-dependent, random-independent, fixed. Defaults to 'random-dependent'.
         """
 
         self.length = length
-        self.contrastive = contrastive
         self.cropping_fn = _get_msa_cropping_fn(mode)
 
     def __call__(self, x: Dict[str, MultipleSeqAlignment], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
@@ -76,22 +68,15 @@ class MSACropping():
             Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]: x: Cropped, lettered MSA; y: Upstream task labels.
         """
 
-        msa = x['msa'][:, :]
         if x['msa'].get_alignment_length() > self.length:
-            x['msa'] = self.cropping_fn(x['msa'], self.length, False)
-
-        if self.contrastive:
-            contrastive_msa = x.get('contrastive', msa)
-            if contrastive_msa.get_alignment_length() > self.length:
-                contrastive_msa = self.cropping_fn(contrastive_msa, self.length, True)
-            x['contrastive'] = contrastive_msa
+            x['msa'] = self.cropping_fn(x['msa'], self.length)
 
         return x, y
 
 
 class RandomMSAMasking():
     def __init__(self, p: float, p_static: float, p_nonstatic: float, p_unchanged: float, mode: str, static_mask_token: int,
-                 nonstatic_mask_tokens: List[int], contrastive: bool = False, start_token: bool = True) -> None:
+                 nonstatic_mask_tokens: List[int], start_token: bool = True) -> None:
         """
         Initializes random MSA masking transform.
 
@@ -103,7 +88,6 @@ class RandomMSAMasking():
             mode (str): Masking mode. Currently implemented: block-wise, column-wise, token-wise.
             static_mask_token (int): Token that is used to replace masked tokens static masking.
             nonstatic_mask_tokens (List[int]): Tokens that are used to replace masked tokens randomly in nonstatic masking.
-            contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
             start_token (bool, optional): Whether a start token is used, which is then precluded from masking. Defaults to True.
         """
 
@@ -113,7 +97,6 @@ class RandomMSAMasking():
         self.static_mask_token = static_mask_token
         self.nonstatic_mask_tokens = nonstatic_mask_tokens
         self.masking_fn = _get_masking_fn(mode, start_token)
-        self.contrastive = contrastive
 
     def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """
@@ -136,9 +119,6 @@ class RandomMSAMasking():
         x['msa'] = masked_msa
         x['mask'] = mask
         y['inpainting'] = target
-        if self.contrastive:
-            x['contrastive'], _, _ = self.masking_fn(x['contrastive'], self.p, self.masking_type_distribution,
-                                                     self.static_mask_token, self.nonstatic_mask_tokens)
         return x, y
 
 
@@ -151,7 +131,6 @@ class RandomMSAShuffling():
                  num_partitions: int = None,
                  num_classes: int = None,
                  euclid_emb: torch.Tensor = None,
-                 contrastive: bool = False,
                  frozen: bool = False):
         """
         Initializes random MSA shuffling.
@@ -165,7 +144,6 @@ class RandomMSAShuffling():
             num_partitions (int, optional): Number of shuffled partitions per sequence. Needs to be specified, if \"permutations\" is unspecified. Defaults to None.
             num_classes (int, optional): Number of allowed permutations. Needs to be specified, if \"permutations\" is unspecified. Defaults to None.
             euclid_emb (torch.Tensor, optional): Euclidean embedding of the discrete permutation metric. Defaults to None.
-            contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
         Raises:
             ValueError: Either \"permutations\" or \"num_partitions\" and \"num_classes\" need to be specified.
@@ -194,7 +172,6 @@ class RandomMSAShuffling():
         self.delimiter_token = delimiter_token
         self.euclid_emb = euclid_emb
         self.euclid_emb_device_flag = False
-        self.contrastive = contrastive
 
     def __call__(self, x: Dict[str, torch.Tensor], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
         """
@@ -247,14 +224,6 @@ class RandomMSAShuffling():
             else:
                 y['jigsaw'] = self.euclid_emb[self.perm_indices[perm_sampling], :]
 
-        if self.contrastive:
-            contrastive_perm_sampling = torch.randint(0, self.num_classes, (num_seq,))
-            x['contrastive'] = _jigsaw(x['contrastive'],
-                                       self.permutations.expand(num_seq, -1, -1)[range(num_seq),
-                                       contrastive_perm_sampling],
-                                       delimiter_token=self.delimiter_token,
-                                       minleader=self.minleader,
-                                       mintrailer=self.mintrailer)
         return x, y
 
 
@@ -312,17 +281,15 @@ class MSAboot():
 
 
 class MSASubsampling():
-    def __init__(self, num_sequences: int, contrastive: bool = False, mode: str = 'uniform') -> None:
+    def __init__(self, num_sequences: int, mode: str = 'uniform') -> None:
         """
         Initializes MSA subsampling.
 
         Args:
             num_sequences (int): Number of subsampled sequences.
-            contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
             mode (str, optional): Subsampling mode. Currently implemented: uniform, diversity, fixed. Defaults to 'uniform'.
         """
 
-        self.contrastive = contrastive
         self.mode = mode
         self.sampling_fn = _get_msa_subsampling_fn(mode)
         self.nseqs = num_sequences
@@ -343,14 +310,10 @@ class MSASubsampling():
         if self.mode == 'diversity':
             if 'indices' not in x:
                 raise KeyError('No indices provided for diversity-maximizing subsampling!')
-            x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'], False)
+            x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'])
             del x['indices']
         else:
-            x['msa'] = self.sampling_fn(msa, self.nseqs, False)
-        if self.contrastive:
-            # diversity maximization should not be used in combination with contrastive
-            assert self.mode != 'diversity'
-            x['contrastive'] = self.sampling_fn(msa, self.nseqs, True)
+            x['msa'] = self.sampling_fn(msa, self.nseqs)
         return x, y
 
 
@@ -387,16 +350,6 @@ class ExplicitPositionalEncoding():
             x['aux_features'] = absolute
         else:
             raise
-
-        if 'contrastive' in x:
-            msa = x['contrastive']
-            seqlen = msa.size(-1)
-
-            absolute = torch.arange(1, seqlen + 1, dtype=torch.long).unsqueeze(0)
-            if 'aux_features_contrastive' not in x:
-                x['aux_features_contrastive'] = absolute
-            else:
-                raise
 
         return x, y
 
@@ -756,14 +709,13 @@ def _get_masking_fn(mode: str, start_token: bool) -> Callable[
     raise ValueError('unknown token masking mode', mode)
 
 
-def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool = False) -> MultipleSeqAlignment:
+def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int) -> MultipleSeqAlignment:
     """
     Subsamples sequences uniformly sampled from the given MSA.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
-        contrastive (bool): Whether contrastive learning is active. Defaults to False.
 
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
@@ -776,7 +728,7 @@ def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool 
     return msa
 
 
-def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indices: torch.Tensor, contrastive: bool = False) -> MultipleSeqAlignment:
+def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indices: torch.Tensor) -> MultipleSeqAlignment:
     """
     Subsamples sequences from the given MSA according to the diviserty maximization scheme.
     Requires pre-computed indices of most diverse sequences.
@@ -785,14 +737,11 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indic
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
         indices (torch.Tensor): Indices of most diverse sequences.
-        contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
 
-    # diversity maximization should not be used in combination with contrastive
-    assert not contrastive
     assert indices.shape[0] == nseqs
     assert len(msa) >= nseqs
 
@@ -800,24 +749,20 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indic
     return msa
 
 
-def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int, contrastive: bool = False) -> MultipleSeqAlignment:
+def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int) -> MultipleSeqAlignment:
     """
     Subsamples the first n sequences from the MSA.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
-        contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
     Returns:
         MultipleSeqAlignment: Subsampled, lettered MSA.
     """
     # TODO ensure this works, when there are not 2*nseqs sequences in the msa
 
-    if contrastive:
-        return msa[nseqs:2 * nseqs]
-    else:
-        return msa[:nseqs]
+    return msa[:nseqs]
 
 
 def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]:
@@ -832,7 +777,7 @@ def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, O
 
     Returns:
         Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]: Subsampling function
-        (lettered MSA; number of sequences to be subsampled; whether contrastive lerning is active -> subsampled, lettered MSA)
+        (lettered MSA; number of sequences to be subsampled -> subsampled, lettered MSA)
     """
 
     if mode == 'uniform':
@@ -844,7 +789,7 @@ def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, O
     raise ValueError('unkown msa sampling mode', mode)
 
 
-def _crop_random_dependent(msa: MultipleSeqAlignment, length: int, contrastive: bool = False) -> MultipleSeqAlignment:
+def _crop_random_dependent(msa: MultipleSeqAlignment, length: int) -> MultipleSeqAlignment:
     """
     Crops each sequence of the given lettered MSA randomly to the predefined length.
     Cropping start is the same for all sequences.
@@ -852,7 +797,6 @@ def _crop_random_dependent(msa: MultipleSeqAlignment, length: int, contrastive: 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         length (int): Maximum uncropped sequence length.
-        contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
     Returns:
         MultipleSeqAlignment: Cropped, lettered MSA.
@@ -862,7 +806,7 @@ def _crop_random_dependent(msa: MultipleSeqAlignment, length: int, contrastive: 
     return msa[:, start: start + length]
 
 
-def _crop_random_independent(msa: MultipleSeqAlignment, length: int, contrastive: bool = False) -> MultipleSeqAlignment:
+def _crop_random_independent(msa: MultipleSeqAlignment, length: int) -> MultipleSeqAlignment:
     """
     Crops each sequence of the given lettered MSA randomly to the predefined length.
     Cropping start is randomly sampled for all sequences.
@@ -870,7 +814,6 @@ def _crop_random_independent(msa: MultipleSeqAlignment, length: int, contrastive
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         length (int): Maximum uncropped sequence length.
-        contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
     Returns:
         MultipleSeqAlignment: Cropped, lettered MSA.
@@ -884,14 +827,13 @@ def _crop_random_independent(msa: MultipleSeqAlignment, length: int, contrastive
     return cropped_msa
 
 
-def _crop_fixed(msa: MultipleSeqAlignment, length: int, contrastive: bool = False) -> MultipleSeqAlignment:
+def _crop_fixed(msa: MultipleSeqAlignment, length: int) -> MultipleSeqAlignment:
     """
     Crops each sequence of the given lettered MSA in a left-aligned way to the predefined length.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         length (int): Maximum uncropped sequence length.
-        contrastive (bool, optional): Whether contrastive learning is active. Defaults to False.
 
     Returns:
         MultipleSeqAlignment: Cropped, lettered MSA.
@@ -912,7 +854,7 @@ def _get_msa_cropping_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Opti
 
     Returns:
         Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]: Cropping function
-        (lettered MSA; maximum uncropped sequence length; whether contrastive lerning is active -> cropped, lettered MSA)
+        (lettered MSA; maximum uncropped sequence length -> cropped, lettered MSA)
     """
 
     if mode == 'random-dependent':

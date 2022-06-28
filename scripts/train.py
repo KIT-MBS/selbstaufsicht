@@ -144,11 +144,12 @@ def main():
     else:
         jigsaw_euclid_emb = None
 
+    actual_cropping_size = args.cropping_size - 1 - int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions + 1)
     transform, task_heads, task_losses, train_metrics, val_metrics = get_tasks(tasks,
                                                                                args.feature_dim_head * args.num_heads,
                                                                                subsample_depth=args.subsampling_depth,
                                                                                subsample_mode=args.subsampling_mode,
-                                                                               crop_size=args.cropping_size,
+                                                                               crop_size=actual_cropping_size,
                                                                                crop_mode=args.cropping_mode,
                                                                                masking=args.inpainting_masking_type,
                                                                                p_mask=args.inpainting_masking_p,
@@ -226,7 +227,7 @@ def main():
 
     # TODO the MSA should probably cropped to maxlen - all the other tokens
     # max_seqlen = args.cropping_size + int('START_TOKEN' in rna2index) + int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions - 1)
-    max_seqlen = args.cropping_size + 1 + int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions + 1)
+    # max_seqlen = args.cropping_size + 1 + int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions + 1)
     model = models.self_supervised.MSAModel(
         args.num_blocks,
         args.num_heads,
@@ -238,7 +239,7 @@ def main():
         val_metrics=val_metrics,
         alphabet_size=len(train_ds.token_mapping),
         padding_token=train_ds.token_mapping['PADDING_TOKEN'],
-        max_seqlen=max_seqlen,
+        max_seqlen=args.cropping_size,
         lr=args.learning_rate,
         lr_warmup=args.learning_rate_warmup,
         dropout=args.dropout,
