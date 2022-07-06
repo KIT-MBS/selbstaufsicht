@@ -54,14 +54,14 @@ def test_jigsaw_head():
     testing.assert_close(out, out_ref, atol=1e-4, rtol=1e-3)
 
 
-def test_contrastive_head():
-    bs, S, L, D = 2, 3, 4, 8
-
-    model = ContrastiveHead(D)
-    latent = torch.rand((bs, S, L, D))
-
-    out = model(latent, None)
-    out_ref = torch.tensor([[-0.0048, -0.3309, -0.0306, 0.1585, -0.3924, -0.3743, -0.1985, 0.4601],
-                            [0.0364, -0.2817, -0.0870, 0.1965, -0.3521, -0.2907, -0.1541, 0.5072]])
-
-    testing.assert_close(out, out_ref, atol=1e-4, rtol=1e-3)
+# def test_contrastive_head():
+#     bs, S, L, D = 2, 3, 4, 8
+#
+#     model = ContrastiveHead(D)
+#     latent = torch.rand((bs, S, L, D))
+#
+#     out = model(latent, None)
+#     out_ref = torch.tensor([[-0.0048, -0.3309, -0.0306, 0.1585, -0.3924, -0.3743, -0.1985, 0.4601],
+#                             [0.0364, -0.2817, -0.0870, 0.1965, -0.3521, -0.2907, -0.1541, 0.5072]])
+#
+#     testing.assert_close(out, out_ref, atol=1e-4, rtol=1e-3)

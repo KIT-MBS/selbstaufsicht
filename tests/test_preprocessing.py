@@ -312,7 +312,7 @@ def test_jigsaw_delimiter(tokenized_sample):
 
 
 def test_subsampling_uniform(msa_sample):
-    sampler = MSASubsampling(3, False, 'uniform')
+    sampler = MSASubsampling(3, 'uniform')
     sampled = sampler(*msa_sample)[0]['msa']
 
     sampled_ref = MultipleSeqAlignment(
@@ -327,7 +327,7 @@ def test_subsampling_uniform(msa_sample):
 
 
 def test_subsampling_maximum_diversity(msa_sample):
-    sampler = MSASubsampling(3, False, 'diversity')
+    sampler = MSASubsampling(3, 'diversity')
     x, y = msa_sample
     x['indices'] = torch.tensor([0, 2, 3], dtype=torch.int64)
     sampled = sampler(x, y)[0]['msa']
@@ -344,9 +344,8 @@ def test_subsampling_maximum_diversity(msa_sample):
 
 
 def test_subsampling_fixed(msa_sample):
-    sampler = MSASubsampling(2, True, 'fixed')
+    sampler = MSASubsampling(2, 'fixed')
     sampled = sampler(*msa_sample)[0]['msa']
-    sampled_contrastive = sampler(*msa_sample)[0]['contrastive']
 
     sampled_ref = MultipleSeqAlignment(
         [
@@ -354,21 +353,12 @@ def test_subsampling_fixed(msa_sample):
             SeqRecord(Seq("AAU.CUA"), id='seq2'),
         ])
 
-    sampled_contrastive_ref = MultipleSeqAlignment(
-        [
-            SeqRecord(Seq("CCUACU."), id='seq3'),
-            SeqRecord(Seq("UCUCCUC"), id='seq4'),
-        ])
-
     for idx in range(len(sampled)):
         assert sampled[idx].seq == sampled_ref[idx].seq
 
-    for idx in range(len(sampled_contrastive)):
-        assert sampled_contrastive[idx].seq == sampled_contrastive_ref[idx].seq
-
 
 def test_cropping_random_dependent(msa_sample):
-    cropper = MSACropping(3, False, 'random-dependent')
+    cropper = MSACropping(3, 'random-dependent')
     cropped = cropper(*msa_sample)
 
     cropped_ref = MultipleSeqAlignment(
@@ -385,7 +375,7 @@ def test_cropping_random_dependent(msa_sample):
 
 
 def test_cropping_random_independent(msa_sample):
-    cropper = MSACropping(3, False, 'random-independent')
+    cropper = MSACropping(3, 'random-independent')
     cropped = cropper(*msa_sample)
 
     cropped_ref = MultipleSeqAlignment(
@@ -402,7 +392,7 @@ def test_cropping_random_independent(msa_sample):
 
 
 def test_cropping_fixed(msa_sample):
-    cropper = MSACropping(3, False, 'fixed')
+    cropper = MSACropping(3, 'fixed')
     cropped = cropper(*msa_sample)
 
     cropped_ref = MultipleSeqAlignment(
@@ -460,14 +450,11 @@ def test_msa_collator():
     L = [6, 7]
     inpainting = [3, 2]
     jigsaw = S
-    contrastive_S = S
-    contrastive_L = [8, 5]
 
     data = [({'msa': torch.zeros((S[idx], L[idx]), dtype=torch.int),
               'mask': torch.zeros((S[idx], L[idx]), dtype=torch.bool),
               'aux_features': torch.zeros((1, L[idx], 2)),
-              'contrastive': torch.zeros((contrastive_S[idx], contrastive_L[idx]), dtype=torch.int),
-              'aux_features_contrastive': torch.zeros((1, contrastive_L[idx], 2))},
+              },
              {'inpainting': torch.zeros((inpainting[idx]), dtype=torch.int64),
               'jigsaw': torch.zeros((jigsaw[idx]), dtype=torch.int64)})
             for idx in range(B)]
@@ -477,16 +464,10 @@ def test_msa_collator():
     padding_mask_ref = torch.zeros((B, max(S), max(L)), dtype=torch.bool)
     padding_mask_ref[0, :, -1] = True
     padding_mask_ref[1, -1, :] = True
-    padding_mask_contrastive_ref = torch.zeros((B, max(contrastive_S), max(contrastive_L)), dtype=torch.bool)
-    padding_mask_contrastive_ref[1, -1, :] = True
-    padding_mask_contrastive_ref[1, :, -3:] = True
     x_ref = {'msa': torch.zeros((B, max(S), max(L)), dtype=torch.int),
              'mask': torch.zeros((B, max(S), max(L)), dtype=torch.bool),
              'padding_mask': padding_mask_ref,
-             'aux_features': torch.zeros((B, 1, max(L), 2)),
-             'contrastive': torch.zeros((B, max(contrastive_S), max(contrastive_L)), dtype=torch.int),
-             'padding_mask_contrastive': padding_mask_contrastive_ref,
-             'aux_features_contrastive': torch.zeros((B, 1, max(contrastive_L), 2))}
+             'aux_features': torch.zeros((B, 1, max(L), 2))}
     jigsaw_ref = torch.zeros((B, max(S)), dtype=torch.int64)
     jigsaw_ref[1, -1] = -1
     target_ref = {'inpainting': torch.zeros((sum(inpainting), ), dtype=torch.int64),
@@ -505,7 +486,7 @@ def test_msa_collator():
 
 
 def test_compose(msa_sample):
-    sampler = MSASubsampling(3, False, 'uniform')
+    sampler = MSASubsampling(3, 'uniform')
     tokenize = MSATokenize(rna2index)
 
     transforms = [sampler, tokenize]
