@@ -10,7 +10,7 @@ from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling, MSAboot
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
-from selbstaufsicht.modules import NT_Xent_Loss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix
+from selbstaufsicht.modules import SequenceNTXentLoss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
 # NOTE mask and padding tokens can not be reconstructed
@@ -77,13 +77,9 @@ def get_tasks(tasks: List[str],
     # TODO alphabet as parameter?
     max_seqlen = crop_size + int('START_TOKEN' in rna2index) + int(jigsaw_delimiter) * (jigsaw_partitions + 1)
 
-    contrastive = False
-    if 'contrastive' in tasks:
-        contrastive = True
-
     transformslist = [
-        MSASubsampling(subsample_depth, contrastive=contrastive, mode=subsample_mode),
-        MSACropping(crop_size, contrastive=contrastive, mode=crop_mode),
+        MSASubsampling(subsample_depth, mode=subsample_mode),
+        MSACropping(crop_size, mode=crop_mode),
         MSATokenize(rna2index)]
 
     if 'jigsaw' in tasks:
@@ -94,7 +90,6 @@ def get_tasks(tasks: List[str],
                 num_partitions=jigsaw_partitions,
                 num_classes=jigsaw_classes,
                 euclid_emb=jigsaw_euclid_emb,
-                contrastive=contrastive,
                 frozen=frozen)
         )
     if 'inpainting' in tasks:
@@ -106,8 +101,7 @@ def get_tasks(tasks: List[str],
                 p_unchanged=p_mask_unchanged,
                 mode=masking,
                 static_mask_token=rna2index['MASK_TOKEN'],
-                nonstatic_mask_tokens=nonstatic_mask_tokens,
-                contrastive=contrastive)
+                nonstatic_mask_tokens=nonstatic_mask_tokens)
         )
 
     if 'jigsaw_boot' in tasks:
@@ -153,7 +147,7 @@ def get_tasks(tasks: List[str],
     if 'contrastive' in tasks:
         head = ContrastiveHead(dim)
         task_heads['contrastive'] = head
-        task_losses['contrastive'] = NT_Xent_Loss(simclr_temperature)
+        task_losses['contrastive'] = SequenceNTXentLoss(simclr_temperature)
         train_metrics['contrastive'] = ModuleDict({})
         val_metrics['contrastive'] = ModuleDict({})
     if 'jigsaw_boot' in tasks:
@@ -247,10 +241,8 @@ class MSACollator():
             'msa': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
             'mask': partial(_pad_collate_nd, pad_val=inpainting_mask_padding_token),
             'aux_features': _pad_collate_nd,
-            'aux_features_contrastive': _pad_collate_nd,
             'inpainting': _flatten_collate,
             'jigsaw': partial(_pad_collate_nd, pad_val=jigsaw_padding_token),
-            'contrastive': partial(_pad_collate_nd, pad_val=msa_padding_token, need_padding_mask=True),
             'jigsaw_boot': _flatten_collate
             }
 
@@ -264,7 +256,7 @@ class MSACollator():
         Args:
             batch (List[Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]):
             Batch data: Each batch item consists of input and target data, which in turn contain several tensors.
-            Input data contains {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor, 'contrastive': tensor}.
+            Input data contains {'msa': tensor, optional 'mask': tensor, 'aux_features': tensor}.
             Target data contains one or more of {'inpainting': 1dtensor, 'jigsaw': 1dtensor}
 
         Returns:
@@ -292,12 +284,9 @@ class MSACollator():
         for key in item:
             collate_result = self.collate_fn[key]([sample[item_idx][key] for sample in batch])
 
-            if key in ['msa', 'contrastive']:
+            if key == 'msa':
                 collate_result, padding_mask = collate_result
-                if key == 'msa':
-                    out['padding_mask'] = padding_mask
-                elif key == 'contrastive':
-                    out['padding_mask_contrastive'] = padding_mask
+                out['padding_mask'] = padding_mask
             out[key] = collate_result
 
         return out

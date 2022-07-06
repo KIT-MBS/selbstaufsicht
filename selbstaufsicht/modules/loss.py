@@ -31,6 +31,86 @@ class NT_Xent_Loss(nn.Module):
         return nt_xent_loss(x1, x2, self.temperature)
 
 
+def sync_(tensor):
+    """
+    gathers the tensors in the global batch on the same node into one list
+    """
+    gathered = [None for _ in range(torch.distributed.get_world_size())]
+    torch.distributed.all_gather_object(gathered, tensor)
+    gathered = [t.clone().to(device=tensor.device) for t in gathered]
+
+    return gathered
+
+
+# NOTE this would be more flexible, but since all_gather needs tensors of identical shape, we need to use all_gather_objects (or point to point communication) which does not send the tensor data
+# class SyncFunction(torch.autograd.Function):
+#     @staticmethod
+#     def forward(ctx, tensor):
+#         ctx.batch_size = tensor.size(0)
+#
+#         gathered = [None for _ in range(torch.distributed.get_world_size())]
+#         torch.distributed.all_gather_object(gathered, tensor)
+#         # NOTE this does not work for variably sizes tensors
+#         # gathered_sizes = (t.size() for t in gathered)
+#         # gathered = [torch.zeros(s, dtype=tensor.dtype, layout=tensor.layout, device=tensor.device) for s in gathered_sizes]
+#         # torch.distributed.all_gather(gathered, tensor)
+#         gathered = [t.c]
+#
+#         return gathered
+#
+#     @staticmethod
+#     def backward(ctx, grad_output):
+#         print('rank', torch.distributed.get_rank(), grad_output)
+#         raise
+#         # grad_input = [x.clone() for x in grad_output]
+#
+#         return
+
+
+class SequenceNTXentLoss(nn.Module):
+    def __init__(self, temperature: float, eps: float = 1e-6) -> None:
+        super(SequenceNTXentLoss, self).__init__()
+        self.temperature = temperature
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor, y) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): output of a contrastive head [B, E, D]
+            y: dummy variable
+
+        Returns:
+            torch.Tensor: loss
+        """
+        if y is not None:
+            raise ValueError('unexpected item in the bugging area')
+
+        # NOTE currently works only for batch_size==1
+        assert x.size(0) == 1
+        distributed = torch.distributed.is_available() and torch.distributed.is_initialized()
+        if distributed:
+            # x_dist = SyncFunction.apply(x)
+            x_dist = sync_(x)
+
+        else:
+            raise RuntimeError('Contrastive needs multiple samples, since batch size == 1 distributed.')
+
+        x_neg = torch.cat([t for i, t in enumerate(x_dist) if i != torch.distributed.get_rank()], dim=1)  # [sum(E_j|j!=rank), D]
+        x_neg = x_neg.squeeze()
+        x = x.squeeze()  # [E_rank, D]
+
+        cov = torch.mm(x, x_neg.t().contiguous())  # [E_rank, sumj!=i(E_j)]
+        sim = torch.exp(cov / self.temperature)
+        neg = sim.sum(dim=-1)  # [E_rank]
+        neg = torch.clamp(neg, min=self.eps)
+        neg = torch.unsqueeze(neg, 1)
+
+        pos = torch.exp(torch.mm(x, x.t().contiguous()))  # [E_rank, E_rank]
+
+        loss = -torch.log(pos / (neg + self.eps)).mean()
+        return loss
+
+
 class EmbeddedJigsawLoss(nn.Module):
     def __init__(self, ignore_value: int = -1, ignore_dim: int = -1, reduction='mean'):
         """

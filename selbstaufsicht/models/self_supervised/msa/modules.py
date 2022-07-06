@@ -150,14 +150,20 @@ class ContrastiveHead(nn.Module):
             x (Dict[str, torch.Tensor]): Input data.
 
         Returns:
-            torch.Tensor: Contrastive latent representation [B, D].
+            torch.Tensor: Contrastive latent representation [B, E, D].
         """
 
         # latent is of shape [B, E, L, D]
-        latent = latent.mean(dim=-2)  # [B, E, D]
-        latent = latent.mean(dim=-2)  # [B, D]
+        # latent = latent.mean(dim=-2)  # [B, E, D]
+        # latent = latent.mean(dim=-2)  # [B, D]
 
-        return self.proj(latent)
+        # return self.proj(latent)
+        # TODO batch size > 1
+        assert latent.size(0) == 1
+        # TODO pick a random chunk?
+        out = self.proj(latent[:, :, 1:, :])  # remove start_seq token
+        out = out.mean(dim=-2)  # [B, E, D]
+        return nn.functional.normalize(out)
 
 
 class ContactHead(nn.Module):
