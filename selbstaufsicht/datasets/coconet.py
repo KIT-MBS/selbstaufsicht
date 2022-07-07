@@ -37,6 +37,7 @@ class CoCoNetDataset(Dataset):
         msa_index_filename = 'CCNListOfMSAFiles.txt'
 
         self.indices = None
+        # TODO this file probably should go somewhere else and if it does not exist it should be created on demand if possible
         if diversity_maximization:
             indices_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'coconet_%s_diversity_maximization.pt' % split)
             self.indices = torch.load(indices_path)

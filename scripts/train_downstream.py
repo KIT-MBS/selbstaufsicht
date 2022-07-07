@@ -177,7 +177,7 @@ def main():
                     dropout=args.dropout,
                     emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
                     freeze_backbone=args.freeze_backbone,
-                    max_seqlen=h_params['cropping_size']+20,
+                    max_seqlen=h_params['cropping_size'],
                     h_params=h_params)
         model.tasks = ['contact']
         model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[kfold_cv_downstream.train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
