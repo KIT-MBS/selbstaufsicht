@@ -350,6 +350,7 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
         dropout=0.,
         emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
         freeze_backbone=True,
+        max_seqlen=h_params['cropping_size'],
         h_params=h_params)
     model.need_attn = True
     model.to(device)
