@@ -24,11 +24,21 @@ class CoCoNetDataset(Dataset):
     train the downstream 'unsupervised' contact prediction and the train dataset for
     testing
     """
-    def __init__(self, root, split, transform=None, download=True, discard_train_size_based=True,
-                 diversity_maximization=False, max_seq_len: int = 400, min_num_seq: int = 50):
+    def __init__(
+            self,
+            root,
+            split,
+            transform=None,
+            download=True,
+            discard_train_size_based=True,
+            diversity_maximization=False,
+            max_seq_len: int = 400,
+            min_num_seq: int = 50,
+            secondary_window=-1):
         self.root = pathlib.Path(root)
         self.transform = transform
         self.token_mapping = rna2index
+        self.secondary_window = secondary_window
         if download:
             if not os.path.isfile(root + '/coconet/README.md'):
                 sp.call(['git', 'clone', 'https://github.com/KIT-MBS/coconet.git', f'{root}/coconet/'])
@@ -147,18 +157,57 @@ class CoCoNetDataset(Dataset):
 
         # NOTE: Remove discarded MSAs
         self.msas = [msa for idx, msa in enumerate(self.msas) if idx not in discarded_msa_idx]
+        self.pdb_filenames = [x for idx, x in enumerate(self.pdb_filenames) if idx not in discarded_msa_idx]
+        self.pdb_chains = [x for idx, x in enumerate(self.pdb_chains) if idx not in discarded_msa_idx]
+        self.fam_ids = [x for idx, x in enumerate(self.fam_ids) if idx not in discarded_msa_idx]
+
+        # NOTE load secondary structure data
+        if self.secondary_window > -1:
+            self.bprnaseqs = []
+            self.bprnapairs = []
+            for idx, pdb_file in enumerate(self.pdb_filenames):
+                pdb_id = pdb_file.split('_')[0].replace('.pdb', '')
+                bpseq_path = _get_bpseq_path(self.root, pdb_id)
+                # bpseq_file = str(pdb_id.upper())+'-2D-bpseq.txt'
+                # bpseq_path = self.root / 'rnapdbee' / pdb_id.upper() / 'dssr-hybrid-isolated_removed-pseudoknots_as_unpaired_residues-varna' / bpseq_file
+                print(self.fam_ids[idx], pdb_id, self.pdb_chains[idx])
+                try:
+                    with open(bpseq_path, 'rt') as f:
+                        lines = f.readlines()
+                        letters = lines[1]
+                        basepairs = lines[2]
+                        if self.msas[idx][0].seq != letters:
+                            print(self.msas[idx][0].seq)
+                            print(letters)
+                        # assert self.msas[idx][0].seq == ''.join(letters)
+                        self.bprnaseqs.append(letters)
+                        self.bprnapairs.append(basepairs)
+                except:
+                    print("oh noes")
+            raise
+            # NOTE build modified contact maps
 
     def __getitem__(self, i):
         x = self.msas[i]
         y = self.pdbs[i]
 
+        # TODO apply secondary contact filter
         if self.transform is not None:
             if self.indices is None:
-                return self.transform({'msa': x}, {'structure': y})
+                item = self.transform({'msa': x}, {'structure': y})
+                if self.secondary_window > -1:
+                    item[1]['basepairs'] = self.bprnapairs[i]
             else:
-                return self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y})
+                item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y})
+                if self.secondary_window > -1:
+                    item[1]['basepairs'] = self.bprnapairs[i]
+            return item
 
         return x, y
 
     def __len__(self):
         return(len(self.msas))
+
+def _get_bpseq_path(root, pdb_id):
+
+    return root / 'rnapdbee' / pdb_id.upper() / 'dssr-hybrid-isolated_removed-pseudoknots_as_unpaired_residues-no_image' / (pdb_id.upper() + '-2D-dotbracket.txt')

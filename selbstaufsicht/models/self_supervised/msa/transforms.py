@@ -424,16 +424,24 @@ class DistanceFromChain():
 
 
 class ContactFromDistance():
-    def __init__(self, threshold: float = 4.):
+    def __init__(self, threshold: float = 4., secondary_window=-1):
         """
         Thresholds used in CoCoNet paper were 4. and 10. Angstrom
         """
         self.threshold = threshold
+        self.secondary_window = secondary_window
 
     def __call__(self, x: Dict, y: Dict) -> Tuple[Dict, Dict]:
         contacts = torch.zeros_like(y['distances'], dtype=torch.long)
         contacts[y['distances'] < self.threshold] = 1.
         contacts[y['distances'] == torch.inf] = -1.
+        L = contacts.size(-1)
+
+        if self.secondary_window > -1:
+            raise
+            secondary = torch.zeros_like(y['distances'], dtype = torch.long)
+            for i, j in enumerate(y['basepairs']):
+                pass
 
         y['contact'] = contacts
         return x, y

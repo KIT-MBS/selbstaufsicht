@@ -4,27 +4,15 @@ from selbstaufsicht import datasets
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms
 
 root = os.environ['DATA_PATH']
-downstream_transform = get_downstream_transforms(subsample_depth=50, threshold=10., device='cpu')
 
-ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
+# downstream_transform = get_downstream_transforms(subsample_depth=50, threshold=10., device='cpu')
+# ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
 
-# xfam = datasets.XfamDataset(root, download=True, mode='seed', version='14.6')
-# xfam_reduced = datasets.XfamDataset(root, download=True, mode='seed', version='14.6', exclude_ids=ds.fam_ids)
+downstream_transform_3D = get_downstream_transforms(subsample_depth=50, threshold=10., device='cpu', secondary_window=2)
+ds3D = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform_3D, secondary_window=2)
 
-# print(len(ds))
-# print(len(xfam))
-# print(len(xfam_reduced))
-
-maxlen = 0
-pos = 0
-total = 0
-for x, y in ds:
-    # if x['msa'].get_alignment_length() > maxlen:
-    #     maxlen = x['msa'].get_alignment_length()
-    pos += torch.sum(y['contact'] == 1)
-    total += torch.sum(y['contact'] != -1)
-
-print(pos)
-print(total)
-print(pos/total)
-print(maxlen)
+for i, (x, y) in enumerate(ds):
+    print(ds.fam_ids[i], ds.pdb_filenames[i], ds.pdb_chains[i])
+    displaymap = y['contact'].triu() + ds3D[i][1]['contact'].tril()
+    plt.imshow(displaymap)
+    plt.show()
