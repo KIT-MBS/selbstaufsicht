@@ -315,6 +315,8 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
         tasks.append("jigsaw")
     if h_params['task_contrastive']:
         tasks.append("contrastive")
+    if h_params['task_jigsaw_boot']:
+        tasks.append("jigsaw_boot")
 
     _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                  h_params['feature_dim_head'] * h_params['num_heads'],
@@ -329,7 +331,13 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
                                                  jigsaw_linear=not h_params['jigsaw_nonlinear'],
                                                  jigsaw_delimiter=jigsaw_delimiter,
                                                  jigsaw_euclid_emb=jigsaw_euclid_emb,
-                                                 simclr_temperature=h_params['contrastive_temperature'])
+                                                 simclr_temperature=h_params['contrastive_temperature'],
+                                                 jigsaw_boot_ratio=h_params['jigsaw_boot_ratio'],
+                                                 per_token=h_params['boot_per_token'],
+                                                 boot_same=h_params['boot_same'],
+                                                 frozen=h_params['frozen'],
+                                                 seq_dist=h_params['seq_dist'],
+                                                 )
 
     num_maps = h_params['num_blocks'] * h_params['num_heads']
     if 'downstream' in checkpoint:
