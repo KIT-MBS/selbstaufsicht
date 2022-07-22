@@ -58,6 +58,8 @@ def main():
         tasks.append("jigsaw")
     if h_params['task_contrastive']:
         tasks.append("contrastive")
+    if h_params['task_jigsaw_boot']:
+        tasks.append("jigsaw_boot")
 
     _, _, test_metrics = get_downstream_metrics()
     _, task_heads, task_losses, _, _ = get_tasks(tasks,
@@ -73,7 +75,13 @@ def main():
                                                  jigsaw_linear=not h_params['jigsaw_nonlinear'],
                                                  jigsaw_delimiter=jigsaw_delimiter,
                                                  jigsaw_euclid_emb=jigsaw_euclid_emb,
-                                                 simclr_temperature=h_params['contrastive_temperature'])
+                                                 simclr_temperature=h_params['contrastive_temperature'],
+                                                 jigsaw_boot_ratio=h_params['jigsaw_boot_ratio'],
+                                                 per_token=h_params['boot_per_token'],
+                                                 boot_same=h_params['boot_same'],
+                                                 frozen=h_params['frozen'],
+                                                 seq_dist=h_params['seq_dist'],
+                                                 )
     task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[test_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
     task_losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-h_params['downstream__loss_contact_weight'], h_params['downstream__loss_contact_weight']]), ignore_index=-1)
 
@@ -87,7 +95,8 @@ def main():
         alphabet_size=len(test_dataset.token_mapping),
         padding_token=test_dataset.token_mapping['PADDING_TOKEN'],
         dropout=0.,
-        emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'])
+        emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
+        max_seqlen=h_params['cropping_size'])
     model.tasks = ['contact']
     model.need_attn = True
     model.task_loss_weights = {'contact': 1.}
