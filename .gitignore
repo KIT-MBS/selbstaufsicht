@@ -128,4 +128,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-*lightning_logs
+scripts/lightning_logs*
+scripts/xgb_logs
+*.out
+*.pt
+scripts/*.sh
