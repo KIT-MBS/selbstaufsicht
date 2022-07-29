@@ -89,9 +89,7 @@ class SequenceNTXentLoss(nn.Module):
         assert x.size(0) == 1
         distributed = torch.distributed.is_available() and torch.distributed.is_initialized()
         if distributed:
-            # x_dist = SyncFunction.apply(x)
             x_dist = sync_(x)
-
         else:
             raise RuntimeError('Contrastive needs multiple samples, since batch size == 1 distributed.')
 
@@ -100,14 +98,16 @@ class SequenceNTXentLoss(nn.Module):
         x = x.squeeze()  # [E_rank, D]
 
         cov = torch.mm(x, x_neg.t().contiguous())  # [E_rank, sumj!=i(E_j)]
-        sim = torch.exp(cov / self.temperature)
+        sim = torch.exp(cov / x_neg.size(0) / self.temperature)
         neg = sim.sum(dim=-1)  # [E_rank]
         neg = torch.clamp(neg, min=self.eps)
         neg = torch.unsqueeze(neg, 1)
 
-        pos = torch.exp(torch.mm(x, x.t().contiguous()))  # [E_rank, E_rank]
+        pos = torch.exp(torch.sum(torch.mm(x, x.t().contiguous()), dim=-1) / x_neg.size(0) / self.temperature)  # [E_rank]
 
         loss = -torch.log(pos / (neg + self.eps)).mean()
+        # if loss.isnan().any() or loss.isinf().any():
+        #     raise
         return loss
 
 
