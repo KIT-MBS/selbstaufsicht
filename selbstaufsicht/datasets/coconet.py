@@ -58,6 +58,7 @@ class CoCoNetDataset(Dataset):
         # too few sequences
         self.min_num_seq = min_num_seq
         # the hammerhead ribozyme somehow shows bad ppv performance, also in previous research using DCA methods
+        # NOTE 2h0s is also problematic as it's technically a dimer
         discarded_msa = {('3zp8', 'A')}
 
         with open(pathlib.Path(self.root / 'coconet' / split_dir / msa_index_filename), 'rt') as f:
@@ -167,40 +168,41 @@ class CoCoNetDataset(Dataset):
             self.bprnapairs = []
             for idx, pdb_file in enumerate(self.pdb_filenames):
                 pdb_id = pdb_file.split('_')[0].replace('.pdb', '')
-                bpseq_path = _get_bpseq_path(self.root, pdb_id)
-                # bpseq_file = str(pdb_id.upper())+'-2D-bpseq.txt'
-                # bpseq_path = self.root / 'rnapdbee' / pdb_id.upper() / 'dssr-hybrid-isolated_removed-pseudoknots_as_unpaired_residues-varna' / bpseq_file
-                print(self.fam_ids[idx], pdb_id, self.pdb_chains[idx])
-                try:
-                    with open(bpseq_path, 'rt') as f:
-                        lines = f.readlines()
-                        letters = lines[1]
-                        basepairs = lines[2]
-                        if self.msas[idx][0].seq != letters:
-                            print(self.msas[idx][0].seq)
-                            print(letters)
-                        # assert self.msas[idx][0].seq == ''.join(letters)
-                        self.bprnaseqs.append(letters)
-                        self.bprnapairs.append(basepairs)
-                except:
-                    print("oh noes")
-            raise
-            # NOTE build modified contact maps
+                bpseq_path = _get_bpseq_path(self.root, pdb_id, self.pdb_chains[idx])
+                # print(self.fam_ids[idx], pdb_id, self.pdb_chains[idx])
+                with open(bpseq_path, 'rt') as f:
+                    lines = f.readlines()
+                    offset = 0
+                    while True:
+                        letters = lines[offset + 1].strip().upper()
+                        basepairs = lines[offset + 2].strip()
+                        if self.pdb_chains[idx] == lines[offset].split('_')[1].strip():
+                            break
+                        offset += 3
+                        assert offset < len(lines)
+                    assert basepairs.count('(') == basepairs.count(')')
+                    if self.msas[idx][0].seq != letters:
+                        print(self.msas[idx][0].seq)
+                        print(letters)
+                    assert self.msas[idx][0].seq == letters
+                    self.bprnaseqs.append(letters)
+                    self.bprnapairs.append(basepairs)
 
     def __getitem__(self, i):
         x = self.msas[i]
         y = self.pdbs[i]
 
-        # TODO apply secondary contact filter
         if self.transform is not None:
             if self.indices is None:
-                item = self.transform({'msa': x}, {'structure': y})
                 if self.secondary_window > -1:
-                    item[1]['basepairs'] = self.bprnapairs[i]
+                    item = self.transform({'msa': x}, {'structure': y, 'basepairs': self.bprnapairs[i]})
+                else:
+                    item = self.transform({'msa': x}, {'structure': y})
             else:
-                item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y})
                 if self.secondary_window > -1:
-                    item[1]['basepairs'] = self.bprnapairs[i]
+                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y, 'basepairs': self.bprnapairs[i]})
+                else:
+                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y})
             return item
 
         return x, y
@@ -208,6 +210,24 @@ class CoCoNetDataset(Dataset):
     def __len__(self):
         return(len(self.msas))
 
-def _get_bpseq_path(root, pdb_id):
+def _get_bpseq_path(root, pdb_id, chain_id):
+    bpseq_path = root / 'rnapdbee' / pdb_id.upper() / 'dssr-hybrid-isolated_removed-pseudoknots_as_unpaired_residues-no_image' / (pdb_id.upper() + '-2D-dotbracket.txt')
 
-    return root / 'rnapdbee' / pdb_id.upper() / 'dssr-hybrid-isolated_removed-pseudoknots_as_unpaired_residues-no_image' / (pdb_id.upper() + '-2D-dotbracket.txt')
+    if not os.path.isfile(bpseq_path):
+        i = 1
+        # TODO go through all folders
+        while i < 10:
+            bpseq_path = root / 'rnapdbee' / pdb_id.upper() / 'dssr-hybrid-isolated_removed-pseudoknots_as_unpaired_residues-no_image' / str(i) / (pdb_id.upper() + '-2D-dotbracket.txt')
+
+            with open(bpseq_path, 'rt') as f:
+                lines = f.readlines()
+                for line in lines:
+                    if line.startswith('>'):
+                        if chain_id == line.split('_')[1].strip():
+                            return bpseq_path
+            i += 1
+        if i < 10:
+            print('NOTE: filtering out secondary contacts requires rnapdbee dotbracket files. Some of them have to be adapted, because in the coconet files some missing residues were removed.')
+            raise
+
+    return bpseq_path

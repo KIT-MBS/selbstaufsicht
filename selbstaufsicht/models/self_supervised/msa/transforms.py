@@ -438,10 +438,23 @@ class ContactFromDistance():
         L = contacts.size(-1)
 
         if self.secondary_window > -1:
-            raise
-            secondary = torch.zeros_like(y['distances'], dtype = torch.long)
-            for i, j in enumerate(y['basepairs']):
-                pass
+            assert L == len(y['basepairs'])
+            # secondary = torch.zeros_like(y['distances'], dtype = torch.long)
+            pairs = []
+            for k, l in enumerate(y['basepairs']):
+                if l == '(':
+                    pairs.append(k)
+                elif l == ')':
+                    i = k
+                    j = pairs.pop(-1)
+                    imin = max(i-self.secondary_window, 0)
+                    imax = min(i+self.secondary_window+1, L)
+                    jmin = max(j-self.secondary_window, 0)
+                    jmax = min(j+self.secondary_window+1, L)
+                    for ii in range(imin, imax):
+                        for jj in range(jmin, jmax):
+                            contacts[ii, jj] = -1
+                            contacts[jj, ii] = -1
 
         y['contact'] = contacts
         return x, y
