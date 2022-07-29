@@ -1,7 +1,8 @@
 import torch
 import torch.testing as testing
 
-from selbstaufsicht.models.self_supervised.msa.modules import InpaintingHead, JigsawHead, ContrastiveHead
+# from selbstaufsicht.models.self_supervised.msa.modules import InpaintingHead, JigsawHead, ContrastiveHead
+from selbstaufsicht.models.self_supervised.msa.modules import InpaintingHead, JigsawHead
 
 
 def test_inpainting_head():
