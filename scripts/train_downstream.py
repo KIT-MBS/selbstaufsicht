@@ -43,6 +43,7 @@ def main():
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     parser.add_argument('--disable-shuffle', action='store_true', help="disables the dataset shuffling")
     parser.add_argument('--rng-seed', default=42, type=int, help="Random number generator seed")
+    parser.add_argument('--secondary-window', default=-1, type=int, help="window to ignore around secondary structure contacts. -1 means secondary contac will be predicted without special consideration.")
     parser.add_argument('--validation-ratio', default=0.2, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
     parser.add_argument('--cv-num-folds', default=1, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
@@ -61,6 +62,7 @@ def main():
     torch.manual_seed(args.rng_seed)
     np.random.seed(args.rng_seed)
     random.seed(args.rng_seed)
+    secondary_window = args.secondary_window
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
@@ -77,13 +79,27 @@ def main():
     if args.test and args.cv_num_folds >= 2:
         raise ValueError("Testing only works with disabled cross validation!")
 
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold)
-    kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform, num_folds=args.cv_num_folds, val_ratio=args.validation_ratio, batch_size=args.batch_size, shuffle=not args.disable_shuffle,
-                                                     rng_seed=args.rng_seed, discard_train_size_based=not args.disable_train_data_discarding, diversity_maximization=args.subsampling_mode == 'diversity',
-                                                     max_seq_len=h_params['cropping_size'], min_num_seq=h_params['subsampling_depth'])
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold, secondary_window=secondary_window)
+    kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform,
+                                                     num_folds=args.cv_num_folds,
+                                                     val_ratio=args.validation_ratio,
+                                                     batch_size=args.batch_size,
+                                                     shuffle=not args.disable_shuffle,
+                                                     rng_seed=args.rng_seed,
+                                                     discard_train_size_based=not args.disable_train_data_discarding,
+                                                     diversity_maximization=args.subsampling_mode == 'diversity',
+                                                     max_seq_len=h_params['cropping_size'],
+                                                     min_num_seq=h_params['subsampling_depth'],
+                                                     secondary_window=secondary_window)
     if args.test:
-        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root, 'test', transform=downstream_transform, discard_train_size_based=not args.disable_train_data_discarding,
-                                               diversity_maximization=args.subsampling_mode == 'diversity', max_seq_len=h_params['cropping_size'], min_num_seq=h_params['subsampling_depth'])
+        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root,
+                                               'test',
+                                               transform=downstream_transform,
+                                               discard_train_size_based=not args.disable_train_data_discarding,
+                                               diversity_maximization=args.subsampling_mode == 'diversity',
+                                               max_seq_len=h_params['cropping_size'],
+                                               min_num_seq=h_params['subsampling_depth'],
+                                               secondary_window=secondary_window)
         test_dl = DataLoader(test_dataset,
                              batch_size=args.batch_size,
                              shuffle=False,
@@ -203,7 +219,10 @@ def main():
         val_dl = kfold_cv_downstream.val_dataloader()
 
         tb_logger = TensorBoardLogger(save_dir=log_dir, name=log_exp_name, version=log_run_name)
-        checkpoint_callback = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
+        checkpoint_callback_valloss = ModelCheckpoint(monitor='contact_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
+        checkpoint_callback_toplprec = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
+        checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
+        checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
 
         trainer = Trainer(max_epochs=args.num_epochs,
                           gpus=args.num_gpus,
@@ -214,7 +233,7 @@ def main():
                           enable_progress_bar=not args.disable_progress_bar,
                           log_every_n_steps=args.log_every,
                           logger=tb_logger,
-                          callbacks=[checkpoint_callback])
+                          callbacks=[checkpoint_callback_valloss, checkpoint_callback_toplprec, checkpoint_callback_f1score, checkpoint_callback_matthews])
         trainer.fit(model, train_dl, val_dl)
 
     if args.test:
