@@ -341,6 +341,7 @@ class BinaryF1Score(BinaryRecall):
 class BinaryMatthewsCorrelationCoefficient(BinaryF1Score):
     def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, k: int = -1, dist_sync_on_step: bool = False) -> None:
         super().__init__(ignore_idx=ignore_idx, diag_shift=diag_shift, k=k, dist_sync_on_step=dist_sync_on_step)
+        self.add_state('tn', default=torch.tensor(0), dist_reduce_fx='sum')
 
     def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         preds_, target_, ignore_mask = self._compute_top_k(preds, target)
