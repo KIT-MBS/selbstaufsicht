@@ -10,7 +10,7 @@ from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
 from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
 from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling, MSAboot
 from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
-from selbstaufsicht.modules import SequenceNTXentLoss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix
+from selbstaufsicht.modules import SequenceNTXentLoss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix, BinaryMatthewsCorrelationCoefficient
 from .modules import InpaintingHead, JigsawHead, ContrastiveHead
 
 # NOTE mask and padding tokens can not be reconstructed
@@ -204,14 +204,18 @@ def get_downstream_metrics():
                                            'topLprec_unreduced': BinaryPrecision(reduce=False),
                                            'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
                                            'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
-                                           'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
+                                           'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
+                                           'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
+                                           })
 
     val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
                                          'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
                                          'topLprec_unreduced': BinaryPrecision(reduce=False),
                                          'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
                                          'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
-                                         'confmat_unreduced': BinaryConfusionMatrix(reduce=False)})
+                                         'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
+                                         'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
+                                         })
 
     test_metrics['contact'] = ModuleDict(
             {
@@ -221,7 +225,8 @@ def get_downstream_metrics():
                 'topLprec_unreduced': BinaryPrecision(reduce=False),
                 'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
                 'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
-                'confmat_unreduced': BinaryConfusionMatrix(reduce=False)
+                'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
+                'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1),
             })
     return train_metrics, val_metrics, test_metrics
 

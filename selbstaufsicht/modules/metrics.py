@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import math
 
 from torchmetrics import Metric
 from typing import Tuple
@@ -335,6 +336,26 @@ class BinaryF1Score(BinaryRecall):
         """
 
         return self.tp.float() / (self.tp.float() + 0.5 * (self.fp.float() + self.fn.float()))
+
+
+class BinaryMatthewsCorrelationCoefficient(BinaryF1Score):
+    def __init__(self, ignore_idx: int = -1, diag_shift: int = 4, k: int = -1, dist_sync_on_step: bool = False) -> None:
+        super().__init__(ignore_idx=ignore_idx, diag_shift=diag_shift, k=k, dist_sync_on_step=dist_sync_on_step)
+
+    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
+        preds_, target_, ignore_mask = self._compute_top_k(preds, target)
+
+        tp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 1), ignore_mask).sum()
+        fp = torch.logical_and(torch.logical_and(preds_ == 1, target_ == 0), ignore_mask).sum()
+        tn = torch.logical_and(torch.logical_and(preds_ == 0, target_ == 0), ignore_mask).sum()
+        fn = torch.logical_and(torch.logical_and(preds_ == 0, target_ == 1), ignore_mask).sum()
+        self.tp += tp
+        self.fp += fp
+        self.tn += tn
+        self.fn += fn
+
+    def compute(self) -> torch.Tensor():
+        return (self.tp.float() * self.tn.float() - self.fp.float() * self.fn.float()) / math.sqrt((self.tp.float() + self.fp.float()) * (self.tp.float() + self.fn.float()) * (self.tn.float() + self.fp.float()) * (self.tn.float() + self.fn.float()))
 
 
 class BinaryConfusionMatrix(Metric):

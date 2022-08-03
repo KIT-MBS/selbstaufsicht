@@ -249,6 +249,34 @@ def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) 
     return f1_score
 
 
+def xgb_Matthews(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
+    """
+    """
+
+    y = dtest.get_label()
+    msa_indices = np.unique(msa_mapping)
+    tp = 0
+    fp = 0
+    tn = 0
+    fn = 0
+
+    # for each MSA, compute true/false positives, false negatives
+    for msa_idx in msa_indices:
+        mask = msa_mapping == msa_idx  # [B]
+        preds_ = preds[mask]
+        y_ = y[mask]
+
+        preds_ = np.round(sigmoid(preds_))
+
+        tp += sum(np.logical_and(preds_ == 1, y_ == 1))
+        fp += sum(np.logical_and(preds_ == 1, y_ == 0))
+        tn += sum(np.logical_and(preds_ == 0, y_ == 0))
+        fn += sum(np.logical_and(preds_ == 0, y_ == 1))
+
+    matthews = (float(tp) * float(tn) - float(tn) * float(fn)) / float(np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+    return matthews
+
+
 def get_checkpoint_hparams(checkpoint: str, device: Any) -> Dict[str, Any]:
     """
     Loads pytorch-lightning checkpoint and returns hyperparameters.
