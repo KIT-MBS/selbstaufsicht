@@ -222,7 +222,7 @@ def main():
         checkpoint_callback_valloss = ModelCheckpoint(monitor='contact_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
         checkpoint_callback_toplprec = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
         checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
-        checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
+        checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_Global_F1score:.4f}", mode='max')
 
         trainer = Trainer(max_epochs=args.num_epochs,
                           gpus=args.num_gpus,

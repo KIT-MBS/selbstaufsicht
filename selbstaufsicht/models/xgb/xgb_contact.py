@@ -394,7 +394,7 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
     return model
 
 
-def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distance_threshold: float, h_params: Dict[str, Any], rng_seed: int = 42, disable_train_data_discarding: bool = False, fasta_files: List[str] = []) -> DataLoader:
+def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distance_threshold: float, h_params: Dict[str, Any], rng_seed: int = 42, disable_train_data_discarding: bool = False, fasta_files: List[str] = [], secondary_window: int = -1) -> DataLoader:
     """
     Creates data loader for downstream task with XGBoost model.
 
@@ -412,7 +412,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         DataLoader: Data loader for downstream task.
     """
 
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode, threshold=distance_threshold, inference=mode == 'inference')
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode, threshold=distance_threshold, inference=mode == 'inference', secondary_window=secondary_window)
     root = os.environ['DATA_PATH']
 
     if mode == 'train':
@@ -420,7 +420,8 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         data_loader_rng.manual_seed(rng_seed)
         dataset = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform, discard_train_size_based=not disable_train_data_discarding,
                                           diversity_maximization=subsampling_mode == 'diversity', max_seq_len=h_params['cropping_size'],
-                                          min_num_seq=h_params['subsampling_depth'])
+                                          min_num_seq=h_params['subsampling_depth'],
+                                          secondary_window=secondary_window)
         return DataLoader(dataset,
                           batch_size=batch_size,
                           shuffle=False,

@@ -158,10 +158,13 @@ def main():
         global_precision = xgb_contact.xgb_precision(preds, test_data, msa_mapping_filtered)
         global_recall = xgb_contact.xgb_recall(preds, test_data, msa_mapping_filtered)
         global_f1_score = xgb_contact.xgb_F1Score(preds, test_data, msa_mapping_filtered)
+        matthews = xgb_contact.xgb_Matthews(preds, test_data, msa_mapping_filtered)
+
         print("Top-%sL-Precision:" % str(args.min_k), top_l_prec)
         print("Global Precision:", global_precision)
         print("Global Recall:", global_recall)
         print("Global F1-Score:", global_f1_score)
+        print("Global Matthews CorrCoeff:", matthews)
     else:
         min_k = args.min_k
         if args.max_k == -1:

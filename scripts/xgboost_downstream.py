@@ -52,6 +52,7 @@ def main():
     parser.add_argument('--checkpoint', type=str, help="Path to pre-trained model checkpoint")
     # Contact prediction
     parser.add_argument('--distance-threshold', default=10., type=float, help="Minimum distance between two atoms in angström that is not considered as a contact")
+    parser.add_argument('--secondary-window', default=-1, type=int, help="area around secondary contacts to ignore. -1 uses all contacts.")
     # Preprocessing
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
     parser.add_argument('--diag-shift', default=4, type=int, help="Width of the area around the main diagonal of prediction maps that is ignored.")
