@@ -2,7 +2,7 @@ import torch
 import torch.testing as testing
 import pytest
 
-from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix
+from selbstaufsicht.modules import Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix, BinaryMatthewsCorrelationCoefficient
 from selbstaufsicht.utils import lehmer_encode, perm_metric, perm_gram_matrix, embed_finite_metric_space
 
 
@@ -488,3 +488,44 @@ def test_dice_loss():
     loss = loss_metric(preds, target)
     loss_ref = torch.tensor([0.25, 0.9106])
     testing.assert_close(loss, loss_ref, atol=1e-4, rtol=1e-3)
+
+def test_matthews():
+    matthews_metric = BinaryMatthewsCorrelationCoefficient(diag_shift=1)
+    preds = torch.Tensor([[[[0.1, 0.4, 0.3, 0.8],
+                            [0.4, 0.2, 0.9, 0.7],
+                            [0.3, 0.9, 0.1, 0.2],
+                            [0.8, 0.7, 0.2, 0.2]],
+                           [[0.9, 0.6, 0.7, 0.2],
+                            [0.6, 0.8, 0.1, 0.3],
+                            [0.7, 0.1, 0.9, 0.8],
+                            [0.2, 0.3, 0.8, 0.8]]],
+                          [[[0.9, 0.6, 0.7, 0.2],
+                            [0.6, 0.8, 0.1, 0.3],
+                            [0.7, 0.1, 0.9, 0.8],
+                            [0.2, 0.3, 0.8, 0.8]],
+                           [[0.1, 0.4, 0.3, 0.8],
+                            [0.4, 0.2, 0.9, 0.7],
+                            [0.3, 0.9, 0.1, 0.2],
+                            [0.8, 0.7, 0.2, 0.2]]]])
+    target = torch.Tensor([[[1, 0,  1,  1],
+                            [0, 1,  0,  1],
+                            [1, 0,  1,  0],
+                            [1, 1,  0,  1]],
+                           [[0, 1,  0, -1],
+                            [1, 0,  1,  0],
+                            [0, 1,  0, -1],
+                            [-1, 0, -1,  0]]])
+
+    matthews = matthews_metric(preds, target)
+    tp = matthews_metric.tp
+    fp = matthews_metric.fp
+    tn = matthews_metric.tn
+    fn = matthews_metric.fn
+
+    assert tp == 1
+    assert fp == 1
+    assert tn == 1
+    assert fn == 2
+
+    # assert matthews == (1 - 2) / sqrt(3 * 2 * 2 * 3)
+    assert matthews == -1 / 6
