@@ -225,9 +225,6 @@ def main():
                         generator=data_loader_rng,
                         pin_memory=num_gpus > 0)
 
-    # TODO the MSA should probably cropped to maxlen - all the other tokens
-    # max_seqlen = args.cropping_size + int('START_TOKEN' in rna2index) + int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions - 1)
-    # max_seqlen = args.cropping_size + 1 + int(not args.jigsaw_disable_delimiter) * (args.jigsaw_partitions + 1)
     model = models.self_supervised.MSAModel(
         args.num_blocks,
         args.num_heads,
@@ -254,8 +251,9 @@ def main():
                       precision=args.precision,
                       strategy=dp_strategy,
                       enable_progress_bar=not args.disable_progress_bar,
-                      log_every_n_steps=min(args.log_every, num_data_samples),
+                      log_every_n_steps=min(args.log_every, num_data_samples/num_gpus),
                       logger=tb_logger)
+    print("fitting ", tasks)
     trainer.fit(model, train_dl, val_dl)
 
 
