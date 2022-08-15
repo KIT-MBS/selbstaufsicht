@@ -475,7 +475,7 @@ class FastSelfAttention2d(nn.Module):
         q = self.apply_feature_map(q, self.orf)  # [B * H, E * L, M]
         k = self.apply_feature_map(k, self.orf, mask=attn_mask)  # [B * H, E * L, M]
         out = self.fast_attention(q, k, v)  # [B * H, E * L, DH]
-        out = out.view(B, self.num_heads, E * L, self.dim_head).view(B, self.num_heads, E, L, self.dim_head).permute(0, 2, 3, 1, 4).view(B, E, L, self.embed_dim).contiguous()  # [B, E, L, D]
+        out = out.view(B, self.num_heads, E * L, self.dim_head).view(B, self.num_heads, E, L, self.dim_head).permute(0, 2, 3, 1, 4).reshape(B, E, L, self.embed_dim) # [B, E, L, D]
         
         out = x + out
         out = self.norm(out)
