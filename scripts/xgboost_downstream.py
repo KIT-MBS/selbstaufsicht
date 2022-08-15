@@ -14,7 +14,7 @@ import xgboost as xgb
 from selbstaufsicht.models.xgb import xgb_contact
 
 
-def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> Tuple[str, float]:
+def metric_wrapper(preds: np.ndarray, dtrain: xgb.DMatrix, metric, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> Tuple[str, float]:
     """
     Custom XGBoost Metric for top-(k*L)-precision.
 
@@ -29,6 +29,7 @@ def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np
     Returns:
         Tuple[str, float]: Metric name; metric value.
     """
+    assert metric is not None
 
     y = dtrain.get_label()  # [B]
 
@@ -41,9 +42,17 @@ def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np
     else:
         raise ValueError("Given data length does not match to msa_mappings: %d != (%d, %d)" % (B, len(msa_mappings[0]), len(msa_mappings[1])))
 
-    top_l_prec = xgb_contact.xgb_topkLPrec(preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
+    metrics = {'toplprec': xgb_contact.xgb_topkLPrec, 'f1': xgb_contact.xgb_F1Score, 'matthews': xgb_contact.matthews}
 
-    return 'top-%sL-Prec' % str(k), top_l_prec
+    # top_l_prec = xgb_contact.xgb_topkLPrec(preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
+    value = metrics[metric](preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
+
+    # return 'top-%sL-Prec' % str(k), top_l_prec
+    if metric == 'toplprec':
+        description = 'top-%sL-Prec' % str(k)
+    else:
+        description = metric
+    return description, value
 
 
 def main():
@@ -66,6 +75,7 @@ def main():
     parser.add_argument('--cv-num-folds', default=1, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
     parser.add_argument('--top-l-prec-coeff', default=1., type=float, help="Coefficient k that is used in computing the top-(k*L)-precision.")
+    # TODO part of metric, deprecate this
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
     # XGBoost HParams
     parser.add_argument('--num-round', default=100, type=int, help="Number of rounds performed by XGBoost. Also equals the number of trees.")
@@ -86,6 +96,7 @@ def main():
     parser.add_argument('--log-dir', default='xgb_logs/', type=str, help='Logging directory. If empty, the directory of the pre-trained model is used. Default: \"xgb_logs/\"')
     parser.add_argument('--log-exp-name', default='', type=str, help='Logging experiment name. If empty, the experiment name of the pre-trained model is used. Default: \"\"')
     parser.add_argument('--log-run-name', default='', type=str, help='Logging run name. Supports 1989 C standard datetime codes. If empty, the run name of the pre-trained model is used, prefixed by \"downstream__\". Default: \"\"')
+    parser.add_argument('--monitor-metric', default=None, type=str, help='')
 
     args = parser.parse_args()
 
@@ -152,7 +163,20 @@ def main():
         val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
 
         evals_result = {}
-        metric = partial(xgb_topkLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=args.treat_all_preds_positive)
+
+        if args.monitor_metric is None:
+            metric = None
+        elif args.monitor_metric == 'toplprec':
+            metric = partial(metric_wrapper, metric='toplprec', msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=False)
+        elif args.monitor_metric == 'toplprecpos':
+            metric = partial(metric_wrapper, metric='toplprec', msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=True)
+        # elif args.monitor_metric == 'f1':
+        #     metric = partial(xgb)
+        # elif args.monitor_metric == 'matthews':
+        #     metric = partial()
+        else:
+            metric = partial(metric_wrapper, metric=args.monitor_metric, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=False)
+
         xgb_model = xgb.train(params, train_data, evals=[(train_data, 'train'), (val_data, 'validation')], evals_result=evals_result, num_boost_round=args.num_round,
                               feval=metric, maximize=True, early_stopping_rounds=args.num_early_stopping_round, verbose_eval=not args.disable_progress_bar)
         xgb_model.save_model(os.path.join(log_path, 'model_checkpoint.json'))
@@ -179,7 +203,7 @@ def main():
             val_data = xgb.DMatrix(val_attn_maps, label=val_targets)
 
             evals_result = {}
-            metric = partial(xgb_topkLPrec, msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=args.treat_all_preds_positive)
+            metric = partial(metric_wrapper, metric='toplprec', msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=args.treat_all_preds_positive)
             xgb.train(
                     params,
                     train_data,

@@ -120,6 +120,7 @@ def main():
     # Preprocessing
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
     parser.add_argument('--diag-shift', default=4, type=int, help="Width of the area around the main diagonal of prediction maps that is ignored.")
+    parser.add_argument('--secondary-window', default=-1, type=int, help="window to ignore around secondary structure contacts. -1 means secondary contac will be predicted without special consideration.")
     # Test process
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu testing)")
     parser.add_argument('--min-k', default=0.01, type=float, help="Minimum coefficient k that is used in computing the top-(k*L)-precision.")
@@ -134,6 +135,7 @@ def main():
     parser.add_argument('--no-gpu', action='store_true', help="disables cuda")
 
     args = parser.parse_args()
+    secondary_window = args.secondary_window
 
     if not args.no_gpu and torch.cuda.is_available():
         device = torch.device('cuda:0')
@@ -141,7 +143,7 @@ def main():
         device = torch.device('cpu')
 
     h_params = xgb_contact.get_checkpoint_hparams(args.checkpoint, device)
-    test_dl = xgb_contact.create_dataloader('test', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params)
+    test_dl = xgb_contact.create_dataloader('test', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, secondary_window=secondary_window)
 
     cull_tokens = xgb_contact.get_cull_tokens(test_dl.dataset)
     model = xgb_contact.load_backbone(args.checkpoint, device, test_dl.dataset, cull_tokens, h_params)

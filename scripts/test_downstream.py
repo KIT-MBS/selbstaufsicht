@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--checkpoint', type=str, help="Path to downstream model checkpoint")
     # Preprocessing
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
+    parser.add_argument('--secondary-window', default=-1, type=int, help="window to ignore around secondary structure contacts. -1 means secondary contac will be predicted without special consideration.")
     # Test process
     parser.add_argument('--batch-size', default=1, type=int, help="Batch size (local in case of multi-gpu testing)")
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
@@ -26,6 +27,7 @@ def main():
     parser.add_argument('--no-gpu', action='store_true', help="disables cuda")
 
     args = parser.parse_args()
+    secondary_window = args.secondary_window
 
     if args.no_gpu:
         # NOTE for some reason, load_from_checkpoint fails to infer the hyperparameters correctly from the checkpoint file
@@ -35,9 +37,9 @@ def main():
 
     h_params = checkpoint['hyper_parameters']
 
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'])
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'], secondary_window=secondary_window)
     root = os.environ['DATA_PATH']
-    test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode == 'diversity')
+    test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode == 'diversity', secondary_window=secondary_window)
 
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
