@@ -378,10 +378,10 @@ class FastSelfAttention2d(nn.Module):
         self.norm = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
         self.dropout = nn.Dropout(p=dropout)
         
-        self.register_buffer("orf", create_orf(self.dim_head, self.num_features), persistent=False)
-        self.apply_feature_map = apply_regular_feature_map
+        self.register_buffer("orf", self.create_orf(self.dim_head, self.num_features), persistent=False)
+        self.apply_feature_map = self.apply_regular_feature_map
         if use_hyperbolic:
-            self.apply_feature_map = apply_hyperbolic_feature_map
+            self.apply_feature_map = self.apply_hyperbolic_feature_map
 
     @staticmethod
     def apply_scaling(scale, x):
@@ -417,7 +417,7 @@ class FastSelfAttention2d(nn.Module):
 
     def redraw_orf(self):
         m, d_k = self.orf.shape
-        orf = create_orf(d_k, m)
+        orf = self.create_orf(d_k, m)
         orf = orf.to(self.orf.device)
         self.register_buffer("orf", orf, persistent=False)
 
