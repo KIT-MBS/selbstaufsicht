@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--num-blocks', default=10, type=int, help="Number of consecutive Transmorpher blocks")
     parser.add_argument('--feature-dim-head', default=64, type=int, help="Size of the feature dimension per Transmorpher head")
     parser.add_argument('--num-heads', default=12, type=int, help="Number of parallel Transmorpher heads")
+    parser.add_argument('--attention', default='tied', type=str, help="Attention type.")
     parser.add_argument("--disable-emb-grad-freq-scale", action='store_true', help="If set, this will scale gradients by the inverse of frequency of the words in the mini-batch")
     # Dataset
     parser.add_argument('--dataset', default='combined', type=str, help="Used dataset: xfam, zwd, combined, dummy")
@@ -229,6 +230,7 @@ def main():
         args.num_blocks,
         args.num_heads,
         args.feature_dim_head,
+        attention=args.attention,
         task_heads=task_heads,
         task_losses=task_losses,
         task_loss_weights=task_loss_weights,
