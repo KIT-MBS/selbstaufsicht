@@ -378,6 +378,7 @@ class FastSelfAttention2d(nn.Module):
         self.norm = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
         self.dropout = nn.Dropout(p=dropout)
         
+        self.num_features = num_features
         self.register_buffer("orf", self.create_orf(self.dim_head, self.num_features), persistent=False)
         self.apply_feature_map = self.apply_regular_feature_map
         if use_hyperbolic:
