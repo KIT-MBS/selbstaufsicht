@@ -42,7 +42,7 @@ def metric_wrapper(preds: np.ndarray, dtrain: xgb.DMatrix, metric, msa_mappings:
     else:
         raise ValueError("Given data length does not match to msa_mappings: %d != (%d, %d)" % (B, len(msa_mappings[0]), len(msa_mappings[1])))
 
-    metrics = {'toplprec': xgb_contact.xgb_topkLPrec, 'f1': xgb_contact.xgb_F1Score, 'matthews': xgb_contact.matthews}
+    metrics = {'toplprec': xgb_contact.xgb_topkLPrec, 'f1': xgb_contact.xgb_F1Score, 'matthews': xgb_contact.xgb_Matthews}
 
     # top_l_prec = xgb_contact.xgb_topkLPrec(preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
     value = metrics[metric](preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
