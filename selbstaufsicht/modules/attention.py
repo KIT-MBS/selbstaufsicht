@@ -369,7 +369,7 @@ class FastSelfAttention2d(nn.Module):
         """
 
         factory_kwargs = {'device': device, 'dtype': dtype}
-        super(TiedAxialSelfAttention2d, self).__init__()
+        super(FastSelfAttention2d, self).__init__()
         self.num_heads = num_heads
         self.dim_head = dim_head
         self.embed_dim = self.dim_head * self.num_heads
