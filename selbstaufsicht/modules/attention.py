@@ -458,11 +458,10 @@ class FastSelfAttention2d(nn.Module):
         attn_maps = None
         if need_attn_maps:
             attn_maps = q * (self.dim_head * E) ** -0.5
-            attn_maps = torch.einsum('bsihc, bsjhc->bhsij', attn_maps, k)  # [B, H, E, L, L]
+            attn_maps = torch.einsum('bsihc, bsjhc->bhij', attn_maps, k)  # [B, H, L, L]
             if attn_mask is not None:
-                attn_maps += attn_mask.view(B, self.num_heads, E, 1, L).expand(-1, -1, -1, L, -1)  # [B, H, E, L, L]
-            attn_maps = attn_maps.softmax(dim=-1)  # [B, H, E, L, L]
-            attn_maps = attn_maps.view(B, self.num_heads * E, L, L)  # [B, H * E, L, L]
+                attn_maps += attn_mask.view(B, self.num_heads, 1, L).expand(-1, -1, L, -1)  # [B, H, L, L]
+            attn_maps = attn_maps.softmax(dim=-1)  # [B, H, L, L]
 
         if attn_mask is not None:
             attn_mask = attn_mask.view(B * self.num_heads, E, L, 1).view(B * self.num_heads, E * L, 1).expand(-1, -1, self.num_features) # [B * H, E * L, M]
