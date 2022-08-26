@@ -168,6 +168,7 @@ def main():
                     num_blocks=h_params['num_blocks'],
                     num_heads=h_params['num_heads'],
                     dim_head=h_params['feature_dim_head'],
+                    attention=h_params['attention'],
                     task_heads=task_heads,
                     task_losses=task_losses,
                     alphabet_size=len(kfold_cv_downstream.train_dataset.token_mapping),

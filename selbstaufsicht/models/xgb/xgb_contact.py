@@ -377,6 +377,7 @@ def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset
         num_blocks=h_params['num_blocks'],
         num_heads=h_params['num_heads'],
         feature_dim_head=h_params['feature_dim_head'],
+        attention=h_params['attention'],
         task_heads=task_heads,
         task_losses=task_losses,
         alphabet_size=len(dataset.token_mapping),
