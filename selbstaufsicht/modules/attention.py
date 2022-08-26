@@ -466,6 +466,8 @@ class FastSelfAttention2d(nn.Module):
 
         if attn_mask is not None:
             attn_mask = attn_mask.view(B * self.num_heads, E, L, 1).view(B * self.num_heads, E * L, 1).expand(-1, -1, self.num_features) # [B * H, E * L, M]
+        else:
+            attn_mask = 0
         
         q = q.view(B, E * L, self.num_heads, self.dim_head).permute(0, 2, 1, 3).view(B * self.num_heads, E * L, self.dim_head)  # [B * H, E * L, DH]
         k = k.view(B, E * L, self.num_heads, self.dim_head).permute(0, 2, 1, 3).view(B * self.num_heads, E * L, self.dim_head)  # [B * H, E * L, DH]
