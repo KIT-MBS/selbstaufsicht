@@ -482,8 +482,11 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
         with torch.no_grad():
             _, attn_maps = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
 
-        B, _, L = x['msa'].shape
+        B, E, L = x['msa'].shape
         assert B == 1
+        
+        if h_params['attention'] == 'fast':
+            num_maps = h_params['num_blocks'] * h_params['num_heads'] * E
 
         mask = torch.ones((L, ), device=device)
         for token in cull_tokens:
