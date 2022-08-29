@@ -343,7 +343,7 @@ class TiedAxialSelfAttention2d(nn.Module):
             return out, row_attn_maps
         return out
     
-    
+
 class FastSelfAttention2d(nn.Module):
     def __init__(self,
                  num_heads: int,
@@ -352,10 +352,12 @@ class FastSelfAttention2d(nn.Module):
                  layer_norm_eps: float = 1e-5,
                  num_features: int = 256,
                  use_hyperbolic: bool = False,
+                 row_attn_mode: int = 1,
+                 col_attn_mode: int = 0,
                  device: Union[str, torch.device] = None,
                  dtype: torch.dtype = None) -> None:
         """
-        Initializes multi head tied axial self-attention 2D module.
+        Initializes multi head fast (tied axial) self-attention 2D module.
 
         Args:
             num_heads (int): Number of parallel axial self-attention heads.
@@ -364,6 +366,8 @@ class FastSelfAttention2d(nn.Module):
             layer_norm_eps (float, optional): Epsilon used by LayerNormalization. Defaults to 1e-5.
             num_features (int, optional): Number of random features. Defaults to 256.
             use_hyperbolic (bool, optional): Whether hyperbolic variant should be used. Defaults to False.
+            row_attn_mode (int, optional): 0=regular, 1=fast, 2=removed. Defaults to 1.
+            col_attn_mode (int, optional): 0=regular, 1=fast, 2=removed. Defaults to 0.
             device (Union[str, torch.device], optional): Used computation device. Defaults to None.
             dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
         """
@@ -374,9 +378,17 @@ class FastSelfAttention2d(nn.Module):
         self.dim_head = dim_head
         self.embed_dim = self.dim_head * self.num_heads
 
-        self.in_projection = nn.Linear(self.embed_dim, 3 * self.embed_dim, **factory_kwargs)
-        self.norm = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
-        self.dropout = nn.Dropout(p=dropout)
+        self.in_row_projection = nn.Linear(self.embed_dim, 3 * self.embed_dim, **factory_kwargs)
+        self.in_col_projection = nn.Linear(self.embed_dim, 3 * self.embed_dim, **factory_kwargs)
+
+        self.norm1 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(self.embed_dim, eps=layer_norm_eps, **factory_kwargs)
+
+        self.dropout1 = nn.Dropout(p=dropout)
+        self.dropout2 = nn.Dropout(p=dropout)
+        
+        self.row_attn_mode = row_attn_mode
+        self.col_attn_mode = col_attn_mode
         
         self.num_features = num_features
         self.register_buffer("orf", self.create_orf(self.dim_head, self.num_features), persistent=False)
@@ -421,17 +433,76 @@ class FastSelfAttention2d(nn.Module):
         orf = self.create_orf(d_k, m)
         orf = orf.to(self.orf.device)
         self.register_buffer("orf", orf, persistent=False)
-
-    def forward(self,
-                x: torch.Tensor,
-                padding_mask: torch.Tensor = None,
-                need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        
+    def row_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor,
+                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-        Performs tied axial self-attention on 2D data.
+        Performs row attention.
 
         Args:
-            x (torch.Tensor): Input data [B, E, L, D].
-            padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
+            q (torch.Tensor): Query tensor [B, E, L, H, DH].
+            k (torch.Tensor): Key tensor [B, E, L, H, DH].
+            v (torch.Tensor): Value tensor [B, E, L, H, DH].
+            attn_mask (torch.Tensor): Attention mask for padded elements [B, H, E, L].
+            need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+
+        Returns:
+            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Output data [B, E, L, D]; row attention maps [B, H, L, L] (optional).
+        """
+
+        B, E, L, _, _ = q.size()
+        row_attn_maps = torch.einsum('bsihc, bsjhc->bhij', q, k)  # [B, H, L, L]
+        if attn_mask is not None:
+            row_attn_mask = attn_mask.sum(-2).view(B, self.num_heads, 1, L).expand(-1, -1, L, -1)  # [B, H, L, L]
+            row_attn_maps += row_attn_mask
+        row_attn_maps = row_attn_maps.view(B, self.num_heads, 1, L, L)
+        row_attn_maps = row_attn_maps.softmax(dim=-1)  # [B, H, 1, L, L]
+        row_attn_maps = self.dropout1(row_attn_maps)
+        row_out = torch.einsum('bhsij, bsjhc->bsihc', row_attn_maps, v)  # [B, E, L, H, DH]
+        row_out = row_out.reshape(B, E, L, self.embed_dim)  # [B, E, L, D]
+        if need_attn_maps:
+            return row_out, row_attn_maps
+        return row_out
+
+    def col_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor,
+                 need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Performs column attention.
+
+        Args:
+            q (torch.Tensor): Query tensor [B, E, L, H, DH].
+            k (torch.Tensor): Key tensor [B, E, L, H, DH].
+            v (torch.Tensor): Value tensor [B, E, L, H, DH].
+            attn_mask (torch.Tensor): Attention mask for padded elements [B, H, E, L].
+            need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+
+        Returns:
+            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: Output data [B, E, L, D]; column attention maps [B, H, L, L] (optional).
+        """
+
+        B, E, L, _, _ = q.size()
+        col_attn_maps = torch.einsum('bilhc, bjlhc->bhijl', q, k)  # [B, H, E, E, L]
+        if attn_mask is not None:
+            col_attn_mask = attn_mask.view(B, self.num_heads, 1, E, L).expand(-1, -1, E, -1, -1)
+            col_attn_maps += col_attn_mask
+        col_attn_maps = col_attn_maps.softmax(dim=-2)
+        col_attn_maps = self.dropout2(col_attn_maps)
+        col_out = torch.einsum('bhijl, bjlhc->bilhc', col_attn_maps, v)  # [B, E, L, H, DH]
+        col_out = col_out.reshape(B, E, L, self.embed_dim)  # [B, E, L, D]
+        if need_attn_maps:
+            return col_out, col_attn_maps
+        return col_out
+    
+    def fast_attn(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_mask: torch.Tensor,
+                  need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Performs fast attention.
+
+        Args:
+            q (torch.Tensor): Query tensor [B, E, L, H, DH].
+            k (torch.Tensor): Key tensor [B, E, L, H, DH].
+            v (torch.Tensor): Value tensor [B, E, L, H, DH].
+            attn_mask (torch.Tensor): Attention mask for padded elements [B, H, E, L].
             need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
 
         Returns:
@@ -439,22 +510,7 @@ class FastSelfAttention2d(nn.Module):
             Output data [B, E, L, D]; row attention maps [B, H, 1, L, L] (optional).
         """
         
-        B, E, L, D = x.size()
-        assert D == self.embed_dim
-
-        attn_mask = None
-        if padding_mask is not None:
-            assert padding_mask.dtype == torch.bool
-            assert padding_mask.size() == (B, E, L)
-            padding_mask = padding_mask.view(B, 1, E, L).expand(-1, self.num_heads, -1, -1)
-            attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
-            attn_mask.masked_fill_(padding_mask, -10000)  # [B, H, E, L]
-        
-        q, k, v = self.in_projection(x).chunk(3, dim=-1)  # [B, E, L, D]
-        q = q.view(B, E, L, self.num_heads, self.dim_head)  # [B, E, L, H, DH]
-        k = k.view(B, E, L, self.num_heads, self.dim_head)
-        v = v.view(B, E, L, self.num_heads, self.dim_head)
-        
+        B, E, L, _, _ = q.size()
         attn_maps = None
         if need_attn_maps:
             attn_maps = q * (self.dim_head * E) ** -0.5
@@ -462,6 +518,7 @@ class FastSelfAttention2d(nn.Module):
             if attn_mask is not None:
                 attn_maps += attn_mask.view(B, self.num_heads, 1, L).expand(-1, -1, L, -1)  # [B, H, L, L]
             attn_maps = attn_maps.softmax(dim=-1)  # [B, H, L, L]
+            attn_maps = attn_maps.view(B, self.num_heads, 1, L, L)
 
         if attn_mask is not None:
             attn_mask = attn_mask.view(B * self.num_heads, E, L, 1).view(B * self.num_heads, E * L, 1).expand(-1, -1, self.num_features) # [B * H, E * L, M]
@@ -486,6 +543,86 @@ class FastSelfAttention2d(nn.Module):
         
         if need_attn_maps:
             return out, attn_maps
+        return out
+
+    def forward(self,
+                x: torch.Tensor,
+                padding_mask: torch.Tensor = None,
+                need_attn_maps: bool = True) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Performs fast (tied axial) self-attention on 2D data.
+
+        Args:
+            x (torch.Tensor): Input data [B, E, L, D].
+            padding_mask (torch.Tensor, optional): Padding mask [B, E, L]. Defaults to None.
+            need_attn_maps (bool, optional): Whether attention maps should be returned. Defaults to True.
+
+        Returns:
+            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+            Output data [B, E, L, D]; row attention maps [B, H, 1, L, L] (optional).
+        """
+
+        B, E, L, D = x.size()
+        assert D == self.embed_dim
+
+        attn_mask = None
+        if padding_mask is not None:
+            assert padding_mask.dtype == torch.bool
+            assert padding_mask.size() == (B, E, L)
+            padding_mask = padding_mask.view(B, 1, E, L).expand(-1, self.num_heads, -1, -1)
+            attn_mask = torch.zeros_like(padding_mask, dtype=torch.float)
+            attn_mask.masked_fill_(padding_mask, -10000)  # [B, H, E, L]
+
+        q, k, v = self.in_row_projection(x).chunk(3, dim=-1)  # [B, E, L, D]
+        q = q.view(B, E, L, self.num_heads, self.dim_head)  # [B, E, L, H, DH]
+        k = k.view(B, E, L, self.num_heads, self.dim_head)
+        v = v.view(B, E, L, self.num_heads, self.dim_head)
+
+        # regular
+        if self.row_attn_mode == 0:
+            q = q * (self.dim_head * E) ** -0.5
+            # NOTE row attn
+            if need_attn_maps:
+                row_out, row_attn_maps = self.row_attn(q, k, v, attn_mask, need_attn_maps)
+            else:
+                row_out = self.row_attn(q, k, v, attn_mask, need_attn_maps)
+
+            out = x + row_out
+            out = self.norm1(out)
+        # fast
+        elif self.row_attn_mode == 1:
+            out = self.fast_attn(q, k, v, attn_mask, need_attn_maps)
+            if need_attn_maps:
+                out, row_attn_maps = out
+        # removed
+        else:
+            out = x
+            row_attn_maps = None
+
+        q, k, v = self.in_col_projection(out).chunk(3, dim=-1)  # [B, E, L, D]
+        q = q.view(B, E, L, self.num_heads, self.dim_head)  # [B, E, L, H, DH]
+        k = k.view(B, E, L, self.num_heads, self.dim_head)
+        v = v.view(B, E, L, self.num_heads, self.dim_head)
+
+        # regular
+        if self.col_attn_mode == 0:
+            q = q * self.dim_head ** -0.5
+            # NOTE col attn
+            if need_attn_maps:
+                col_out, col_attn_maps = self.col_attn(q, k, v, attn_mask, need_attn_maps)
+            else:
+                col_out = self.col_attn(q, k, v, attn_mask, need_attn_maps)
+
+            out = out + col_out
+            out = self.norm2(out)
+        # fast
+        elif self.col_attn_mode == 1:
+            out = self.fast_attn(q, k, v, attn_mask, need_attn_maps)
+            if need_attn_maps:
+                out, row_attn_maps = out
+
+        if need_attn_maps:
+            return out, row_attn_maps
         return out
 
 
@@ -617,7 +754,7 @@ def _get_attention_function(attention: str) -> Type[nn.Module]:
     Returns the module that corresponds to the given attention mechanism.
 
     Args:
-        attention (str): Attention mechanism. Currently implemented: full, axial, tied, fast.
+        attention (str): Attention mechanism. Currently implemented: full, axial, tied, fast, fast-axial.
 
     Raises:
         RuntimeError: Unknown attention mechanism.
@@ -634,7 +771,9 @@ def _get_attention_function(attention: str) -> Type[nn.Module]:
         return TiedAxialSelfAttention2d
     elif attention == 'fast':
         return FastSelfAttention2d
-    raise RuntimeError("Expected full, axial, tied, or fast not {}".format(attention))
+    elif attention == 'fast-axial':
+        return FastAxialSelfAttention2d
+    raise RuntimeError("Expected full, axial, tied, fast, or fast-axial not {}".format(attention))
 
 
 def _get_activation_function(activation: str) -> Type[nn.Module]:
