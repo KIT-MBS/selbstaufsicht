@@ -274,6 +274,12 @@ def xgb_Matthews(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray)
         fn += sum(np.logical_and(preds_ == 0, y_ == 1))
 
     matthews = (float(tp) * float(tn) - float(tn) * float(fn)) / float(np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+    if matthews < -1.0 or matthews > 1.0:
+        print(float(tp))
+        print(float(fp))
+        print(float(tn))
+        print(float(fn))
+        raise ValueError("Should be between -1.0 and 1.0")
     return matthews
 
 

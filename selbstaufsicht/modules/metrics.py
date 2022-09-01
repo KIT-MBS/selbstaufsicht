@@ -356,7 +356,14 @@ class BinaryMatthewsCorrelationCoefficient(BinaryF1Score):
         self.fn += fn
 
     def compute(self) -> torch.Tensor():
-        return (self.tp.float() * self.tn.float() - self.fp.float() * self.fn.float()) / math.sqrt((self.tp.float() + self.fp.float()) * (self.tp.float() + self.fn.float()) * (self.tn.float() + self.fp.float()) * (self.tn.float() + self.fn.float()))
+        value = (self.tp.float() * self.tn.float() - self.fp.float() * self.fn.float()) / math.sqrt((self.tp.float() + self.fp.float()) * (self.tp.float() + self.fn.float()) * (self.tn.float() + self.fp.float()) * (self.tn.float() + self.fn.float()))
+        if value > 1.0 or value < -1.0:
+            print(self.tp.float())
+            print(self.fp.float())
+            print(self.tn.float())
+            print(self.fn.float())
+            raise ValueError("Should be between -1.0 and 1.0")
+        return value
 
 
 class BinaryConfusionMatrix(Metric):
