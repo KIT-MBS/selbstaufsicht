@@ -45,13 +45,13 @@ def metric_wrapper(preds: np.ndarray, dtrain: xgb.DMatrix, metric, msa_mappings:
     metrics = {'toplprec': xgb_contact.xgb_topkLPrec, 'f1': xgb_contact.xgb_F1Score, 'matthews': xgb_contact.xgb_Matthews}
 
     # top_l_prec = xgb_contact.xgb_topkLPrec(preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
-    value = metrics[metric](preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
-
-    # return 'top-%sL-Prec' % str(k), top_l_prec
     if metric == 'toplprec':
+        value = metrics[metric](preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
         description = 'top-%sL-Prec' % str(k)
     else:
+        value = metrics[metric](preds, dtrain, msa_mapping)
         description = metric
+
     return description, value
 
 
