@@ -273,7 +273,12 @@ def xgb_Matthews(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray)
         tn += sum(np.logical_and(preds_ == 0, y_ == 0))
         fn += sum(np.logical_and(preds_ == 0, y_ == 1))
 
-    matthews = (float(tp) * float(tn) - float(fp) * float(fn)) / float(np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+    numerator = (float(tp) * float(tn) - float(fp) * float(fn))
+    denominator = float(np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+    if denominator == 0:
+        matthews = float('nan')
+    else:
+        matthews = numerator / denominator
     if matthews < -1.0 or matthews > 1.0:
         print(float(tp))
         print(float(fp))
@@ -437,7 +442,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
                           pin_memory=False)
 
     elif mode == 'test':
-        dataset = datasets.CoCoNetDataset(root, mode, transform=downstream_transform, diversity_maximization=subsampling_mode == 'diversity')
+        dataset = datasets.CoCoNetDataset(root, mode, transform=downstream_transform, diversity_maximization=subsampling_mode == 'diversity', secondary_window=secondary_window)
         return DataLoader(dataset,
                           batch_size=batch_size,
                           shuffle=False,
