@@ -79,6 +79,7 @@ class CoCoNetDataset(Dataset):
             self.pdb_chains = [line.strip() for line in f]
 
         self.pdbs = []
+        self.pdb_ids = []
         discarded_msa_idx = set()
         for idx, (msa, pdb_file, chain_id) in enumerate(zip(self.msas, self.pdb_filenames, self.pdb_chains)):
             refseq = msa[0].seq
@@ -88,6 +89,7 @@ class CoCoNetDataset(Dataset):
                 pdb_id = pdb_file.split('_')[0]
                 structure = PDBParser().get_structure(pdb_id, f)
                 pdb_id = pdb_id.replace('.pdb', '')
+                self.pdb_ids.append(pdb_id)
 
                 num_seq = len(msa)
                 seq_len = msa.get_alignment_length()
@@ -158,6 +160,7 @@ class CoCoNetDataset(Dataset):
 
         # NOTE: Remove discarded MSAs
         self.msas = [msa for idx, msa in enumerate(self.msas) if idx not in discarded_msa_idx]
+        self.pdb_ids = [pdb_id for idx, pdb_id in enumerate(self.pdb_ids) if idx not in discarded_msa_idx]
         self.pdb_filenames = [x for idx, x in enumerate(self.pdb_filenames) if idx not in discarded_msa_idx]
         self.pdb_chains = [x for idx, x in enumerate(self.pdb_chains) if idx not in discarded_msa_idx]
         self.fam_ids = [x for idx, x in enumerate(self.fam_ids) if idx not in discarded_msa_idx]
@@ -195,12 +198,12 @@ class CoCoNetDataset(Dataset):
         if self.transform is not None:
             if self.indices is None:
                 if self.secondary_window > -1:
-                    item = self.transform({'msa': x}, {'structure': y, 'basepairs': self.bprnapairs[i]})
+                    item = self.transform({'msa': x}, {'structure': y, 'basepairs': self.bprnapairs[i], 'pdb_id': self.pdb_ids[i]})
                 else:
                     item = self.transform({'msa': x}, {'structure': y})
             else:
                 if self.secondary_window > -1:
-                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y, 'basepairs': self.bprnapairs[i]})
+                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y, 'basepairs': self.bprnapairs[i], 'pdb_id': self.pdb_ids[i]})
                 else:
                     item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y})
             return item

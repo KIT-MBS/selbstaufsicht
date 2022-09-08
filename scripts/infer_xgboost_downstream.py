@@ -121,7 +121,7 @@ def main():
 
     cull_tokens = xgb_contact.get_cull_tokens(inference_dl.dataset)
     model = xgb_contact.load_backbone(args.checkpoint, device, inference_dl.dataset, cull_tokens, h_params)
-    attn_maps, _, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping = xgb_contact.compute_attn_maps(model, inference_dl, cull_tokens, args.diag_shift, h_params, device)
+    attn_maps, _, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping, _ = xgb_contact.compute_attn_maps(model, inference_dl, cull_tokens, args.diag_shift, h_params, device)
 
     inference_data = xgb.DMatrix(attn_maps, label=None)
 

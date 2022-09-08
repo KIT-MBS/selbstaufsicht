@@ -95,7 +95,7 @@ def xgb_topkLPrec_var_k(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.n
         return {k2: OrderedDict(sorted(unsorted[k2].items(), key=lambda t: t[0])) for k2 in msa_indices}
 
 
-def xgb_topkLPrec(preds: np.ndarray, dmat: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> float:
+def xgb_topkLPrec(preds: np.ndarray, dmat: xgb.DMatrix, msa_mapping: np.ndarray, L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False, reduce: bool = True) -> Union[float, np.ndarray]:
     """
     Custom XGBoost Metric for top-L-precision.
 
@@ -106,9 +106,10 @@ def xgb_topkLPrec(preds: np.ndarray, dmat: xgb.DMatrix, msa_mapping: np.ndarray,
         L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
         k (float, optional): Coefficient k that is used in computing the top-(k*L)-precision. Defaults to 1.
         treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
+        reduce (bool, optional): Whether to reduce over batch dimension. Defaults to True.
 
     Returns:
-        float: Metric value.
+        Union[float, np.ndarray]: Metric value(s) [B].
     """
 
     y = dmat.get_label()  # [B]
@@ -116,6 +117,8 @@ def xgb_topkLPrec(preds: np.ndarray, dmat: xgb.DMatrix, msa_mapping: np.ndarray,
     msa_indices = np.unique(msa_mapping)
     tp = 0
     fp = 0
+    tp_list = []
+    fp_list = []
 
     # for each MSA, find top-L and compute true/false positives
     for msa_idx in msa_indices:
@@ -131,18 +134,28 @@ def xgb_topkLPrec(preds: np.ndarray, dmat: xgb.DMatrix, msa_mapping: np.ndarray,
         y_ = y_[L_idx]
 
         if treat_all_preds_positive:
-            tp += sum(y_ == 1)
-            fp += sum(y_ == 0)
+            tp_list.append(sum(y_ == 1))
+            tp += tp_list[-1]
+            
+            fp_list.append(sum(y_ == 0))
+            fp += fp_list[-1]
         else:
-            tp += sum(np.logical_and(preds_ == 1, y_ == 1))
-            fp += sum(np.logical_and(preds_ == 1, y_ == 0))
+            tp_list.append(sum(np.logical_and(preds_ == 1, y_ == 1)))
+            tp += tp_list[-1]
+            
+            fp_list.append(sum(np.logical_and(preds_ == 1, y_ == 0)))
+            fp += fp_list[-1]
 
-    top_l_prec = float(tp) / (tp + fp)
+    if reduce:
+        return float(tp) / (tp + fp)
+    else:
+        tp_arr = np.array(tp_list)
+        fp_arr = np.array(fp_list)
+        
+        return tp_arr / (tp_arr + fp_arr)
 
-    return top_l_prec
 
-
-def xgb_precision(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
+def xgb_precision(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, reduce: bool = True) -> Union[float, np.ndarray]:
     """
     Custom XGBoost Metric for global precision.
 
@@ -150,9 +163,10 @@ def xgb_precision(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray
         preds (np.ndarray): Predictions [B] as logits.
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
+        reduce (bool, optional): Whether to reduce over batch dimension. Defaults to True.
 
     Returns:
-        float: Metric value.
+        Union[float, np.ndarray]: Metric value(s) [B].
     """
 
     y = dtest.get_label()  # [B]
@@ -160,6 +174,8 @@ def xgb_precision(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray
     msa_indices = np.unique(msa_mapping)
     tp = 0
     fp = 0
+    tp_list = []
+    fp_list = []
 
     # for each MSA, compute true positives, false negatives
     for msa_idx in msa_indices:
@@ -168,16 +184,23 @@ def xgb_precision(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray
         y_ = y[mask]
 
         preds_ = np.round(sigmoid(preds_))
+        
+        tp_list.append(sum(np.logical_and(preds_ == 1, y_ == 1)))
+        tp += tp_list[-1]
+        
+        fp_list.append(sum(np.logical_and(preds_ == 1, y_ == 0)))
+        fp += fp_list[-1]
 
-        tp += sum(np.logical_and(preds_ == 1, y_ == 1))
-        fp += sum(np.logical_and(preds_ == 1, y_ == 0))
+    if reduce:
+        return float(tp) / (tp + fp)
+    else:
+        tp_arr = np.array(tp_list)
+        fp_arr = np.array(fp_list)
+        
+        return tp_arr / (tp_arr + fp_arr)
 
-    precision = float(tp) / (tp + fp)
 
-    return precision
-
-
-def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
+def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, reduce: bool = True) -> Union[float, np.ndarray]:
     """
     Custom XGBoost Metric for global recall.
 
@@ -185,9 +208,10 @@ def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -
         preds (np.ndarray): Predictions [B] as logits.
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
+        reduce (bool, optional): Whether to reduce over batch dimension. Defaults to True.
 
     Returns:
-        float: Metric value.
+        Union[float, np.ndarray]: Metric value(s) [B].
     """
 
     y = dtest.get_label()  # [B]
@@ -195,6 +219,8 @@ def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -
     msa_indices = np.unique(msa_mapping)
     tp = 0
     fn = 0
+    tp_list = []
+    fn_list = []
 
     # for each MSA, compute true positives, false negatives
     for msa_idx in msa_indices:
@@ -203,16 +229,23 @@ def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -
         y_ = y[mask]
 
         preds_ = np.round(sigmoid(preds_))
+        
+        tp_list.append(sum(np.logical_and(preds_ == 1, y_ == 1)))
+        tp += tp_list[-1]
+        
+        fn_list.append(sum(np.logical_and(preds_ == 0, y_ == 1)))
+        fn += fn_list[-1]
 
-        tp += sum(np.logical_and(preds_ == 1, y_ == 1))
-        fn += sum(np.logical_and(preds_ == 0, y_ == 1))
+    if reduce:
+        return float(tp) / (tp + fn)
+    else:
+        tp_arr = np.array(tp_list)
+        fn_arr = np.array(fn_list)
+        
+        return tp_arr / (tp_arr + fn_arr)
 
-    recall = float(tp) / (tp + fn)
 
-    return recall
-
-
-def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
+def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, reduce: bool = True) -> Union[float, np.ndarray]:
     """
     Custom XGBoost Metric for global F1 score.
 
@@ -220,9 +253,10 @@ def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) 
         preds (np.ndarray): Predictions [B] as logits.
         dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
+        reduce (bool, optional): Whether to reduce over batch dimension. Defaults to True.
 
     Returns:
-        float: Metric value.
+        Union[float, np.ndarray]: Metric value(s) [B].
     """
 
     y = dtest.get_label()  # [B]
@@ -231,6 +265,9 @@ def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) 
     tp = 0
     fp = 0
     fn = 0
+    tp_list = []
+    fp_list = []
+    fn_list = []
 
     # for each MSA, compute true/false positives, false negatives
     for msa_idx in msa_indices:
@@ -239,18 +276,38 @@ def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) 
         y_ = y[mask]
 
         preds_ = np.round(sigmoid(preds_))
+        
+        tp_list.append(sum(np.logical_and(preds_ == 1, y_ == 1)))
+        tp += tp_list[-1]
+        
+        fp_list.append(sum(np.logical_and(preds_ == 1, y_ == 0)))
+        fp += fp_list[-1]
+        
+        fn_list.append(sum(np.logical_and(preds_ == 0, y_ == 1)))
+        fn += fn_list[-1]
 
-        tp += sum(np.logical_and(preds_ == 1, y_ == 1))
-        fp += sum(np.logical_and(preds_ == 1, y_ == 0))
-        fn += sum(np.logical_and(preds_ == 0, y_ == 1))
+    if reduce:
+        return float(tp) / (tp + 0.5 * (fp + fn))
+    else:
+        tp_arr = np.array(tp_list)
+        fp_arr = np.array(fp_list)
+        fn_arr = np.array(fn_list)
+        
+        return tp_arr / (tp_arr + 0.5 * (fp_arr + fn_arr))
 
-    f1_score = float(tp) / (tp + 0.5 * (fp + fn))
 
-    return f1_score
-
-
-def xgb_Matthews(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
+def xgb_Matthews(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, reduce: bool = True) -> Union[float, np.ndarray]:
     """
+    Custom XGBoost Metric for global Matthews Correlation Coefficient.
+
+    Args:
+        preds (np.ndarray): Predictions [B] as logits.
+        dtest (xgb.DMatrix): Test data (x: [B, num_maps], y: [B]).
+        msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
+        reduce (bool, optional): Whether to reduce over batch dimension. Defaults to True.
+
+    Returns:
+        Union[float, np.ndarray]: Metric value(s) [B].
     """
 
     y = dtest.get_label()
@@ -259,6 +316,10 @@ def xgb_Matthews(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray)
     fp = 0
     tn = 0
     fn = 0
+    tp_list = []
+    fp_list = []
+    tn_list = []
+    fn_list = []
 
     # for each MSA, compute true/false positives, false negatives
     for msa_idx in msa_indices:
@@ -267,25 +328,47 @@ def xgb_Matthews(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray)
         y_ = y[mask]
 
         preds_ = np.round(sigmoid(preds_))
+        
+        tp_list.append(sum(np.logical_and(preds_ == 1, y_ == 1)))
+        tp += tp_list[-1]
+        
+        fp_list.append(sum(np.logical_and(preds_ == 1, y_ == 0)))
+        fp += fp_list[-1]
+        
+        tn_list.append(sum(np.logical_and(preds_ == 0, y_ == 0)))
+        tn += tn_list[-1]
+        
+        fn_list.append(sum(np.logical_and(preds_ == 0, y_ == 1)))
+        fn += fn_list[-1]
 
-        tp += sum(np.logical_and(preds_ == 1, y_ == 1))
-        fp += sum(np.logical_and(preds_ == 1, y_ == 0))
-        tn += sum(np.logical_and(preds_ == 0, y_ == 0))
-        fn += sum(np.logical_and(preds_ == 0, y_ == 1))
-
-    numerator = (float(tp) * float(tn) - float(fp) * float(fn))
-    denominator = float(np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
-    if denominator == 0:
-        matthews = float('nan')
+    if reduce:
+        numerator = (float(tp) * float(tn) - float(fp) * float(fn))
+        denominator = float(np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+        if denominator == 0:
+            matthews = float('nan')
+        else:
+            matthews = numerator / denominator
+        if matthews < -1.0 or matthews > 1.0:
+            print(float(tp))
+            print(float(fp))
+            print(float(tn))
+            print(float(fn))
+            raise ValueError("Should be between -1.0 and 1.0")
     else:
-        matthews = numerator / denominator
-    if matthews < -1.0 or matthews > 1.0:
-        print(float(tp))
-        print(float(fp))
-        print(float(tn))
-        print(float(fn))
-        raise ValueError("Should be between -1.0 and 1.0")
+        tp_arr = np.array(tp_list)
+        fp_arr = np.array(fp_list)
+        tn_arr = np.array(tn_list)
+        fn_arr = np.array(fn_list)
+        
+        matthews = (tp_arr * tn_arr - fp_arr * fn_arr) / (np.sqrt((tp_arr + fp_arr) * (tp_arr + fn_arr) * (tn_arr + fp_arr) * (tn_arr + fn_arr)))
+        if np.any(matthews < -1.0) or np.any(matthews > 1.0):
+            print(tp_arr)
+            print(fp_arr)
+            print(tn_arr)
+            print(fn_arr)
+            raise ValueError("Should be between -1.0 and 1.0")
     return matthews
+                                                          
 
 
 def get_checkpoint_hparams(checkpoint: str, device: Any) -> Dict[str, Any]:
@@ -472,7 +555,7 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
         device (Any): Device on which model runs.
 
     Returns:
-        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Attention maps [B*L*L/2, num_maps]; targets [B*L*L/2]; msa_mapping [B*L*L]; msa_mask [B*L*L]; msa_mapping_filtered [B*L*L/2], L_mapping [B].
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[str]]: Attention maps [B*L*L/2, num_maps]; targets [B*L*L/2]; msa_mapping [B*L*L]; msa_mask [B*L*L]; msa_mapping_filtered [B*L*L/2], L_mapping [B], PDB_ids [B].
     """
 
     attn_maps_list = []
@@ -481,6 +564,7 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
     msa_mask_list = []
     msa_mapping_filtered_list = []
     L_mapping_list = []
+    pdb_ids = []
 
     num_maps = h_params['num_blocks'] * h_params['num_heads']
 
@@ -491,6 +575,9 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
 
         with torch.no_grad():
             _, attn_maps = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+            
+        pdb_id = y.get('pdb_id', '')
+        pdb_ids.append(pdb_id)
 
         B, _, L = x['msa'].shape
         assert B == 1
@@ -564,4 +651,4 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
     msa_mapping_filtered = msa_mapping_filtered.cpu().numpy()
     L_mapping = np.array(L_mapping_list)
 
-    return attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping
+    return attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping, pdb_ids

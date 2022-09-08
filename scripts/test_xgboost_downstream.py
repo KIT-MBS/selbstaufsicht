@@ -17,7 +17,7 @@ import xgboost as xgb
 from selbstaufsicht.models.xgb import xgb_contact
 
 
-def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, msa_mask: np.ndarray, L_mapping: np.ndarray, save_dir: str) -> None:
+def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, msa_mask: np.ndarray, L_mapping: np.ndarray, pdb_ids: List[str], save_dir: str) -> None:
     """
     Plots predictions and ground truth of contact maps side by side.
 
@@ -27,6 +27,7 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         msa_mapping (np.ndarray): Mapping: Data point -> MSA index [B].
         msa_mask (np.ndarray): MSA mask [B].
         L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
+        pdb_ids (List[str]): List of PDB ids [B].
         save_dir (str): Directory, where plots are saved.
     """
 
@@ -66,7 +67,7 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         ax[2].set_title("Target")
 
         fig.set_size_inches(15, 5)
-        fig.suptitle("Test Data: MSA %d" % msa_idx)
+        fig.suptitle("Test Data: MSA %d (PDB-ID %s)" % (msa_idx, pdb_ids[msa_idx]))
         fig.savefig(os.path.join(save_dir, '%d.pdf' % msa_idx))
 
 
@@ -127,6 +128,7 @@ def main():
     parser.add_argument('--max-k', default=-1, type=float, help="Maximum coefficient k that is used in computing the top-(k*L)-precision. -1 refers to maximum L/2 of the longest sequence.")
     parser.add_argument('--num-k', default=500, type=int, help="Number of samples for k used in computing the top-(k*L)-precision. 1 disables top-(k*L)-precision over k plot and uses min-k as k.")
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
+    parser.add_argument('--individual-results', action='store_true', help="Whether to compute metric results also individually for each structure.")
     # Visualization
     parser.add_argument('--vis-dir', type=str, default='', help="Directory, where plots are saved. If empty, no plots are created.")
     parser.add_argument('--vis-contact-maps', action='store_true', help="Creates contact map plots.")
@@ -147,7 +149,7 @@ def main():
 
     cull_tokens = xgb_contact.get_cull_tokens(test_dl.dataset)
     model = xgb_contact.load_backbone(args.checkpoint, device, test_dl.dataset, cull_tokens, h_params)
-    attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping = xgb_contact.compute_attn_maps(model, test_dl, cull_tokens, args.diag_shift, h_params, device)
+    attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping, pdb_ids = xgb_contact.compute_attn_maps(model, test_dl, cull_tokens, args.diag_shift, h_params, device)
 
     test_data = xgb.DMatrix(attn_maps, label=targets)
 
@@ -167,6 +169,21 @@ def main():
         print("Global Recall:", global_recall)
         print("Global F1-Score:", global_f1_score)
         print("Global Matthews CorrCoeff:", matthews)
+        
+        if args.individual_results:
+            top_l_prec = xgb_contact.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, args.treat_all_preds_positive, reduce=False)
+            global_precision = xgb_contact.xgb_precision(preds, test_data, msa_mapping_filtered, reduce=False)
+            global_recall = xgb_contact.xgb_recall(preds, test_data, msa_mapping_filtered, reduce=False)
+            global_f1_score = xgb_contact.xgb_F1Score(preds, test_data, msa_mapping_filtered, reduce=False)
+            matthews = xgb_contact.xgb_Matthews(preds, test_data, msa_mapping_filtered, reduce=False)
+            
+            for idx, pdb_id in enumerate(pdb_ids):
+                print("[%s] Top-%sL-Precision:" % (pdb_id, str(args.min_k)), top_l_prec)
+                print("[%s] Global Precision:" % pdb_id, global_precision)
+                print("[%s] Global Recall:" % pdb_id, global_recall)
+                print("[%s] Global F1-Score:" % pdb_id, global_f1_score)
+                print("[%s] Global Matthews CorrCoeff:" % pdb_id, matthews)
+                
     else:
         min_k = args.min_k
         if args.max_k == -1:
@@ -187,7 +204,7 @@ def main():
     if args.vis_dir != '' and args.vis_contact_maps:
         contact_map_plot_dir = os.path.join(args.vis_dir, 'contact_maps')
         os.makedirs(contact_map_plot_dir, exist_ok=True)
-        plot_contact_maps(preds, test_data, msa_mapping, msa_mask, L_mapping, contact_map_plot_dir)
+        plot_contact_maps(preds, test_data, msa_mapping, msa_mask, L_mapping, pdb_ids, contact_map_plot_dir)
 
 
 if __name__ == '__main__':

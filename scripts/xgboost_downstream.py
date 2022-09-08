@@ -126,7 +126,7 @@ def main():
 
     cull_tokens = xgb_contact.get_cull_tokens(train_dl.dataset)
     model = xgb_contact.load_backbone(args.checkpoint, device, train_dl.dataset, cull_tokens, h_params)
-    attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
+    attn_maps, targets, _, _, msa_mapping, L_mapping, _ = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
 
     params = {
         'booster': args.booster,
