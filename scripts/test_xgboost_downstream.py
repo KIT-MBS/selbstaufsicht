@@ -178,11 +178,11 @@ def main():
             matthews = xgb_contact.xgb_Matthews(preds, test_data, msa_mapping_filtered, reduce=False)
             
             for idx, pdb_id in enumerate(pdb_ids):
-                print("[%s] Top-%sL-Precision:" % (pdb_id, str(args.min_k)), top_l_prec)
-                print("[%s] Global Precision:" % pdb_id, global_precision)
-                print("[%s] Global Recall:" % pdb_id, global_recall)
-                print("[%s] Global F1-Score:" % pdb_id, global_f1_score)
-                print("[%s] Global Matthews CorrCoeff:" % pdb_id, matthews)
+                print("[%s] Top-%sL-Precision:" % (pdb_id, str(args.min_k)), top_l_prec[idx])
+                print("[%s] Global Precision:" % pdb_id, global_precision[idx])
+                print("[%s] Global Recall:" % pdb_id, global_recall[idx])
+                print("[%s] Global F1-Score:" % pdb_id, global_f1_score[idx])
+                print("[%s] Global Matthews CorrCoeff:" % pdb_id, matthews[idx])
                 
     else:
         min_k = args.min_k

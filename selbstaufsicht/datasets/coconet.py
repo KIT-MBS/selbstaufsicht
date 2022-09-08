@@ -200,12 +200,12 @@ class CoCoNetDataset(Dataset):
                 if self.secondary_window > -1:
                     item = self.transform({'msa': x}, {'structure': y, 'basepairs': self.bprnapairs[i], 'pdb_id': self.pdb_ids[i]})
                 else:
-                    item = self.transform({'msa': x}, {'structure': y})
+                    item = self.transform({'msa': x}, {'structure': y, 'pdb_id': self.pdb_ids[i]})
             else:
                 if self.secondary_window > -1:
                     item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y, 'basepairs': self.bprnapairs[i], 'pdb_id': self.pdb_ids[i]})
                 else:
-                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y})
+                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y, 'pdb_id': self.pdb_ids[i]})
             return item
 
         return x, y
