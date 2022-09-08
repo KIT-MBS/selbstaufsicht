@@ -5,7 +5,7 @@ import argparse
 # import json
 # import random
 import os
-from typing import Dict
+from typing import Dict, List
 
 import numpy as np
 # import pandas as pd
