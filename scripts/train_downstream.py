@@ -221,6 +221,7 @@ def main():
         tb_logger = TensorBoardLogger(save_dir=log_dir, name=log_exp_name, version=log_run_name)
         checkpoint_callback_valloss = ModelCheckpoint(monitor='contact_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
         checkpoint_callback_toplprec = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
+        checkpoint_callback_toplprecpos = ModelCheckpoint(monitor='contact_validation_topLprec_coconet', filename="downstream-{epoch:02d}-{contact_validation_topLprecpos:.4f}", mode='max')
         checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
         checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_Global_F1score:.4f}", mode='max')
 
@@ -233,7 +234,7 @@ def main():
                           enable_progress_bar=not args.disable_progress_bar,
                           log_every_n_steps=args.log_every,
                           logger=tb_logger,
-                          callbacks=[checkpoint_callback_valloss, checkpoint_callback_toplprec, checkpoint_callback_f1score, checkpoint_callback_matthews])
+                          callbacks=[checkpoint_callback_valloss, checkpoint_callback_toplprec, checkpoint_callback_toplprecpos, checkpoint_callback_f1score, checkpoint_callback_matthews])
         trainer.fit(model, train_dl, val_dl)
 
     if args.test:
