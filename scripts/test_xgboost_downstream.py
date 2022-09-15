@@ -141,12 +141,14 @@ def main():
     preds = xgb_model.predict(test_data, iteration_range=(0, xgb_model.best_iteration), strict_shape=True)[:, 0]
 
     if args.num_k == 1:
-        top_l_prec = xgb_contact.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, args.treat_all_preds_positive)
+        top_l_prec_pos = xgb_contact.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, treat_all_preds_positive=True)
+        top_l_prec = xgb_contact.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, treat_all_preds_positive=False)
         global_precision = xgb_contact.xgb_precision(preds, test_data, msa_mapping_filtered)
         global_recall = xgb_contact.xgb_recall(preds, test_data, msa_mapping_filtered)
         global_f1_score = xgb_contact.xgb_F1Score(preds, test_data, msa_mapping_filtered)
         matthews = xgb_contact.xgb_Matthews(preds, test_data, msa_mapping_filtered)
 
+        print("Top-%sL-Positive-Precision:" % str(args.min_k), top_l_prec_pos)
         print("Top-%sL-Precision:" % str(args.min_k), top_l_prec)
         print("Global Precision:", global_precision)
         print("Global Recall:", global_recall)
