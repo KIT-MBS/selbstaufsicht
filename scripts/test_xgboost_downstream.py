@@ -187,7 +187,7 @@ def main():
     if args.vis_dir != '' and args.vis_contact_maps:
         contact_map_plot_dir = os.path.join(args.vis_dir, 'contact_maps')
         os.makedirs(contact_map_plot_dir, exist_ok=True)
-        store_contact_maps_data(preds, test_data, msa_mapping, msa_mask, L_mapping, pdb_ids, args.vis_top_l, contact_map_plot_dir)
+        store_contact_maps_data(preds, test_data, msa_mapping_filtered, msa_mask, L_mapping, pdb_ids, args.vis_top_l, contact_map_plot_dir)
 
 
 if __name__ == '__main__':
