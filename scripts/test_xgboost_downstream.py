@@ -17,9 +17,9 @@ import xgboost as xgb
 from selbstaufsicht.models.xgb import xgb_contact
 
 
-def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, msa_mask: np.ndarray, L_mapping: np.ndarray, pdb_ids: List[str], save_dir: str) -> None:
+def store_contact_maps_data(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray, msa_mask: np.ndarray, L_mapping: np.ndarray, pdb_ids: List[str], top_l: bool, save_dir: str) -> None:
     """
-    Plots predictions and ground truth of contact maps side by side.
+    Creates and stores data for predictions and ground truth of contact maps.
 
     Args:
         preds (np.ndarray): Predictions [B] as logits.
@@ -28,7 +28,8 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         msa_mask (np.ndarray): MSA mask [B].
         L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
         pdb_ids (List[str]): List of PDB ids [B].
-        save_dir (str): Directory, where plots are saved.
+        top_l (bool): Only take top-L predictions.
+        save_dir (str): Directory, where data is stored.
     """
 
     y = dtest.get_label()  # [B]
@@ -48,37 +49,30 @@ def plot_contact_maps(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.nda
         mask = msa_mapping == msa_idx  # [B]
         L = L_mapping[msa_idx]
 
-        preds_shaped = xgb_contact.sigmoid(preds_[mask].reshape((L, L)))
-        preds_shaped += preds_shaped.T
-        preds_shaped_binary = np.round(preds_shaped).astype(bool)
-        y_shaped = y_[mask].reshape((L, L)).astype(bool)
-        y_shaped += y_shaped.T
-
-        fig, ax = plt.subplots(1, 3)
-        sns.heatmap(preds_shaped, fmt='', ax=ax[0])
-        sns.heatmap(preds_shaped_binary, fmt='', ax=ax[1])
-        sns.heatmap(y_shaped, fmt='', ax=ax[2])
-
-        ax[0].set_aspect('equal')
-        ax[0].set_title("Prediction")
-        ax[1].set_aspect('equal')
-        ax[1].set_title("Prediction (binary)")
-        ax[2].set_aspect('equal')
-        ax[2].set_title("Target")
-
-        fig.set_size_inches(15, 5)
-        fig.suptitle("Test Data: MSA %d (PDB-ID %s)" % (msa_idx, pdb_ids[msa_idx]))
-        fig.savefig(os.path.join(save_dir, '%d.pdf' % msa_idx))
+        preds_ = preds_[mask].reshape((L, L))
+        y_ = y_[mask].reshape((L, L)).astype(bool)
+        
+        if top_l:
+            kL = min(max(1, int(L)), len(y_))
+            L_idx = np.c_[np.unravel_index(np.argpartition(preds_.ravel(), -kL)[-kL:], preds_.shape)]
+            preds_ = np.zeros_like(y_)
+	        preds_[L_idx[:, 0], L_idx[:, 1]] = True
+        else:
+            preds_ = xgb_contact.sigmoid(preds_).astype(bool)
+        
+        np.save(os.path.join(save_dir, '%s_preds.npy' % pdb_ids[msa_idx]), preds_)
+	    np.save(os.path.join(save_dir, '%s_target.npy' % pdb_ids[msa_idx]), y_)
 
 
-def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_prec_list_abs: Dict[int, Dict[int, float]], save_dir: str) -> None:
+def store_top_l_prec_over_k_data(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_prec_list_abs: Dict[int, Dict[int, float]], pdb_ids: List[str], save_dir: str) -> None:
     """
-    Creates plots for top-(k*L)-precision over k and (k*L), respectively.
+    Creates and stores data for top-(k*L)-precision over k and (k*L), respectively.
 
     Args:
         top_l_prec_dict_rel (Dict[float, np.ndarray]): Metric values per k (relative).
         top_l_prec_list_abs (Dict[int, Dict[int, float]]): Metric values per k per MSA (absolute).
-        save_dir (str): Directory, where plots are saved.
+        pdb_ids (List[str]): List of PDB ids [B].
+        save_dir (str): Directory, where data is stored.
     """
 
     x_rel = np.array([key for key in top_l_prec_dict_rel.keys()])
@@ -86,29 +80,17 @@ def plot_top_l_prec_over_k(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_p
     x_rel = x_rel[sort_indices]
     y_rel = np.array([val.mean() for val in top_l_prec_dict_rel.values()])[sort_indices]
     std_rel = np.array([val.std(ddof=1) for val in top_l_prec_dict_rel.values()])[sort_indices]
-
-    fig = plt.gcf()
-    ax = plt.gca()
-    fig.set_size_inches(16, 9)
-    fig.suptitle("Top-(k*L)-Precision for relative k (all MSAs)")
-    ax.set_xlabel("k")
-    ax.set_ylabel("Top-(k*L)-Precision")
-    ax.set_xscale('log')
-    ax.plot(x_rel, y_rel, 'r-')
-    ax.fill_between(x_rel, y_rel - std_rel, y_rel + std_rel, color='r', alpha=0.2)
-    fig.savefig(os.path.join(save_dir, 'topLPrec_relative.pdf'))
-
+    
+    np.save(os.path.join(save_dir, 'x_rel.npy'), x_rel)
+    np.save(os.path.join(save_dir, 'y_rel.npy'), y_rel)
+    np.save(os.path.join(save_dir, 'std_rel.npy'), std_rel)
+    
     for idx, top_l_prec_dict in top_l_prec_list_abs.items():
-        plt.clf()
-        fig = plt.gcf()
-        ax = plt.gca()
-        fig.set_size_inches(16, 9)
-        fig.suptitle("Top-k-Precision for absolute k (MSA %d)" % idx)
-        ax.set_xlabel("k")
-        ax.set_ylabel("Top-k-Precision")
-        ax.set_xscale('log')
-        ax.plot(top_l_prec_dict.keys(), top_l_prec_dict.values(), 'b-')
-        fig.savefig(os.path.join(save_dir, 'topLPrec_absolute_%d.pdf' % idx))
+        x_abs = np.array(list(top_l_prec_dict.keys()))
+        y_abs = np.array(list(top_l_prec_dict.values()))
+        
+        np.save(os.path.join(save_dir, '%s_x_abs.npy' % pdb_ids[idx]), x_abs)
+        np.save(os.path.join(save_dir, '%s_y_abs.npy' % pdb_ids[idx]), y_abs)
 
 
 def main():
@@ -130,9 +112,10 @@ def main():
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
     parser.add_argument('--individual-results', action='store_true', help="Whether to compute metric results also individually for each structure.")
     # Visualization
-    parser.add_argument('--vis-dir', type=str, default='', help="Directory, where plots are saved. If empty, no plots are created.")
-    parser.add_argument('--vis-contact-maps', action='store_true', help="Creates contact map plots.")
-    parser.add_argument('--vis-k-plot', action='store_true', help="Creates top-(k*L)-precision over k plot.")
+    parser.add_argument('--vis-dir', type=str, default='', help="Directory, where visualization data is stored. If empty, no data is stored.")
+    parser.add_argument('--vis-contact-maps', action='store_true', help="Creates data for contact map plots.")
+    parser.add_argument('--vis-top-l', action='store_true', help="Uses only top-L contacts for contact map data")
+    parser.add_argument('--vis-k-plot', action='store_true', help="Creates data for top-(k*L)-precision over k plot.")
     # GPU
     parser.add_argument('--no-gpu', action='store_true', help="disables cuda")
 
@@ -199,12 +182,12 @@ def main():
         if args.vis_dir != '' and args.vis_k_plot:
             top_l_prec_plot_dir = os.path.join(args.vis_dir, 'top_l_prec_plots')
             os.makedirs(top_l_prec_plot_dir, exist_ok=True)
-            plot_top_l_prec_over_k(top_l_prec_dict_rel, top_l_prec_dict_abs, top_l_prec_plot_dir)
+            store_top_l_prec_over_k_data(top_l_prec_dict_rel, top_l_prec_dict_abs, pdb_ids, top_l_prec_plot_dir)
 
     if args.vis_dir != '' and args.vis_contact_maps:
         contact_map_plot_dir = os.path.join(args.vis_dir, 'contact_maps')
         os.makedirs(contact_map_plot_dir, exist_ok=True)
-        plot_contact_maps(preds, test_data, msa_mapping, msa_mask, L_mapping, pdb_ids, contact_map_plot_dir)
+        store_contact_maps_data(preds, test_data, msa_mapping, msa_mask, L_mapping, pdb_ids, args.vis_top_l, contact_map_plot_dir)
 
 
 if __name__ == '__main__':
