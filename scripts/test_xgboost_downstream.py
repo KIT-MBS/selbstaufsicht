@@ -56,12 +56,12 @@ def store_contact_maps_data(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: 
             kL = min(max(1, int(L)), len(y_))
             L_idx = np.c_[np.unravel_index(np.argpartition(preds_.ravel(), -kL)[-kL:], preds_.shape)]
             preds_ = np.zeros_like(y_)
-	        preds_[L_idx[:, 0], L_idx[:, 1]] = True
+            preds_[L_idx[:, 0], L_idx[:, 1]] = True
         else:
             preds_ = xgb_contact.sigmoid(preds_).astype(bool)
         
         np.save(os.path.join(save_dir, '%s_preds.npy' % pdb_ids[msa_idx]), preds_)
-	    np.save(os.path.join(save_dir, '%s_target.npy' % pdb_ids[msa_idx]), y_)
+        np.save(os.path.join(save_dir, '%s_target.npy' % pdb_ids[msa_idx]), y_)
 
 
 def store_top_l_prec_over_k_data(top_l_prec_dict_rel: Dict[float, np.ndarray], top_l_prec_list_abs: Dict[int, Dict[int, float]], pdb_ids: List[str], save_dir: str) -> None:
