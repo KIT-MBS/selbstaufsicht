@@ -109,6 +109,7 @@ def main():
     parser.add_argument('--min-k', default=0.01, type=float, help="Minimum coefficient k that is used in computing the top-(k*L)-precision.")
     parser.add_argument('--max-k', default=-1, type=float, help="Maximum coefficient k that is used in computing the top-(k*L)-precision. -1 refers to maximum L/2 of the longest sequence.")
     parser.add_argument('--num-k', default=500, type=int, help="Number of samples for k used in computing the top-(k*L)-precision. 1 disables top-(k*L)-precision over k plot and uses min-k as k.")
+    parser.add_argument('--log-scale', action='store_true', help="Uses log-scale for coefficient k.")
     parser.add_argument('--treat-all-preds-positive', action='store_true', help="Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper.")
     parser.add_argument('--individual-results', action='store_true', help="Whether to compute metric results also individually for each structure.")
     # Visualization
@@ -175,11 +176,20 @@ def main():
             max_k = max(L_mapping / 2)
         else:
             max_k = args.max_k
-        k_range = np.broadcast_to(np.linspace(min_k, max_k, args.num_k)[..., None], (args.num_k, len(test_dl)))  # [num_k, num_msa]
-        top_l_prec_dict_rel = xgb_contact.xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, treat_all_preds_positive=args.treat_all_preds_positive)
-
-        k_range = np.linspace(1, 0.5*L_mapping**2, args.num_k, dtype=int)  # [num_k, num_msa]
-        top_l_prec_dict_abs = xgb_contact.xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range, relative_k=False, treat_all_preds_positive=args.treat_all_preds_positive)
+        
+        if args.log_scale:
+            min_k = np.log10(min_k)
+            max_k = np.log10(max_k)
+            k_range_rel = np.broadcast_to(np.logspace(min_k, max_k, args.num_k)[..., None], (args.num_k, len(test_dl)))  # [num_k, num_msa]
+            min_k = 0
+            max_k = np.log10(0.5*L_mapping**2)
+            k_range_abs = np.logspace(min_k, max_k, args.num_k, dtype=int)  # [num_k, num_msa]
+        else:
+            k_range_rel = np.broadcast_to(np.linspace(min_k, max_k, args.num_k)[..., None], (args.num_k, len(test_dl)))  # [num_k, num_msa]
+            k_range_abs = np.linspace(1, 0.5*L_mapping**2, args.num_k, dtype=int)  # [num_k, num_msa]
+            
+        top_l_prec_dict_rel = xgb_contact.xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range_rel, treat_all_preds_positive=args.treat_all_preds_positive)
+        top_l_prec_dict_abs = xgb_contact.xgb_topkLPrec_var_k(preds, test_data, msa_mapping_filtered, L_mapping, k_range_abs, relative_k=False, treat_all_preds_positive=args.treat_all_preds_positive)
 
         if args.vis_dir != '' and args.vis_k_plot:
             top_l_prec_plot_dir = os.path.join(args.vis_dir, 'top_l_prec_plots')
