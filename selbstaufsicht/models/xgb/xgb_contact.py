@@ -577,6 +577,8 @@ def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: Lis
             _, attn_maps = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
             
         pdb_id = y.get('pdb_id', '')
+        if isinstance(pdb_id, list):
+            pdb_id = pdb_id[0]
         pdb_ids.append(pdb_id)
 
         B, _, L = x['msa'].shape
