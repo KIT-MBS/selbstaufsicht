@@ -16,6 +16,7 @@ from pytorch_lightning.plugins import DDPPlugin
 from selbstaufsicht.utils import data_loader_worker_init, lehmer_encode, perm_gram_matrix, embed_finite_metric_space
 from selbstaufsicht import models
 from selbstaufsicht import datasets
+from selbstaufsicht.datasets import challenge
 from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downstream_transforms, MSACollator
 
 
@@ -192,6 +193,8 @@ def main():
         del zwd_ds
     elif dataset_name == 'dummy':
         ds = datasets.DummyDataset(transform=transform)
+    elif dataset_name=='challenge':
+        ds = challenge.challDataset(root,transform=transform)
     else:
         raise ValueError("Unknown dataset: %s" % args.dataset)
 

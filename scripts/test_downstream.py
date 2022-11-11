@@ -10,6 +10,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
+from selbstaufsicht.datasets import challenge_label
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
 
 
@@ -25,7 +26,7 @@ def main():
     parser.add_argument('--disable-progress-bar', action='store_true', help="disables the training progress bar")
     # GPU
     parser.add_argument('--no-gpu', action='store_true', help="disables cuda")
-
+    parser.add_argument('--sub-depth', default=805, type=int, help="subsampling depth")
     args = parser.parse_args()
     secondary_window = args.secondary_window
 
@@ -36,11 +37,14 @@ def main():
         checkpoint = torch.load(args.checkpoint)
 
     h_params = checkpoint['hyper_parameters']
-
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'], secondary_window=secondary_window)
+#h_params['subsampling_depth']
+    downstream_transform = get_downstream_transforms(subsample_depth=args.sub_depth, subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'], secondary_window=secondary_window)
     root = os.environ['DATA_PATH']
-    test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode == 'diversity', secondary_window=secondary_window)
+    #test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode == 'diversity', secondary_window=secondary_window)
 
+    test_dataset = challenge_label.challData_lab(root,'test',transform=downstream_transform,#discard_train_size_based=not args.disable_train_data_discarding,
+        #diversity_maximization=args.subsampling_mode == 'diversity',max_seq_len=h_params['cropping_size'],min_num_seq=h_params['subsampling_depth'],
+        secondary_window=secondary_window)
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
@@ -84,8 +88,12 @@ def main():
                                                  frozen=h_params['frozen'],
                                                  seq_dist=h_params['seq_dist'],
                                                  )
-    task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[test_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
-    task_losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-h_params['downstream__loss_contact_weight'], h_params['downstream__loss_contact_weight']]), ignore_index=-1)
+#    task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[test_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
+#    task_losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-h_params['downstream__loss_contact_weight'], h_params['downstream__loss_contact_weight']]), ignore_index=-1)
+   # print(task_losses," task_losses downstream")
+    task_heads['jigsaw']=models.self_supervised.msa.modules.JigsawHead(12*64,1)
+    task_losses['jigsaw']=nn.MSELoss()
+   # print(task_heads," task_heads downstream")
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
         checkpoint_path=args.checkpoint,
@@ -99,11 +107,14 @@ def main():
         dropout=0.,
         emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
         max_seqlen=h_params['cropping_size'])
-    model.tasks = ['contact']
-    model.need_attn = True
-    model.task_loss_weights = {'contact': 1.}
+#    model.tasks = ['contact']
+#    model.need_attn = True
+#    model.task_loss_weights = {'contact': 1.}
+    model.task_heads['jigsaw']=models.self_supervised.msa.modules.JigsawHead(12*64,1)
+    model.need_attn = False
+    model.task_loss_weights = {'jigsaw': 1.}
     model.test_metrics = test_metrics
-
+    print("yo! 1")
     test_dl = DataLoader(test_dataset,
                          batch_size=args.batch_size,
                          shuffle=False,
@@ -114,6 +125,7 @@ def main():
                       logger=tb_logger,
                       enable_progress_bar=not args.disable_progress_bar)
     trainer.test(model, test_dl, verbose=True)
+   # trainer.predict(model,test_dl)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 import argparse
+from torch.nn import MSELoss
 from datetime import datetime
 import glob
 import os
@@ -15,6 +16,7 @@ from pytorch_lightning.plugins import DDPPlugin
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
+from selbstaufsicht.datasets import challenge_label
 from selbstaufsicht.modules import SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
 # from selbstaufsicht.utils import data_loader_worker_init
@@ -92,7 +94,15 @@ def main():
                                                      min_num_seq=h_params['subsampling_depth'],
                                                      secondary_window=secondary_window)
     if args.test:
-        test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root,
+        #test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root,
+        #                                       'test',
+        #                                       transform=downstream_transform,
+        #                                       discard_train_size_based=not args.disable_train_data_discarding,
+        #                                       diversity_maximization=args.subsampling_mode == 'diversity',
+        #                                       max_seq_len=h_params['cropping_size'],
+        #                                       min_num_seq=h_params['subsampling_depth'],
+        #                                       secondary_window=secondary_window)
+        test_dataset = challenge_label.challData_lab(kfold_cv_downstream.root,
                                                'test',
                                                transform=downstream_transform,
                                                discard_train_size_based=not args.disable_train_data_discarding,
@@ -105,6 +115,7 @@ def main():
                              shuffle=False,
                              num_workers=0,
                              pin_memory=False)
+    
 
     dt_now = datetime.now()
     log_dir = h_params['log_dir'] if args.log_dir == "" else args.log_dir
@@ -195,10 +206,14 @@ def main():
                     freeze_backbone=args.freeze_backbone,
                     max_seqlen=h_params['cropping_size'],
                     h_params=h_params)
-        model.tasks = ['contact']
-        model.task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[kfold_cv_downstream.train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
-        model.need_attn = True
-        model.task_loss_weights = {'contact': 1.}
+       
+        model.tasks = ['jigsaw']
+        
+        #hardwired here - not sure there is a need for a parameter
+        
+        model.task_heads['jigsaw']=models.self_supervised.msa.modules.JigsawHead(12*64,1)
+        model.need_attn = False
+        model.task_loss_weights = {'jigsaw': 1.}
         model.train_metrics = train_metrics
         model.val_metrics = val_metrics
         if args.test:
@@ -210,6 +225,8 @@ def main():
             model.losses['contact'] = BinaryFocalLoss(gamma=args.loss_focal_gamma, weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
         elif args.loss == 'dice':
             model.losses['contact'] = DiceLoss(ignore_index=-1)
+        elif args.loss== 'mse':
+            model.losses['jigsaw'] = MSELoss()
         else:
             raise ValueError("Unknown loss: %s" % args.loss)
 
@@ -219,12 +236,14 @@ def main():
         val_dl = kfold_cv_downstream.val_dataloader()
 
         tb_logger = TensorBoardLogger(save_dir=log_dir, name=log_exp_name, version=log_run_name)
-        checkpoint_callback_valloss = ModelCheckpoint(monitor='contact_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
-        checkpoint_callback_toplprec = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
-        checkpoint_callback_toplprecpos = ModelCheckpoint(monitor='contact_validation_topLprec_coconet', filename="downstream-{epoch:02d}-{contact_validation_topLprecpos:.4f}", mode='max')
-        checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
-        checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_Global_F1score:.4f}", mode='max')
 
+        #checkpoint_callback_valloss = ModelCheckpoint(monitor='contact_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
+        #checkpoint_callback_toplprec = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
+        #checkpoint_callback_toplprecpos = ModelCheckpoint(monitor='contact_validation_topLprec_coconet', filename="downstream-{epoch:02d}-{contact_validation_topLprecpos:.4f}", mode='max')
+        #checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
+        #checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_Global_F1score:.4f}", mode='max')
+        
+        checkpoint_callback_valloss = ModelCheckpoint(monitor='jigsaw_validation_mae', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
         trainer = Trainer(max_epochs=args.num_epochs,
                           gpus=args.num_gpus,
                           auto_select_gpus=num_gpus > 0,
@@ -234,7 +253,7 @@ def main():
                           enable_progress_bar=not args.disable_progress_bar,
                           log_every_n_steps=args.log_every,
                           logger=tb_logger,
-                          callbacks=[checkpoint_callback_valloss, checkpoint_callback_toplprec, checkpoint_callback_toplprecpos, checkpoint_callback_f1score, checkpoint_callback_matthews])
+                          callbacks=[checkpoint_callback_valloss])#, checkpoint_callback_toplprec, checkpoint_callback_toplprecpos, checkpoint_callback_f1score, checkpoint_callback_matthews])
         trainer.fit(model, train_dl, val_dl)
 
     if args.test:
@@ -252,7 +271,7 @@ def main():
 
         model.downstream_loss_device_flag = False
 
-        trainer.test(model, test_dl, ckpt_path=latest_checkpoint, verbose=True)
+        trainer.predict(model, test_dl, ckpt_path=latest_checkpoint, verbose=True)
 
 
 if __name__ == '__main__':

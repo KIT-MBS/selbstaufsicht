@@ -71,13 +71,15 @@ class JigsawHead(nn.Module):
         super(JigsawHead, self).__init__()
         self.euclid_emb = euclid_emb
         if proj_linear:
-            self.proj = nn.Linear(d, num_classes, **factory_kwargs)
+            #print(d, num_classes," proj_linear")
+            self.proj = nn.Sequential(nn.Linear(d, num_classes, **factory_kwargs),nn.ReLU())
         else:
             self.proj = nn.Sequential(
                 nn.Linear(d, d, **factory_kwargs),
                 nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs),
                 nn.ReLU(),
                 nn.Linear(d, num_classes, bias=False, **factory_kwargs),
+                #nn.Linear(d, 1, bias=False, **factory_kwargs)
             )
         self.num_classes = num_classes
         self.boot = boot
@@ -97,15 +99,20 @@ class JigsawHead(nn.Module):
         """
 
         # latent is of shape [B, E, L, D]
+
+        #print(latent.shape," shape of the latent")
         if self.frozen:
             latent = latent[:, 0, 0, :]  # [B,D]
         else:
             latent = latent[:, :, 0, :]  # [B, E, D]
-
+        #print(latent.shape, " shape of the latent 2")
         if self.euclid_emb:
             return self.proj(latent)  # [B, E, NClasses]
         else:
-            output = self.proj(latent)
+        #    print(x['msa'].shape," shape of the input")
+        #    print(x['msa']," msa")
+        #    print(self.proj(latent).shape," shape of the projection")
+            output = torch.mean(self.proj(latent),2)
             if self.boot:
                 if self.seq_dist:
                     return output.reshape(output.shape[1],)
@@ -115,8 +122,8 @@ class JigsawHead(nn.Module):
                 if self.frozen:
                     return self.proj(latent)
                 else:
-                    return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
-
+                    #return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
+                    return output
 
 # TODO different hidden and out dim?
 class ContrastiveHead(nn.Module):

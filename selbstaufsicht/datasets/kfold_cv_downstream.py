@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader, Subset, random_split
 from typing import Union
 
 from selbstaufsicht.datasets import CoCoNetDataset
+from selbstaufsicht.datasets.challenge_label import challData_lab
 from selbstaufsicht.utils import data_loader_worker_init
 
 
@@ -54,7 +55,15 @@ class KFoldCVDownstream():
 
         # load dataset
         self.root = os.environ['DATA_PATH']
-        self.train_dataset = CoCoNetDataset(self.root,
+#        self.train_dataset = CoCoNetDataset(self.root,
+#                                            'train',
+#                                            transform=transform,
+#                                            discard_train_size_based=discard_train_size_based,
+#                                            diversity_maximization=diversity_maximization,
+#                                            max_seq_len=max_seq_len,
+#                                            min_num_seq=min_num_seq,
+#                                            secondary_window=self.secondary_window)
+        self.train_dataset=challData_lab(self.root,
                                             'train',
                                             transform=transform,
                                             discard_train_size_based=discard_train_size_based,
@@ -62,8 +71,6 @@ class KFoldCVDownstream():
                                             max_seq_len=max_seq_len,
                                             min_num_seq=min_num_seq,
                                             secondary_window=self.secondary_window)
-
-        # setup splits
         if self.num_folds == 1:
             val_size = int(self.val_ratio * len(self.train_dataset))
             train_size = len(self.train_dataset) - val_size

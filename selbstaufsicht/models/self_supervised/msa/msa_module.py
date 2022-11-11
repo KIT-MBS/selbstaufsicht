@@ -9,7 +9,6 @@ import seaborn as sns
 import sklearn.metrics as skl_metrics
 import torch
 from torch import nn
-
 from selbstaufsicht.modules import Transmorpher2d, TransmorpherBlock2d
 
 
@@ -83,12 +82,19 @@ class MSAModel(pl.LightningModule):
 
         self.embedding = nn.Embedding(alphabet_size, d, padding_idx=padding_token, scale_grad_by_freq=emb_grad_freq_scale)
         self.positional_embedding = nn.Embedding(max_seqlen, d, padding_idx=pos_padding_token)
+#        print(max_seqlen," max_seqlen")
         block = TransmorpherBlock2d(dim_head, num_heads, 2 * dim_head * num_heads, dropout=dropout, attention=attention, activation=activation, layer_norm_eps=layer_norm_eps, **factory_kwargs)
         self.backbone = Transmorpher2d(block, num_blocks, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
         self.tasks = None
         # TODO adapt to non-simultaneous multi task training (all the heads will be present in model, but not all targets in one input)
-        if task_heads is not None:
+        #if task_heads is not None:
+        #    self.tasks=['jigsaw']
+        if ['jigsaw'] in task_heads:
+            self.tasks=['jigsaw']
+        else:
             self.tasks = [t for t in task_heads.keys()]
+
+           # self.tasks = [t for t in task_heads.keys()]
         self.task_loss_weights = task_loss_weights
         if self.tasks is not None and self.task_loss_weights is None:
             self.task_loss_weights = {t: 1. for t in self.tasks}
@@ -96,12 +102,15 @@ class MSAModel(pl.LightningModule):
             self.task_loss_weights = {t: self.task_loss_weights[t] / (sum(self.task_loss_weights.values())) for t in self.task_loss_weights}
 
         self.task_heads = task_heads
+        print(task_losses," msa module task losses")
         self.losses = task_losses
         self.train_metrics = train_metrics
         self.val_metrics = val_metrics
         self.test_metrics = None
         self.downstream_loss_device_flag = False
         if task_heads is not None:
+            print(task_heads.keys()," task heads msa")
+            print(task_losses.keys()," losses msa")
             assert self.task_heads.keys() == self.losses.keys()
         self.lr = lr
         self.lr_warmup = lr_warmup
@@ -124,6 +133,13 @@ class MSAModel(pl.LightningModule):
         """
 
         # NOTE feature dim = -1
+        
+        #TODO maybe there is a better solution then taking first maxlen embeddings???
+
+        if x.shape[2]>self.max_seqlen:
+            aux_features=aux_features[:,:,0:self.max_seqlen]
+            x=x[:,:,0:self.max_seqlen]
+
         x = self.embedding(x) + self.positional_embedding(aux_features)
         return self.backbone(x, padding_mask, self.need_attn)
 
@@ -154,6 +170,7 @@ class MSAModel(pl.LightningModule):
             metrics = self.val_metrics
         if test:
             assert self.test_metrics is not None
+            print(self.test_metrics," metrics test msa")
             mode = "test"
             metrics = self.test_metrics
 
@@ -172,9 +189,15 @@ class MSAModel(pl.LightningModule):
 
         if 'contrastive' in self.tasks:
             y['contrastive'] = None
-
-        preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
-        lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
+        
+        preds = {task: self.task_heads[task](latent, x) for task in self.tasks}#['jigsaw']}#self.tasks}
+        
+        #print(self.losses['jigsaw']," losses")
+        #print(preds['jigsaw'])
+        #print(y['structure']," structure")
+        
+        y['jigsaw']=y['structure']
+        lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}#['jigsaw']}# self.tasks}
         for task in self.tasks:
             for m in metrics[task]:
                 # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly
@@ -184,8 +207,8 @@ class MSAModel(pl.LightningModule):
                     metrics[task][m](preds[task], y[task])
                 if 'confmat' not in m and 'unreduced' not in m:
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
-        loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
-        for task in self.tasks:
+        loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])#['jigsaw']])#self.tasks])
+        for task in self.tasks:#['jigsaw']:#self.tasks:
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
@@ -237,6 +260,15 @@ class MSAModel(pl.LightningModule):
         if 'contact' in self.tasks and not self.freeze_backbone:
             x['attn_maps'] = [row_map.detach() for row_map in x['attn_maps']]
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss, 'test': test}
+       
+       #TODO with  aclean inference script this should be removed
+       if self.tasks==['jigsaw']
+            fff=open("output.txt","a+")
+        
+            for iv in range(out['preds']['jigsaw'].shape[-1]):
+                fff.write(str(float(out['preds']['jigsaw'][0,iv]))+'\n')
+            fff.close()
+       #print(out['preds']['jigsaw'].shape," preds shape")
         return out
 
     def _create_confusion_matrix(self, conf_mat_metric: Any, mode: str) -> None:
