@@ -315,8 +315,11 @@ class MSASubsampling():
             #x['msa'] = _subsample_uniform(msa, self.nseqs, x['ind')
             del x['indices']
         else:
-            #x['msa'],y['structure'] = self.sampling_fn(msa, self.nseqs,y['structure'])
-            x['msa'],y['structure'] = _subsample_uniform(msa, self.nseqs,y['structure'])
+         #   x['msa'],y['structure'] = self.sampling_fn(msa, self.nseqs)
+            if 'structure' in y.keys():
+                x['msa'],y['structure'] = _subsample_uniform(msa, self.nseqs,y['structure'])
+            else:
+                x['msa'],z=_subsample_uniform(msa, self.nseqs,torch.zeros(len(msa)))
         return x, y
 
 

@@ -196,8 +196,8 @@ class MSAModel(pl.LightningModule):
         #print(self.losses['jigsaw']," losses")
         #print(preds['jigsaw'])
         #print(y['structure']," structure")
-        
-        y['jigsaw']=y['structure']
+        if 'jigsaw' in self.tasks:
+            y['jigsaw']=y['structure']
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}#['jigsaw']}# self.tasks}
         for task in self.tasks:
             for m in metrics[task]:
