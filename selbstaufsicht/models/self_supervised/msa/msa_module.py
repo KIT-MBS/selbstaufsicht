@@ -87,14 +87,9 @@ class MSAModel(pl.LightningModule):
         self.backbone = Transmorpher2d(block, num_blocks, nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs))
         self.tasks = None
         # TODO adapt to non-simultaneous multi task training (all the heads will be present in model, but not all targets in one input)
-        #if task_heads is not None:
-        #    self.tasks=['jigsaw']
-        if 'jigsaw' in task_heads:
-            self.tasks=['jigsaw']
-        else:
+        if task_heads is not None:
             self.tasks = [t for t in task_heads.keys()]
 
-           # self.tasks = [t for t in task_heads.keys()]
         self.task_loss_weights = task_loss_weights
         if self.tasks is not None and self.task_loss_weights is None:
             self.task_loss_weights = {t: 1. for t in self.tasks}
@@ -102,7 +97,6 @@ class MSAModel(pl.LightningModule):
             self.task_loss_weights = {t: self.task_loss_weights[t] / (sum(self.task_loss_weights.values())) for t in self.task_loss_weights}
 
         self.task_heads = task_heads
-        print(task_losses," msa module task losses")
         self.losses = task_losses
         self.train_metrics = train_metrics
         self.val_metrics = val_metrics
@@ -191,14 +185,12 @@ class MSAModel(pl.LightningModule):
         if 'contrastive' in self.tasks:
             y['contrastive'] = None
         
-        preds = {task: self.task_heads[task](latent, x) for task in self.tasks}#['jigsaw']}#self.tasks}
+        preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
         
-        #print(self.losses['jigsaw']," losses")
-        #print(preds['jigsaw'])
-        #print(y['structure']," structure")
+        # TODO: What is the purpose of that?
+        y['thermostable']=y['structure']
         
-        y['jigsaw']=y['structure']
-        lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}#['jigsaw']}# self.tasks}
+        lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
             for m in metrics[task]:
                 # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly
@@ -208,8 +200,8 @@ class MSAModel(pl.LightningModule):
                     metrics[task][m](preds[task], y[task])
                 if 'confmat' not in m and 'unreduced' not in m:
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
-        loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])#['jigsaw']])#self.tasks])
-        for task in self.tasks:#['jigsaw']:#self.tasks:
+        loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
+        for task in self.tasks:
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
 
         self.log(f'{mode}_loss', loss, on_step=self.training, on_epoch=True)
@@ -263,11 +255,11 @@ class MSAModel(pl.LightningModule):
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss, 'test': test}
        
        #TODO with  aclean inference script this should be removed
-        if self.tasks==['jigsaw']:
+        if self.tasks==['thermostable']:
             fff=open("output.txt","a+")
         
-            for iv in range(out['preds']['jigsaw'].shape[-1]):
-                fff.write(str(float(out['preds']['jigsaw'][0,iv]))+'\n')
+            for iv in range(out['preds']['thermostable'].shape[-1]):
+                fff.write(str(float(out['preds']['thermostable'][0,iv]))+'\n')
             fff.close()
        #print(out['preds']['jigsaw'].shape," preds shape")
         return out

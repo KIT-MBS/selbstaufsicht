@@ -170,14 +170,15 @@ def get_tasks(tasks: List[str],
                 task_losses['jigsaw_boot'] = CrossEntropyLoss()
                 train_metrics['jigsaw_boot'] = ModuleDict({'acc': Accuracy()})
                 val_metrics['jigsaw_boot'] = ModuleDict({'acc': Accuracy()})
-#    print(task_losses," task_losses utils")
+    #print(task_losses," task_losses utils")
     return transform, task_heads, task_losses, train_metrics, val_metrics
 
 
-def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., inference=False, device=None, secondary_window=-1):
+def get_downstream_transforms(task: str, subsample_depth: int, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., inference=False, device=None, secondary_window=-1):
     transformslist = [
         MSASubsampling(subsample_depth, mode=subsample_mode),
         MSATokenize(rna2index)]
+    # TODO: Is it a problem that jigsaw was renamed into thermostable for the thermostability task? Does it need shuffling?
     if jigsaw_partitions > 0:
         transformslist.append(
             RandomMSAShuffling(
@@ -186,51 +187,54 @@ def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', 
                 num_classes=1)
         )
     transformslist.append(ExplicitPositionalEncoding())
-    #if not inference:
-    #    transformslist.append(DistanceFromChain(device=device))
-    #    transformslist.append(ContactFromDistance(threshold, secondary_window=secondary_window))
+    if task == 'contact' and not inference:
+       transformslist.append(DistanceFromChain(device=device))
+       transformslist.append(ContactFromDistance(threshold, secondary_window=secondary_window))
     downstream_transform = transforms.SelfSupervisedCompose(transformslist)
 
     return downstream_transform
 
 
-def get_downstream_metrics():
+def get_downstream_metrics(task: str):
     train_metrics = ModuleDict()
     val_metrics = ModuleDict()
     test_metrics = ModuleDict()
 
-    train_metrics['jigsaw'] = ModuleDict({#'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
-                                           #'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
-                                           #'topLprec_unreduced': BinaryPrecision(reduce=False),
-                                           #'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
-                                           #'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
-                                           #'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
-                                           #'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
-                                           'mae':MeanAbsoluteError()
-                                           })
+    if task == 'contact':
+        train_metrics[task] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
+                                          'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
+                                          'topLprec_unreduced': BinaryPrecision(reduce=False),
+                                          'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
+                                          'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
+                                          'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
+                                          'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
+                                          })
 
-    val_metrics['jigsaw'] = ModuleDict({#'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
-                                         #'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
-                                         #'topLprec_unreduced': BinaryPrecision(reduce=False),
-                                         #'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
-                                         #'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
-                                         #'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
-                                         #'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
-                                         'mae':MeanAbsoluteError()
+        val_metrics[task] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
+                                        'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
+                                        'topLprec_unreduced': BinaryPrecision(reduce=False),
+                                        'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
+                                        'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
+                                        'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
+                                        'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
+                                        })
+
+        test_metrics[task] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1),
+                                         'topLprec': BinaryPrecision(),
+                                         'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
+                                         'topLprec_unreduced': BinaryPrecision(reduce=False),
+                                         'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
+                                         'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
+                                         'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
+                                         'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
                                          })
-
-    test_metrics['jigsaw'] = ModuleDict(
-            {
-                #'acc': Accuracy(class_dim=1, ignore_index=-1),
-                #'topLprec': BinaryPrecision(),
-                #'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
-                #'topLprec_unreduced': BinaryPrecision(reduce=False),
-                #'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
-                #'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
-                #'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
-                #'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1),
-                'mae':MeanAbsoluteError()
-                })
+    elif task == 'thermostable':
+        train_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
+        train_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
+        train_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
+    else:
+        raise ValueError("Unknown downstream task:", task)
+    
     return train_metrics, val_metrics, test_metrics
 
 
