@@ -37,7 +37,7 @@ class challData_lab(Dataset):
             max_seq_len: int = 400,
             min_num_seq: int = 50,
             secondary_window=-1,num_cv=10,num_test=2413,test_splits=3):
-        self.root = pathlib.Path(root)
+        self.root = str(pathlib.Path(root))
         self.transform = transform
         self.token_mapping = rna2index
         self.secondary_window = secondary_window

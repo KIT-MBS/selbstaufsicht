@@ -89,7 +89,7 @@ class MSAModel(pl.LightningModule):
         # TODO adapt to non-simultaneous multi task training (all the heads will be present in model, but not all targets in one input)
         #if task_heads is not None:
         #    self.tasks=['jigsaw']
-        if ['jigsaw'] in task_heads:
+        if 'jigsaw' in task_heads:
             self.tasks=['jigsaw']
         else:
             self.tasks = [t for t in task_heads.keys()]
@@ -118,6 +118,7 @@ class MSAModel(pl.LightningModule):
         self.freeze_backbone = freeze_backbone
         self.save_hyperparameters(h_params)
         self.log_images = False
+        self.max_seqlen=max_seqlen
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
         """
@@ -262,7 +263,7 @@ class MSAModel(pl.LightningModule):
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss, 'test': test}
        
        #TODO with  aclean inference script this should be removed
-       if self.tasks==['jigsaw']
+        if self.tasks==['jigsaw']:
             fff=open("output.txt","a+")
         
             for iv in range(out['preds']['jigsaw'].shape[-1]):
