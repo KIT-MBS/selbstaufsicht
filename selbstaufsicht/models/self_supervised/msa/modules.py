@@ -71,16 +71,74 @@ class JigsawHead(nn.Module):
         super(JigsawHead, self).__init__()
         self.euclid_emb = euclid_emb
         if proj_linear:
-            #print(d, num_classes," proj_linear")
-            self.proj = nn.Sequential(nn.Linear(d, num_classes, **factory_kwargs),nn.ReLU())
+            self.proj = nn.Linear(d, num_classes, **factory_kwargs)
         else:
             self.proj = nn.Sequential(
                 nn.Linear(d, d, **factory_kwargs),
                 nn.LayerNorm(d, eps=layer_norm_eps, **factory_kwargs),
                 nn.ReLU(),
                 nn.Linear(d, num_classes, bias=False, **factory_kwargs),
-                #nn.Linear(d, 1, bias=False, **factory_kwargs)
             )
+        self.num_classes = num_classes
+        self.boot = boot
+        self.frozen = frozen
+        self.seq_dist = seq_dist
+
+    def forward(self, latent: torch.Tensor, x: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        Receives latent representation, performs linear transformation to predict applied permutations.
+
+        Args:
+            latent (torch.Tensor): Latent representation [B, E, L, D].
+            x (Dict[str, torch.Tensor]): Input data.
+
+        Returns:
+            torch.Tensor: Jigsaw prediction [B, NClasses, E].
+        """
+
+        # latent is of shape [B, E, L, D]
+        if self.frozen:
+            latent = latent[:, 0, 0, :]  # [B,D]
+        else:
+            latent = latent[:, :, 0, :]  # [B, E, D]
+        if self.euclid_emb:
+            return self.proj(latent)  # [B, E, NClasses]
+        else:
+            output = self.proj(latent)
+            if self.boot:
+                if self.seq_dist:
+                    return output.reshape(output.shape[1],)
+                else:
+                    return output.reshape(-1, self.num_classes)
+            else:
+                if self.frozen:
+                    return self.proj(latent)
+                else:
+                    return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
+                
+
+class ThermoStableHead(nn.Module):
+    def __init__(self,
+                 d: int,
+                 num_classes: int,
+                 layer_norm_eps: float = 1e-5,
+                 device: Union[str, torch.device] = None,
+                 dtype: torch.dtype = None, boot: bool = False, frozen: bool = False,
+                 seq_dist: bool = False) -> None:
+        """
+        Initializes the head module for the thermodynamic stability downstream task.
+
+        Args:
+            d (int): Embedding dimensionality.
+            num_classes (int): Number of classes (number of allowed permutations)
+            layer_norm_eps (float, optional): Epsilon used by LayerNormalization. Defaults to 1e-5.
+            device (Union[str, torch.device], optional): Used computation device. Defaults to None.
+            dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
+        """
+
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(ThermoStableHead, self).__init__()
+        self.proj = nn.Sequential(nn.Linear(d, num_classes, **factory_kwargs), nn.ReLU())
         self.num_classes = num_classes
         self.boot = boot
         self.frozen = frozen
@@ -106,24 +164,23 @@ class JigsawHead(nn.Module):
         else:
             latent = latent[:, :, 0, :]  # [B, E, D]
         #print(latent.shape, " shape of the latent 2")
-        if self.euclid_emb:
-            return self.proj(latent)  # [B, E, NClasses]
-        else:
-        #    print(x['msa'].shape," shape of the input")
-        #    print(x['msa']," msa")
-        #    print(self.proj(latent).shape," shape of the projection")
-            output = torch.mean(self.proj(latent),2)
-            if self.boot:
-                if self.seq_dist:
-                    return output.reshape(output.shape[1],)
-                else:
-                    return output.reshape(-1, self.num_classes)
+        
+        #print(x['msa'].shape," shape of the input")
+        #print(x['msa']," msa")
+        #print(self.proj(latent).shape," shape of the projection")
+        output = torch.mean(self.proj(latent), 2)
+        if self.boot:
+            if self.seq_dist:
+                return output.reshape(output.shape[1],)
             else:
-                if self.frozen:
-                    return self.proj(latent)
-                else:
-                    #return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
-                    return output
+                return output.reshape(-1, self.num_classes)
+        else:
+            if self.frozen:
+                return self.proj(latent)
+            else:
+                #return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
+                return output
+
 
 # TODO different hidden and out dim?
 class ContrastiveHead(nn.Module):

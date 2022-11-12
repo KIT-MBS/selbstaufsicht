@@ -281,19 +281,21 @@ class MSAboot():
 
 
 class MSASubsampling():
-    def __init__(self, num_sequences: int, mode: str = 'uniform') -> None:
+    def __init__(self, num_sequences: int, mode: str = 'uniform', thermostable: bool = False) -> None:
         """
         Initializes MSA subsampling.
 
         Args:
             num_sequences (int): Number of subsampled sequences.
             mode (str, optional): Subsampling mode. Currently implemented: uniform, diversity, fixed. Defaults to 'uniform'.
+            thermostable (bool, optional): Whether thermostability downstream task is active. Defaults to False.
         """
 
         self.mode = mode
         #self.sampling_fn = _get_msa_subsampling_fn(mode)
         #self.sampling_fn=_subsample_uniform()
         self.nseqs = num_sequences
+        self.theromstable = thermostable
 
     def __call__(self, x: Dict[str, Union[MultipleSeqAlignment, torch.Tensor]], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
         """
@@ -311,15 +313,18 @@ class MSASubsampling():
         if self.mode == 'diversity':
             if 'indices' not in x:
                 raise KeyError('No indices provided for diversity-maximizing subsampling!')
-            x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'])
+            if self.theromstable:
+                x['msa'], y['thermostable'] = self.sampling_fn(msa, self.nseqs, x['indices'], y['thermostable'])
+            else:
+                x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'])
             #x['msa'] = _subsample_uniform(msa, self.nseqs, x['ind')
             del x['indices']
         else:
-         #   x['msa'],y['structure'] = self.sampling_fn(msa, self.nseqs)
-            if 'structure' in y.keys():
-                x['msa'],y['structure'] = _subsample_uniform(msa, self.nseqs,y['structure'])
+            if self.thermostable:
+                x['msa'], y['thermostable'] = self.sampling_fn(msa, self.nseqs, y['thermostable'])
             else:
-                x['msa'],z=_subsample_uniform(msa, self.nseqs,torch.zeros(len(msa)))
+                x['msa'] = self.sampling_fn(msa, self.nseqs)
+            #x['msa'],y['structure'] = _subsample_uniform(msa, self.nseqs,y['structure'])
         return x, y
 
 
@@ -383,8 +388,8 @@ class DistanceFromChain():
             torch.Tensor [L', L'] residue distance map
         """
         structure = y['structure']
-        #assert len(structure) == 1
-        #assert len(structure[0]) == 1
+        assert len(structure) == 1
+        assert len(structure[0]) == 1
 
         if self.device is None:
             if torch.cuda.is_available():
@@ -736,28 +741,31 @@ def _get_masking_fn(mode: str, start_token: bool) -> Callable[
     raise ValueError('unknown token masking mode', mode)
 
 
-def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, y: torch.Tensor) -> (MultipleSeqAlignment, torch.Tensor):
+def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, y: torch.Tensor = None) -> Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]:
     """
     Subsamples sequences uniformly sampled from the given MSA.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
+        y (torch.Tensor, optional): Target.
 
     Returns:
-        MultipleSeqAlignment: Subsampled, lettered MSA.
+        Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]: Subsampled, lettered MSA; subsampled target (optional).
     """
 
     max_nseqs = len(msa)
     if max_nseqs > nseqs:
         indices = torch.cat((torch.tensor([0]), (torch.randperm(max_nseqs-1)+1)[:nseqs-1]), dim=0)
         msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
-        y=[y[i] for i in indices]
-        y=torch.Tensor(y)
-    return msa,y
+        if y is not None:
+            y = [y[i] for i in indices]
+            y = torch.Tensor(y)
+            return msa, y
+    return msa
 
 
-def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indices: torch.Tensor) -> MultipleSeqAlignment:
+def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indices: torch.Tensor, y: torch.Tensor = None) -> Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]:
     """
     Subsamples sequences from the given MSA according to the diviserty maximization scheme.
     Requires pre-computed indices of most diverse sequences.
@@ -766,35 +774,43 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indic
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
         indices (torch.Tensor): Indices of most diverse sequences.
+        y (torch.Tensor, optional): Target.
 
     Returns:
-        MultipleSeqAlignment: Subsampled, lettered MSA.
+        Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]: Subsampled, lettered MSA; subsampled target (optional).
     """
 
     assert indices.shape[0] == nseqs
     assert len(msa) >= nseqs
 
     msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
+    if y is not None:
+        y = [y[i] for i in indices]
+        y = torch.Tensor(y)
+        return msa, y
     return msa
 
 
-def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int) -> MultipleSeqAlignment:
+def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int, y: torch.Tensor = None) -> Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]:
     """
     Subsamples the first n sequences from the MSA.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
+        y (torch.Tensor, optional): Target.
 
     Returns:
-        MultipleSeqAlignment: Subsampled, lettered MSA.
+        Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]: Subsampled, lettered MSA; subsampled target (optional).
     """
     # TODO ensure this works, when there are not 2*nseqs sequences in the msa
 
+    if y is not None:
+        return msa[:nseqs], torch.Tensor(y[:nseqs])
     return msa[:nseqs]
 
 
-def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, torch.Tensor,Optional[bool]], Tuple[MultipleSeqAlignment,torch.Tensor]]:
+def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, torch.Tensor], Tuple[MultipleSeqAlignment,torch.Tensor]]:
     """
     Returns the subsampling function that corresponds to the given subsampling mode.
 
@@ -805,8 +821,8 @@ def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, t
         ValueError: Unknown subsampling mode.
 
     Returns:
-        Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]: Subsampling function
-        (lettered MSA; number of sequences to be subsampled -> subsampled, lettered MSA)
+        Callable[[MultipleSeqAlignment, int], MultipleSeqAlignment]: Subsampling function
+        (lettered MSA; number of sequences to be subsampled; target (optional) -> subsampled, lettered MSA)
     """
 
     if mode == 'uniform':
