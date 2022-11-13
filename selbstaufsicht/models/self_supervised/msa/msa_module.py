@@ -188,7 +188,7 @@ class MSAModel(pl.LightningModule):
         preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
         
         # TODO: What is the purpose of that?
-        y['thermostable']=y['structure']
+        #y['thermostable']=y['structure']
         
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:

@@ -81,7 +81,7 @@ def main():
     if args.test and args.cv_num_folds >= 2:
         raise ValueError("Testing only works with disabled cross validation!")
 
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold, secondary_window=secondary_window)
+    downstream_transform = get_downstream_transforms(task='thermostable',subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold, secondary_window=secondary_window)
     kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform,
                                                      num_folds=args.cv_num_folds,
                                                      val_ratio=args.validation_ratio,
@@ -153,7 +153,7 @@ def main():
             log_run_name = 'fold_%d' % (fold_idx + 1)
         h_params['downstream__log_run_name'] = log_run_name
 
-        train_metrics, val_metrics, test_metrics = get_downstream_metrics()
+        train_metrics, val_metrics, test_metrics = get_downstream_metrics(task='thermostable')
         _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                      h_params['feature_dim_head'] * h_params['num_heads'],
                                                      subsample_depth=h_params['subsampling_depth'],
@@ -207,13 +207,13 @@ def main():
                     max_seqlen=h_params['cropping_size'],
                     h_params=h_params)
        
-        model.tasks = ['jigsaw']
+        model.tasks = ['thermostable']
         
         #hardwired here - not sure there is a need for a parameter
         
-        model.task_heads['jigsaw']=models.self_supervised.msa.modules.JigsawHead(12*64,1)
+        model.task_heads['thermostable']=models.self_supervised.msa.modules.ThermoStableHead(12*64,1)
         model.need_attn = False
-        model.task_loss_weights = {'jigsaw': 1.}
+        model.task_loss_weights = {'thermostable': 1.}
         model.train_metrics = train_metrics
         model.val_metrics = val_metrics
         if args.test:
@@ -226,7 +226,7 @@ def main():
         elif args.loss == 'dice':
             model.losses['contact'] = DiceLoss(ignore_index=-1)
         elif args.loss== 'mse':
-            model.losses['jigsaw'] = MSELoss()
+            model.losses['thermostable'] = MSELoss()
         else:
             raise ValueError("Unknown loss: %s" % args.loss)
 
@@ -243,7 +243,7 @@ def main():
         #checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
         #checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_Global_F1score:.4f}", mode='max')
         
-        checkpoint_callback_valloss = ModelCheckpoint(monitor='jigsaw_validation_mae', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
+        checkpoint_callback_valloss = ModelCheckpoint(monitor='thermostable_validation_mae', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
         trainer = Trainer(max_epochs=args.num_epochs,
                           gpus=args.num_gpus,
                           auto_select_gpus=num_gpus > 0,
@@ -254,6 +254,8 @@ def main():
                           log_every_n_steps=args.log_every,
                           logger=tb_logger,
                           callbacks=[checkpoint_callback_valloss])#, checkpoint_callback_toplprec, checkpoint_callback_toplprecpos, checkpoint_callback_f1score, checkpoint_callback_matthews])
+        print(next(iter(train_dl))," train_dl\n")
+        print(next(iter(val_dl))," val_dl\n")
         trainer.fit(model, train_dl, val_dl)
 
     if args.test:

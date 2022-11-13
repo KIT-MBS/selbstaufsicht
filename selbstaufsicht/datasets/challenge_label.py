@@ -105,15 +105,16 @@ class challData_lab(Dataset):
         if self.transform is not None:
             if self.indices is None:
                 if self.secondary_window > -1:
-                    item = self.transform({'msa': x}, {'structure': y, 'basepairs': self.bprnapairs[i]})
+                    item = self.transform({'msa': x}, {'thermosatable': y, 'basepairs': self.bprnapairs[i]})
                 else:
-                    item = self.transform({'msa': x}, {'structure': y})
+                    item = self.transform({'msa': x}, {'thermostable': y})
             else:
                 if self.secondary_window > -1:
-                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y, 'basepairs': self.bprnapairs[i]})
+                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'thermostable': y, 'basepairs': self.bprnapairs[i]})
                 else:
-                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'structure': y})
+                    item = self.transform({'msa': x, 'indices': self.indices[i]}, {'thermostable': y})
         #    print(len(item[0]['msa']), item[1]['structure'].shape," item")
+            print(y," dataset")
             return item
         return x, y
 

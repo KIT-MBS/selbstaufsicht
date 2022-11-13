@@ -292,10 +292,10 @@ class MSASubsampling():
         """
 
         self.mode = mode
-        #self.sampling_fn = _get_msa_subsampling_fn(mode)
+        self.sampling_fn = _get_msa_subsampling_fn(mode)
         #self.sampling_fn=_subsample_uniform()
         self.nseqs = num_sequences
-        self.theromstable = thermostable
+        self.thermostable = thermostable
 
     def __call__(self, x: Dict[str, Union[MultipleSeqAlignment, torch.Tensor]], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
         """
@@ -313,8 +313,9 @@ class MSASubsampling():
         if self.mode == 'diversity':
             if 'indices' not in x:
                 raise KeyError('No indices provided for diversity-maximizing subsampling!')
-            if self.theromstable:
+            if self.thermostable:
                 x['msa'], y['thermostable'] = self.sampling_fn(msa, self.nseqs, x['indices'], y['thermostable'])
+                #x['msa'], y['structure'] = self.sampling_fn(msa, self.nseqs, x['indices'], y['structure'])
             else:
                 x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'])
             #x['msa'] = _subsample_uniform(msa, self.nseqs, x['ind')
@@ -322,6 +323,7 @@ class MSASubsampling():
         else:
             if self.thermostable:
                 x['msa'], y['thermostable'] = self.sampling_fn(msa, self.nseqs, y['thermostable'])
+                #x['msa'], y['structure'] = self.sampling_fn(msa, self.nseqs, y['structure'])
             else:
                 x['msa'] = self.sampling_fn(msa, self.nseqs)
             #x['msa'],y['structure'] = _subsample_uniform(msa, self.nseqs,y['structure'])
