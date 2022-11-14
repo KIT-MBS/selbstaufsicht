@@ -78,7 +78,7 @@ def get_tasks(tasks: List[str],
     max_seqlen = crop_size + int('START_TOKEN' in rna2index) + int(jigsaw_delimiter) * (jigsaw_partitions + 1)
 
     transformslist = [
-        MSASubsampling(subsample_depth, mode=subsample_mode,thermostable=True),
+        MSASubsampling(subsample_depth, mode=subsample_mode,thermostable=False),
         MSACropping(crop_size, mode=crop_mode),
         MSATokenize(rna2index)]
 

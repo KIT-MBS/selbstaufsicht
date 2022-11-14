@@ -172,10 +172,10 @@ def main():
     dataset_name = args.dataset.lower()
     # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 
-    downstream_transform = get_downstream_transforms(subsample_depth=args.subsampling_depth, jigsaw_partitions=args.jigsaw_partitions)
-    downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
-    test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
-    exclude_ids = downstream_ds.fam_ids + test_ds.fam_ids
+    #downstream_transform = get_downstream_transforms(task='',subsample_depth=args.subsampling_depth, jigsaw_partitions=args.jigsaw_partitions)
+    #downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
+    #test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
+    #exclude_ids = downstream_ds.fam_ids + test_ds.fam_ids
 
     if dataset_name == 'xfam':
         dataset_path = os.path.join(root, 'Xfam')
@@ -212,6 +212,9 @@ def main():
     train_ds, val_ds = ds.split_train_val(validation_size, random=not args.disable_random_split)
     del ds
 
+    print(train_ds[0]," train_ds\n")
+    print(val_ds[0]," val_ds\n")
+
     train_dl = DataLoader(train_ds,
                           batch_size=args.batch_size,
                           shuffle=not args.disable_shuffle,
@@ -227,6 +230,9 @@ def main():
                         worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
                         generator=data_loader_rng,
                         pin_memory=num_gpus > 0)
+
+    print(next(iter(train_dl))," train_dl")
+    print(next(iter(val_dl))," val_dl")
 
     model = models.self_supervised.MSAModel(
         args.num_blocks,
