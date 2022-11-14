@@ -191,6 +191,7 @@ class MSAModel(pl.LightningModule):
         #y['thermostable']=y['structure']
         
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
+        print(metrics," metrics MSA module")
         for task in self.tasks:
             for m in metrics[task]:
                 # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly

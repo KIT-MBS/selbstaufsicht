@@ -230,8 +230,8 @@ def get_downstream_metrics(task: str):
                                          })
     elif task == 'thermostable':
         train_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
-        train_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
-        train_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
+        val_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
+        test_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
     else:
         raise ValueError("Unknown downstream task:", task)
     

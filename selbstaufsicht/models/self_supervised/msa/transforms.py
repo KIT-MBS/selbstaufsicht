@@ -764,7 +764,7 @@ def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, y: torch.Tensor = 
             y = [y[i] for i in indices]
             y = torch.Tensor(y)
             return msa, y
-    return msa
+    return msa, y
 
 
 def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indices: torch.Tensor, y: torch.Tensor = None) -> Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]:

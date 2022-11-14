@@ -154,6 +154,8 @@ def main():
         h_params['downstream__log_run_name'] = log_run_name
 
         train_metrics, val_metrics, test_metrics = get_downstream_metrics(task='thermostable')
+        print(train_metrics," train_metrics \n")
+        print(val_metrics," val_metrics \n")
         _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                      h_params['feature_dim_head'] * h_params['num_heads'],
                                                      subsample_depth=h_params['subsampling_depth'],
