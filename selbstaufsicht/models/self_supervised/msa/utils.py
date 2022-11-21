@@ -2,8 +2,9 @@ from functools import partial
 import torch
 from typing import Dict, List, Tuple, Union
 
-from torch.nn import CrossEntropyLoss, MSELoss
-from torchmetrics import MeanAbsoluteError
+from torch.nn import CrossEntropyLoss, MSELoss, MarginRankingLoss
+#from torchmetrics import MeanAbsoluteError
+from torchmetrics import SpearmanCorrCoef
 from torch.nn import Module, ModuleDict
 from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
@@ -229,9 +230,13 @@ def get_downstream_metrics(task: str):
                                          'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
                                          })
     elif task == 'thermostable':
-        train_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
-        val_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
-        test_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
+#        train_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
+#        val_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
+#        test_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
+        train_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef()})
+        val_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef()})
+        test_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef()})
+
     else:
         raise ValueError("Unknown downstream task:", task)
     

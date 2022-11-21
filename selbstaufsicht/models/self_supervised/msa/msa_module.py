@@ -88,7 +88,10 @@ class MSAModel(pl.LightningModule):
         self.tasks = None
         # TODO adapt to non-simultaneous multi task training (all the heads will be present in model, but not all targets in one input)
         if task_heads is not None:
-            self.tasks = [t for t in task_heads.keys()]
+            if 'thermostable' in task_heads.keys():
+                self.tasks=['thermostable']
+            else:
+                self.tasks = [t for t in task_heads.keys()]
 
         self.task_loss_weights = task_loss_weights
         if self.tasks is not None and self.task_loss_weights is None:
@@ -189,19 +192,37 @@ class MSAModel(pl.LightningModule):
         
         # TODO: What is the purpose of that?
         #y['thermostable']=y['structure']
-        
+        #print(self.losses," losses\n")
+        #print(self.losses['thermostable']," thermostable loss\n")
+        #print(preds['thermostable'], "pred thermost\n")
+        #print(y["thermostable"]," y thermost\n")
+        #print(self.losses['thermostable'](preds[task],y[task])," loss\n")
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
-        print(metrics," metrics MSA module")
+        #print(metrics," metrics MSA module")
         for task in self.tasks:
             for m in metrics[task]:
                 # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly
                 if task == 'contact':
                     metrics[task][m](torch.sigmoid(preds[task]), y[task])
                 else:
+                    #print(preds[task].shape," preds shape first\n")
+                    #print([1,preds[task].shape[-1]]," check shape\n")
+                    #preds[task]=torch.reshape(preds[task],(1,preds[task].shape[-1]))
+                    #print(preds[task].shape," preds shape\n")
+                    #print(y[task].shape," y shape\n")
+                    print(preds[task][0],type(preds[task][0][0])," preds msa module")
+                    print(y[task][0],type(y[task][0][0])," target msa module")
+                    #y[task]=y[task].to(torch.float16)
+                    #z=y[task].to(torch.float16)
+                    #print(z[0],type(z[0][0])," z target msa module")
                     metrics[task][m](preds[task], y[task])
+                    #print(metrics[task][m](preds[task], z)," metrics MSA")
                 if 'confmat' not in m and 'unreduced' not in m:
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
+        #print(loss," loss to be logged\n")
+
+
         for task in self.tasks:
             self.log(f'{task}_{mode}_loss', lossvals[task], on_step=self.training, on_epoch=True)
 
@@ -254,10 +275,10 @@ class MSAModel(pl.LightningModule):
         if 'contact' in self.tasks and not self.freeze_backbone:
             x['attn_maps'] = [row_map.detach() for row_map in x['attn_maps']]
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss, 'test': test}
-       
+
        #TODO with  aclean inference script this should be removed
         if self.tasks==['thermostable']:
-            fff=open("output.txt","a+")
+            fff=open("output_1.txt","a+")
         
             for iv in range(out['preds']['thermostable'].shape[-1]):
                 fff.write(str(float(out['preds']['thermostable'][0,iv]))+'\n')

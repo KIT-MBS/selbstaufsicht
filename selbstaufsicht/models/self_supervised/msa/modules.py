@@ -138,7 +138,8 @@ class ThermoStableHead(nn.Module):
 
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(ThermoStableHead, self).__init__()
-        self.proj = nn.Sequential(nn.Linear(d, num_classes, **factory_kwargs), nn.ReLU())
+#        self.proj = nn.Sequential(nn.Linear(d, num_classes, **factory_kwargs), nn.ReLU())
+        self.proj = nn.Linear(d, num_classes, **factory_kwargs)
         self.num_classes = num_classes
         self.boot = boot
         self.frozen = frozen
@@ -179,6 +180,7 @@ class ThermoStableHead(nn.Module):
                 return self.proj(latent)
             else:
                 #return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
+                print(output.shape," shape thermostable modules!!!!!!")
                 return output
 
 

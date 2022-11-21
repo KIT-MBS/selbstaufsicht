@@ -99,7 +99,7 @@ class challData_lab(Dataset):
 
     def __getitem__(self, i):
         x = self.msas[i]
-        y = self.pdbs[i]/111.8
+        y = (self.pdbs[i]-43.375)/18.104
         y=np.float32(y)
 
         if self.transform is not None:

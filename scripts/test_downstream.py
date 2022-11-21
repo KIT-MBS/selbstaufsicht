@@ -37,8 +37,9 @@ def main():
         checkpoint = torch.load(args.checkpoint)
 
     h_params = checkpoint['hyper_parameters']
+    print(h_params," h_params\n")
 #h_params['subsampling_depth']
-    downstream_transform = get_downstream_transforms(subsample_depth=args.sub_depth, subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'], secondary_window=secondary_window)
+    downstream_transform = get_downstream_transforms(task='thermostable',subsample_depth=args.sub_depth, subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'], secondary_window=secondary_window)
     root = os.environ['DATA_PATH']
     #test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode == 'diversity', secondary_window=secondary_window)
 
@@ -67,7 +68,8 @@ def main():
     if h_params['task_jigsaw_boot']:
         tasks.append("jigsaw_boot")
 
-    _, _, test_metrics = get_downstream_metrics()
+
+    _, _, test_metrics = get_downstream_metrics(task='thermostable')
     _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                  h_params['feature_dim_head'] * h_params['num_heads'],
                                                  subsample_depth=h_params['subsampling_depth'],
@@ -91,9 +93,11 @@ def main():
 #    task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[test_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
 #    task_losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-h_params['downstream__loss_contact_weight'], h_params['downstream__loss_contact_weight']]), ignore_index=-1)
    # print(task_losses," task_losses downstream")
-    task_heads['jigsaw']=models.self_supervised.msa.modules.JigsawHead(12*64,1)
-    task_losses['jigsaw']=nn.MSELoss()
-   # print(task_heads," task_heads downstream")
+    task_heads['thermostable']=models.self_supervised.msa.modules.ThermoStableHead(12*64,1)
+    task_losses['thermostable']=nn.MSELoss()
+    tasks.append('thermostable')
+# print(task_heads," task_heads downstream")
+    print(tasks," tasks before MSA\n")
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
         checkpoint_path=args.checkpoint,
@@ -110,9 +114,9 @@ def main():
 #    model.tasks = ['contact']
 #    model.need_attn = True
 #    model.task_loss_weights = {'contact': 1.}
-    model.task_heads['jigsaw']=models.self_supervised.msa.modules.JigsawHead(12*64,1)
+    model.task_heads['thermostable']=models.self_supervised.msa.modules.ThermoStableHead(12*64,1)
     model.need_attn = False
-    model.task_loss_weights = {'jigsaw': 1.}
+    model.task_loss_weights = {'thermostable': 1.}
     model.test_metrics = test_metrics
     print("yo! 1")
     test_dl = DataLoader(test_dataset,
