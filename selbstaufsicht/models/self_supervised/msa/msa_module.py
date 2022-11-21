@@ -173,15 +173,18 @@ class MSAModel(pl.LightningModule):
             metrics = self.test_metrics
 
         latent = None
-        if 'contact' in self.tasks:
-            if not self.downstream_loss_device_flag and hasattr(self.losses['contact'], 'weight'):
+        if 'contact' in self.tasks or 'thermostable' in self.tasks:
+            if not self.downstream_loss_device_flag and not 'thermostable' in self.tasks and hasattr(self.losses['contact'], 'weight'):
                 self.losses['contact'].weight = self.losses['contact'].weight.to(self.device)
                 self.downstream_loss_device_flag = True
 
             # NOTE (un)frozen weights for all modules except contact head
             with torch.set_grad_enabled(not self.freeze_backbone and self.training):
-                latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
-            x['attn_maps'] = attn_maps
+                if 'contact' in self.tasks:
+                    latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+                    x['attn_maps'] = attn_maps
+                else:
+                    latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
         else:
             latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
 
@@ -215,7 +218,7 @@ class MSAModel(pl.LightningModule):
                     #y[task]=y[task].to(torch.float16)
                     #z=y[task].to(torch.float16)
                     #print(z[0],type(z[0][0])," z target msa module")
-                    metrics[task][m](preds[task], y[task])
+                    metrics[task][m](preds[task].float(), y[task])
                     #print(metrics[task][m](preds[task], z)," metrics MSA")
                 if 'confmat' not in m and 'unreduced' not in m:
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
