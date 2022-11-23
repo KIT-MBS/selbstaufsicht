@@ -244,8 +244,8 @@ def main():
         #checkpoint_callback_toplprecpos = ModelCheckpoint(monitor='contact_validation_topLprec_coconet', filename="downstream-{epoch:02d}-{contact_validation_topLprecpos:.4f}", mode='max')
         #checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
         #checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_Global_F1score:.4f}", mode='max')
-        
-        checkpoint_callback_valloss = ModelCheckpoint(monitor='thermostable_validation_scorr', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
+        checkpoint_callback_vallos = ModelCheckpoint(monitor='thermostable_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min') 
+        checkpoint_callback_scorr = ModelCheckpoint(monitor='thermostable_validation_scorr', filename="downstream-{epoch:02d}-{loss:.4f}", mode='max')
         trainer = Trainer(max_epochs=args.num_epochs,
                           gpus=args.num_gpus,
                           auto_select_gpus=num_gpus > 0,
@@ -255,7 +255,7 @@ def main():
                           enable_progress_bar=not args.disable_progress_bar,
                           log_every_n_steps=args.log_every,
                           logger=tb_logger,
-                          callbacks=[checkpoint_callback_valloss])#, checkpoint_callback_toplprec, checkpoint_callback_toplprecpos, checkpoint_callback_f1score, checkpoint_callback_matthews])
+                          callbacks=[checkpoint_callback_scorr,checkpoint_callback_vallos])#, checkpoint_callback_toplprec, checkpoint_callback_toplprecpos, checkpoint_callback_f1score, checkpoint_callback_matthews])
         print(next(iter(train_dl))," train_dl\n")
         print(next(iter(val_dl))," val_dl\n")
         trainer.fit(model, train_dl, val_dl)
