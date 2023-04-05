@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple, Union
 
 from torch.nn import CrossEntropyLoss, MSELoss, MarginRankingLoss
 #from torchmetrics import MeanAbsoluteError
-from torchmetrics import SpearmanCorrCoef
+from torchmetrics import SpearmanCorrCoef,PearsonCorrCoef
 from torch.nn import Module, ModuleDict
 from selbstaufsicht import transforms
 from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
@@ -233,9 +233,12 @@ def get_downstream_metrics(task: str):
 #        train_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
 #        val_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
 #        test_metrics[task] = ModuleDict({'mae':MeanAbsoluteError()})
-        train_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef()})
-        val_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef()})
-        test_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef()})
+        train_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef(),
+            'pcorr':PearsonCorrCoef()})
+        val_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef(),
+            'pcorr':PearsonCorrCoef()})
+        test_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef(),
+            'pcorr':PearsonCorrCoef()})
 
     else:
         raise ValueError("Unknown downstream task:", task)

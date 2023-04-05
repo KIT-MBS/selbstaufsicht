@@ -14,7 +14,8 @@ class challDataset(ShrinkedForcePermutationsDataset):
         self.root=root
 
 
-        files=glob.glob(self.root+"/selbstaufsicht/selbstaufsicht/datasets/challenge_enzymes_fasta/*")
+        files=glob.glob(self.root+"/selbstaufsicht_rna_ts/selbstaufsicht/datasets/challenge_enzymes_fasta/*")
+        print(files," files")
         for fi in files:
             self.samples.append(AlignIO.read(fi, 'fasta'))
 

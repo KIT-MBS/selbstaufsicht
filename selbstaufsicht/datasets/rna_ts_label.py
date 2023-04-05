@@ -53,14 +53,16 @@ class challData_lab(Dataset):
         self.test_splits=test_splits
 
         if split=='train':
-            files=glob.glob(self.root+"/selbstaufsicht_rna_ts/selbstaufsicht/datasets/challenge_enzymes_fasta/*")
+            files=glob.glob(self.root+"/rna_ts/*fasta1")
             for fam_id in files:
                 with open(fam_id) as f:
                     msa = AlignIO.read(f, 'fasta')
                     self.msas.append(msa)
-                nu=int(fam_id.split('/')[-1].split('group')[-1].split('.')[0])
-                nu1=self.root+"/selbstaufsicht_rna_ts/selbstaufsicht/datasets/challenge_enzymes_labels/labels"+str(nu)+".txt"
+                    print(msa," msa dataset!!!!!")
+                nu=fam_id.split('/')[-1].split('_')[0]
+                nu1=self.root+"/rna_ts_labels/"+str(nu)+"_labels.csv"
                 pdb=np.loadtxt(nu1,dtype=float)
+                print(pdb.shape," labels shape")
                 self.pdbs.append(pdb)
         else:
             f=self.root+"/selbstaufsicht_rna_ts/selbstaufsicht/datasets/testset_aln.fasta"
@@ -99,8 +101,10 @@ class challData_lab(Dataset):
 
     def __getitem__(self, i):
         x = self.msas[i]
-        y = (self.pdbs[i]-43.375)/18.104
+        #y = (self.pdbs[i]-43.375)/18.104
+        y=self.pdbs[i]/400.0
         y=np.float32(y)
+        #print(x.shape,y.shape," shapes datasets")
 
         if self.transform is not None:
             if self.indices is None:

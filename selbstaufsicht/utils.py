@@ -5,8 +5,8 @@ from scipy.linalg import ldl
 import torch
 
 # ambuguous RNA letters: GAUCRYWSMKHBVDN
-#rna_letters = [letter for letter in '-.GAUCRYWSMKHBVDN']
-rna_letters=[letter for letter in '-.ACDEFGHIKLMNPQRSTVWYXBZJ']
+rna_letters = [letter for letter in '-.GAUCRYWSMKHBVDN']
+#rna_letters=[letter for letter in '-.ACDEFGHIKLMNPQRSTVWYXBZJ']
 
 rna2index = {letter: index for index, letter in enumerate(rna_letters)}
 rna2index['START_TOKEN'] = len(rna2index)
@@ -16,8 +16,8 @@ rna2index['MASK_TOKEN'] = len(rna2index)
 rna2index['PADDING_TOKEN'] = len(rna2index)
 
 # NOTE: Predefined set of actual tokens used for non-static masking
-#nonstatic_mask_token_letters = [letter for letter in 'ACGU-']
-nonstatic_mask_token_letters = [letter for letter in 'ACDEFGHIKLMNPQRSTVWY-']
+nonstatic_mask_token_letters = [letter for letter in 'ACGU-']
+#nonstatic_mask_token_letters = [letter for letter in 'ACDEFGHIKLMNPQRSTVWY-']
 nonstatic_mask_tokens = [rna2index[letter] for letter in nonstatic_mask_token_letters]
 
 

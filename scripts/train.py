@@ -16,7 +16,7 @@ from pytorch_lightning.plugins import DDPPlugin
 from selbstaufsicht.utils import data_loader_worker_init, lehmer_encode, perm_gram_matrix, embed_finite_metric_space
 from selbstaufsicht import models
 from selbstaufsicht import datasets
-from selbstaufsicht.datasets import challenge
+from selbstaufsicht.datasets import challenge, challenge_uniclust#,challenge_uniclust_small
 from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downstream_transforms, MSACollator
 
 
@@ -195,9 +195,15 @@ def main():
         ds = datasets.DummyDataset(transform=transform)
     elif dataset_name=='challenge':
         ds = challenge.challDataset(root,transform=transform)
+    elif dataset_name=="uniclust":
+        ds = challenge_uniclust.challDataset_uni(root,transform=transform)
+    elif dataset_name=="uniclust_small":
+        ds = challenge_uniclust_small.challDataset_uni(root,transform=transform)
+    
     else:
         raise ValueError("Unknown dataset: %s" % args.dataset)
 
+    print(ds," ds dataset")
     num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds.samples)
     ds.num_data_samples = num_data_samples
     ds.jigsaw_force_permutations = args.jigsaw_force_permutations

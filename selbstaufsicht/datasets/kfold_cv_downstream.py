@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, Subset, random_split
 from typing import Union
 
 from selbstaufsicht.datasets import CoCoNetDataset
-from selbstaufsicht.datasets.challenge_label import challData_lab
+from selbstaufsicht.datasets.rna_ts_label import challData_lab
 from selbstaufsicht.utils import data_loader_worker_init
 
 
