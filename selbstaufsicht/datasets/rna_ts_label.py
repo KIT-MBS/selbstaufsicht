@@ -58,11 +58,11 @@ class challData_lab(Dataset):
                 with open(fam_id) as f:
                     msa = AlignIO.read(f, 'fasta')
                     self.msas.append(msa)
-                    print(msa," msa dataset!!!!!")
+                    #print(msa," msa dataset!!!!!")
                 nu=fam_id.split('/')[-1].split('_')[0]
                 nu1=self.root+"/rna_ts_labels/"+str(nu)+"_labels.csv"
                 pdb=np.loadtxt(nu1,dtype=float)
-                print(pdb.shape," labels shape")
+               # print(pdb.shape," labels shape")
                 self.pdbs.append(pdb)
         else:
             f=self.root+"/selbstaufsicht_rna_ts/selbstaufsicht/datasets/testset_aln.fasta"
@@ -118,7 +118,7 @@ class challData_lab(Dataset):
                 else:
                     item = self.transform({'msa': x, 'indices': self.indices[i]}, {'thermostable': y})
         #    print(len(item[0]['msa']), item[1]['structure'].shape," item")
-            print(y," dataset")
+#            print(y," dataset")
             return item
         return x, y
 

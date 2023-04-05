@@ -216,14 +216,17 @@ def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -
 def xgb_Pearson(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
 
     y=dtest.get_label()
+    print(y.shape," y shape metrics")
+    print(preds.shape," preds shape")
+    print(np.corrcoef(preds,y)[0,1]) 
 
-    return np.corrcoef(preds,y)
+    return np.corrcoef(preds,y)[0,1]
 
 def xgb_Spearman(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
 
     y=dtest.get_label()
 
-    return scipy.stats.spearmanr(preds,y)
+    return scipy.stats.spearmanr(preds,y).correlation
 
 def xgb_MSE(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
 
@@ -416,7 +419,7 @@ def load_backbone(checkpoint: str, device: Any, dataset: challData_lab, cull_tok
         lr_warmup=h_params['learning_rate_warmup'],
         dropout=0.,
         emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
-        freeze_backbone=True,
+        freeze_backbone=False,
         max_seqlen=h_params['cropping_size'],
         h_params=h_params)
     model.need_attn = False

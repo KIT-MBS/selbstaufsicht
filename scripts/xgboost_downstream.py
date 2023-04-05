@@ -160,14 +160,18 @@ def main():
     if args.cv_num_folds == 1:
         val_size = int(args.validation_ratio * latent.shape[0])
         indices = np.random.permutation(latent.shape[0])
-
+        print(val_size, len(indices)," validation, test")
         train_latent, val_latent = latent[indices[val_size:], :], latent[indices[:val_size], :]
         train_targets, val_targets = targets[indices[val_size:]], targets[indices[:val_size]]
         #train_msa_mapping, val_msa_mapping = msa_mapping[indices[val_size:]], msa_mapping[indices[:val_size]]
 
+        print(train_targets.shape,val_targets.shape,train_latent.shape,val_latent.shape," latent, val ")
+
         train_data = xgb.DMatrix(train_latent, label=train_targets)
         val_data = xgb.DMatrix(val_latent, label=val_targets)
 
+        #print(train_data.shape,val_data.shape," shape of the data ")
+    
         evals_result = {}
 
         if args.monitor_metric is None:
