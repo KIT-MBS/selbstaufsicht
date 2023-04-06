@@ -203,7 +203,7 @@ def main():
     else:
         raise ValueError("Unknown dataset: %s" % args.dataset)
 
-    print(ds," ds dataset")
+    #print(ds," ds dataset")
     num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds.samples)
     ds.num_data_samples = num_data_samples
     ds.jigsaw_force_permutations = args.jigsaw_force_permutations
@@ -218,8 +218,8 @@ def main():
     train_ds, val_ds = ds.split_train_val(validation_size, random=not args.disable_random_split)
     del ds
 
-    print(train_ds[0]," train_ds\n")
-    print(val_ds[0]," val_ds\n")
+    #print(train_ds[0]," train_ds\n")
+    #print(val_ds[0]," val_ds\n")
 
     train_dl = DataLoader(train_ds,
                           batch_size=args.batch_size,
@@ -237,8 +237,8 @@ def main():
                         generator=data_loader_rng,
                         pin_memory=num_gpus > 0)
 
-    print(next(iter(train_dl))," train_dl")
-    print(next(iter(val_dl))," val_dl")
+    #print(next(iter(train_dl))," train_dl")
+    #print(next(iter(val_dl))," val_dl")
 
     model = models.self_supervised.MSAModel(
         args.num_blocks,

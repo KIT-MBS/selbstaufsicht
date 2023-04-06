@@ -106,8 +106,8 @@ class MSAModel(pl.LightningModule):
         self.test_metrics = None
         self.downstream_loss_device_flag = False
         if task_heads is not None:
-            print(task_heads.keys()," task heads msa")
-            print(task_losses.keys()," losses msa")
+            #print(task_heads.keys()," task heads msa")
+            #print(task_losses.keys()," losses msa")
             assert self.task_heads.keys() == self.losses.keys()
         self.lr = lr
         self.lr_warmup = lr_warmup
@@ -168,7 +168,7 @@ class MSAModel(pl.LightningModule):
 #            print(st,y['thermostable'].shape[2]," !!!! st y")
             y['thermostable']=y['thermostable'][:,:,0:self.max_seqlen]
        
-        print(y['thermostable'].shape[2]," shape y thermo 2")
+        #print(y['thermostable'].shape[2]," shape y thermo 2")
         assert not (self.training and test)
 
         if self.training:
@@ -179,7 +179,7 @@ class MSAModel(pl.LightningModule):
             metrics = self.val_metrics
         if test:
             assert self.test_metrics is not None
-            print(self.test_metrics," metrics test msa")
+            #print(self.test_metrics," metrics test msa")
             mode = "test"
             metrics = self.test_metrics
 

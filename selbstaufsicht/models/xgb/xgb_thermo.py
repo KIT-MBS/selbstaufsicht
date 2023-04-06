@@ -214,8 +214,8 @@ def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -
 def xgb_Pearson(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
 
     y=dtest.get_label()
-    print(y.shape," y shape metrics")
-    print(preds.shape," preds shape")
+    #print(y.shape," y shape metrics")
+    #print(preds.shape," preds shape")
     #print(np.corrcoef(preds,y)[0,1])
     
     #return np.corrcoef(preds,y)[0,1]
@@ -541,11 +541,11 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         with torch.no_grad():
             latent = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
 
-        print(latent.shape," shape latent")
+        #print(latent.shape," shape latent")
         x['msa']=x['msa'][:,:,1:]
 
         B, E, L = x['msa'].shape
-        print(x['msa'].shape," msa shape ")
+        #print(x['msa'].shape," msa shape ")
         assert B == 1
 
         if x['msa'].shape[2]<=400:
@@ -554,7 +554,7 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
                 mask -= (x['msa'].squeeze(dim=0)== token).int()
             latent=latent[:,:,1:,:]
             mask = mask.bool()
-            print(latent.shape," latent")
+            #print(latent.shape," latent")
             latent=latent[:,mask,:]
             latent=latent.squeeze(dim=0)
         else:
@@ -563,11 +563,11 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
             for token in cull_tokens:
                 mask -= (x['msa'].squeeze(dim=0)[:,0:400]== token).int()
             mask = mask.bool()
-            print(latent.shape," latent")
+            #print(latent.shape," latent")
             latent=latent[:,mask,:]
             latent=latent.squeeze(dim=0)
 
-        print(mask.shape," mask shape")
+        #print(mask.shape," mask shape")
 
         #degapped_L = int(mask.sum())
         #mask = torch.reshape(mask, (B, 1, L))
@@ -612,8 +612,8 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         #    target = target[mask_target]
        # msa_mapping_filtered = msa_mapping[mask_target]
        # latent=latent[:,mask,:]
-        print(latent.shape," latent shape")
-        print(idx)
+        #print(latent.shape," latent shape")
+        #print(idx)
         latent_list.append(latent)
         targets_list.append(target.squeeze(dim=0))
         #msa_mapping_list.append(msa_mapping)
@@ -621,9 +621,9 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         #msa_mapping_filtered_list.append(msa_mapping_filtered)
         #L_mapping_list.append(degapped_L)
 
-    print(len(targets_list))
-    for iii in range(len(targets_list)):
-        print(targets_list[iii].shape)
+    #print(len(targets_list))
+    #for iii in range(len(targets_list)):
+    #    print(targets_list[iii].shape)
     latent=torch.cat(latent_list)
     #attn_maps = torch.cat(attn_maps_list)  # [B*L*L/2, num_maps]
     if targets_list[0] is not None:

@@ -159,8 +159,8 @@ class ThermoStableHead(nn.Module):
 
         # latent is of shape [B, E, L, D]
 
-        print(latent.shape," shape of the latent")
-        print(x['msa'].shape, "input data")
+        #print(latent.shape," shape of the latent")
+        #print(x['msa'].shape, "input data")
         if self.frozen:
             latent = latent[:, 0, 0, :]  # [B,D]
 #        else:
@@ -172,7 +172,7 @@ class ThermoStableHead(nn.Module):
         #print(self.proj(latent).shape," shape of the projection")
         #output = torch.mean(self.proj(latent), 2)
         output=torch.mean(self.proj(latent),3)
-        print(output.shape," output shape ")
+        #print(output.shape," output shape ")
         if x['msa'].shape[2]<=400:
             output=output[:,:,1:]
 
@@ -186,7 +186,7 @@ class ThermoStableHead(nn.Module):
                 return self.proj(latent)
             else:
                 #return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
-                print(output.shape," shape thermostable modules!!!!!!")
+                #print(output.shape," shape thermostable modules!!!!!!")
                 return output
 
 
