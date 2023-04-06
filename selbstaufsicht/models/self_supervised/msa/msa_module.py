@@ -106,8 +106,8 @@ class MSAModel(pl.LightningModule):
         self.test_metrics = None
         self.downstream_loss_device_flag = False
         if task_heads is not None:
-            print(task_heads.keys()," task heads msa")
-            print(task_losses.keys()," losses msa")
+            #print(task_heads.keys()," task heads msa")
+            #print(task_losses.keys()," losses msa")
             assert self.task_heads.keys() == self.losses.keys()
         self.lr = lr
         self.lr_warmup = lr_warmup
@@ -117,7 +117,7 @@ class MSAModel(pl.LightningModule):
         self.log_images = False
         self.max_seqlen=max_seqlen
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None, y: torch.Tensor = None) -> torch.Tensor:
         """
         Receives cropped, subsampled and tokenized MSAs as input data, passes them through several layers with attention mechanism to yield a latent representation.
 
@@ -143,7 +143,15 @@ class MSAModel(pl.LightningModule):
             #y=y[:,:,0:self.max_seqlen]
 
         x = self.embedding(x) + self.positional_embedding(aux_features)
-        return self.backbone(x, padding_mask, self.need_attn)
+        out = self.backbone(x, padding_mask, self.need_attn)
+        if y is not None:
+            mask = y == -1
+            B, E, L = mask.shape
+            D = out.shape[-1]
+            mask = mask.view(B, E, L, 1).expand(-1, -1, -1, D)
+            out[mask] = -1
+        
+        return out
 
     def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int, test: bool = False) -> Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]:
         """
@@ -171,7 +179,7 @@ class MSAModel(pl.LightningModule):
 #            print(st,y['thermostable'].shape[2]," !!!! st y")
         #    y['thermostable']=y['thermostable'][:,:,0:self.max_seqlen]
        
-        print(y['thermostable'].shape[2]," shape y thermo 2")
+        #print(y['thermostable'].shape[2]," shape y thermo 2")
         assert not (self.training and test)
 
         if self.training:
@@ -182,7 +190,7 @@ class MSAModel(pl.LightningModule):
             metrics = self.val_metrics
         if test:
             assert self.test_metrics is not None
-            print(self.test_metrics," metrics test msa")
+            #print(self.test_metrics," metrics test msa")
             mode = "test"
             metrics = self.test_metrics
 
@@ -198,7 +206,10 @@ class MSAModel(pl.LightningModule):
                     latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
                     x['attn_maps'] = attn_maps
                 else:
-                    latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+                    # add column of -1 to mask out start token
+                    B, E, _ = y['thermostable'].shape
+                    y_extended = torch.cat((torch.full((B, E, 1), -1, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
+                    latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
         else:
             latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
 

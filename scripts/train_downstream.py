@@ -154,8 +154,8 @@ def main():
         h_params['downstream__log_run_name'] = log_run_name
 
         train_metrics, val_metrics, test_metrics = get_downstream_metrics(task='thermostable')
-        print(train_metrics," train_metrics \n")
-        print(val_metrics," val_metrics \n")
+        #print(train_metrics," train_metrics \n")
+        #print(val_metrics," val_metrics \n")
         _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                      h_params['feature_dim_head'] * h_params['num_heads'],
                                                      subsample_depth=h_params['subsampling_depth'],
@@ -257,8 +257,8 @@ def main():
                           log_every_n_steps=args.log_every,
                           logger=tb_logger,
                           callbacks=[checkpoint_callback_pcorr,checkpoint_callback_scorr,checkpoint_callback_vallos])#, checkpoint_callback_toplprec, checkpoint_callback_toplprecpos, checkpoint_callback_f1score, checkpoint_callback_matthews])
-        print(next(iter(train_dl))," train_dl\n")
-        print(next(iter(val_dl))," val_dl\n")
+        #print(next(iter(train_dl))," train_dl\n")
+        #print(next(iter(val_dl))," val_dl\n")
         trainer.fit(model, train_dl, val_dl)
 
     if args.test:

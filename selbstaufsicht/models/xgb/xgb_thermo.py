@@ -2,20 +2,18 @@ from collections import OrderedDict
 from functools import partial
 import os
 from typing import Any, Dict, List, Tuple, Union
-from sklearn.metrics import mean_squared_error
 import numpy as np
-import scipy.stats
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+from torchmetrics.functional import mean_squared_error, pearson_corrcoef, spearman_corrcoef
 import xgboost as xgb
-from selbstaufsicht.datasets.rna_ts_label import challData_lab
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
+from selbstaufsicht.datasets.rna_ts_label import challData_lab
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks
 from selbstaufsicht.utils import data_loader_worker_init
-from selbstaufsicht.datasets import challenge_label
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
     """
@@ -216,23 +214,29 @@ def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -
 def xgb_Pearson(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
 
     y=dtest.get_label()
-    print(y.shape," y shape metrics")
-    print(preds.shape," preds shape")
-    print(np.corrcoef(preds,y)[0,1]) 
-
-    return np.corrcoef(preds,y)[0,1]
+    #print(y.shape," y shape metrics")
+    #print(preds.shape," preds shape")
+    #print(np.corrcoef(preds,y)[0,1])
+    
+    #return np.corrcoef(preds,y)[0,1]
+    
+    return pearson_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
 
 def xgb_Spearman(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
 
     y=dtest.get_label()
 
-    return scipy.stats.spearmanr(preds,y).correlation
+    #return scipy.stats.spearmanr(preds,y).correlation
+    
+    return spearman_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
 
 def xgb_MSE(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
 
     y=dtest.get_label()
 
-    return mean_square_error(preds,y)
+    #return mean_square_error(preds, y)
+    
+    return mean_squared_error(torch.tensor(preds), torch.tensor(y)).item()
 
 
 def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
@@ -504,7 +508,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         raise ValueError("Unknown dataloader mode: %s" % mode)
 
 
-def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray]:
     """
     Computes attention maps for all data items.
 
@@ -517,7 +521,7 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         device (Any): Device on which model runs.
 
     Returns:
-        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Attention maps [B*L*L/2, num_maps]; targets [B*L*L/2]; msa_mapping [B*L*L]; msa_mask [B*L*L]; msa_mapping_filtered [B*L*L/2], L_mapping [B].
+        Tuple[np.ndarray, np.ndarray]: Latent, targets.
     """
 
     latent_list = []
@@ -533,15 +537,20 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         for k, v in x.items():
             if isinstance(v, torch.Tensor):
                 x[k] = v.to(device)
+            
+        assert 'thermostable' in y
+        # add column of -1 to mask out start token
+        B, E, _ = y['thermostable'].shape
+        y_extended = torch.cat((torch.full((B, E, 1), -1, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
 
         with torch.no_grad():
-            latent = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+            latent = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
 
-        print(latent.shape," shape latent")
+        #print(latent.shape," shape latent")
         x['msa']=x['msa'][:,:,1:]
 
         B, E, L = x['msa'].shape
-        print(x['msa'].shape," msa shape ")
+        #print(x['msa'].shape," msa shape ")
         assert B == 1
 
         if x['msa'].shape[2]<=400:
@@ -550,9 +559,7 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
                 mask -= (x['msa'].squeeze(dim=0)== token).int()
             latent=latent[:,:,1:,:]
             mask = mask.bool()
-            print(latent.shape," latent")
-            #latent[y['thermostable']==-1,:]=-1
-            #latent=latent[latent[y['thermostable']==-1],:]
+            #print(latent.shape," latent")
             latent=latent[:,mask,:]
             latent=latent.squeeze(dim=0)
         else:
@@ -561,13 +568,13 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
             for token in cull_tokens:
                 mask -= (x['msa'].squeeze(dim=0)[:,0:400]== token).int()
             mask = mask.bool()
-            print(latent.shape," latent")
+            #print(latent.shape," latent")
             latent=latent[:,mask,:]
             latent=latent.squeeze(dim=0)
             #latent[y['thermostable']==-1,:]=-1
             #latent=latent[y['thermostable']==-1,:]
 
-        print(mask.shape," mask shape")
+        #print(mask.shape," mask shape")
 
         #degapped_L = int(mask.sum())
         #mask = torch.reshape(mask, (B, 1, L))
@@ -613,18 +620,23 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         #    target = target[mask_target]
        # msa_mapping_filtered = msa_mapping[mask_target]
        # latent=latent[:,mask,:]
-        print(latent.shape," latent shape")
-        print(idx)
+        #print(latent.shape," latent shape")
+        #print(idx)
+        
+        # apply gap masking
+        latent = latent[latent != -1]
+        target = target[target != -1]
+        
         latent_list.append(latent)
-        targets_list.append(target.squeeze(dim=0))
+        targets_list.append(target)
         #msa_mapping_list.append(msa_mapping)
         #msa_mask_list.append(mask_target)
         #msa_mapping_filtered_list.append(msa_mapping_filtered)
         #L_mapping_list.append(degapped_L)
 
-    print(len(targets_list))
-    for iii in range(len(targets_list)):
-        print(targets_list[iii].shape)
+    #print(len(targets_list))
+    #for iii in range(len(targets_list)):
+    #    print(targets_list[iii].shape)
     latent=torch.cat(latent_list)
     #attn_maps = torch.cat(attn_maps_list)  # [B*L*L/2, num_maps]
     if targets_list[0] is not None:

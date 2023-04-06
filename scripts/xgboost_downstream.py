@@ -11,10 +11,10 @@ from sklearn.model_selection import KFold
 import torch
 import xgboost as xgb
 
-import sys
-sys.path.insert(1, '/hkfs/work/workspace/scratch/qx6387-profile4/alina/alina/selbstaufsicht_rna_ts/selbstaufsicht/models/xgb')
-#from selbstaufsicht.models.xgb import xgb_thermo
-import xgb_thermo
+#import sys
+#sys.path.insert(1, '/hkfs/work/workspace/scratch/qx6387-profile4/alina/alina/selbstaufsicht_rna_ts/selbstaufsicht/models/xgb')
+from selbstaufsicht.models.xgb import xgb_thermo
+#import xgb_thermo
 
 def metric_wrapper(preds: np.ndarray, dtrain: xgb.DMatrix, metric, #msa_mappings: Tuple[np.ndarray, np.ndarray],
         #L_mapping: np.ndarray, 
@@ -133,7 +133,7 @@ def main():
     cull_tokens = xgb_thermo.get_cull_tokens(train_dl.dataset)
     model = xgb_thermo.load_backbone(args.checkpoint, device, train_dl.dataset, cull_tokens, h_params)
 #    attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
-    latent, targets=xgb_thermo.compute_latent(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
+    latent, targets = xgb_thermo.compute_latent(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
     params = {
         'booster': args.booster,
         'eta': args.learning_rate,
@@ -160,12 +160,12 @@ def main():
     if args.cv_num_folds == 1:
         val_size = int(args.validation_ratio * latent.shape[0])
         indices = np.random.permutation(latent.shape[0])
-        print(val_size, len(indices)," validation, test")
+        #print(val_size, len(indices)," validation, test")
         train_latent, val_latent = latent[indices[val_size:], :], latent[indices[:val_size], :]
         train_targets, val_targets = targets[indices[val_size:]], targets[indices[:val_size]]
         #train_msa_mapping, val_msa_mapping = msa_mapping[indices[val_size:]], msa_mapping[indices[:val_size]]
 
-        print(train_targets.shape,val_targets.shape,train_latent.shape,val_latent.shape," latent, val ")
+        #print(train_targets.shape,val_targets.shape,train_latent.shape,val_latent.shape," latent, val ")
 
         train_data = xgb.DMatrix(train_latent, label=train_targets)
         val_data = xgb.DMatrix(val_latent, label=val_targets)

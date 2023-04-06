@@ -313,7 +313,7 @@ class MSASubsampling():
         """
 
         msa = x['msa'][:, :]
-        print(y, " y MSASubsampling\n")
+        #print(y, " y MSASubsampling\n")
         if self.mode == 'diversity':
             if 'indices' not in x:
                 raise KeyError('No indices provided for diversity-maximizing subsampling!')
@@ -326,7 +326,7 @@ class MSASubsampling():
             del x['indices']
         else:
             if self.thermostable:
-                print(y, " y MSASubsampling yo!!!\n")
+                #print(y, " y MSASubsampling yo!!!\n")
                 x['msa'], y['thermostable'] = self.sampling_fn(msa, self.nseqs, y['thermostable'])
                 #x['msa'], y['structure'] = self.sampling_fn(msa, self.nseqs, y['structure'])
             else:
