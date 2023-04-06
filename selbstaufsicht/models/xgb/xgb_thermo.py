@@ -572,8 +572,6 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
             latent=latent[:,mask,:]
             latent=latent.squeeze(dim=0)
 
-        latent = latent[latent != -1]
-
         #print(mask.shape," mask shape")
 
         #degapped_L = int(mask.sum())
@@ -621,8 +619,13 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
        # latent=latent[:,mask,:]
         #print(latent.shape," latent shape")
         #print(idx)
+        
+        # apply gap masking
+        latent = latent[latent != -1]
+        target = target[target != -1]
+        
         latent_list.append(latent)
-        targets_list.append(target.squeeze(dim=0))
+        targets_list.append(target)
         #msa_mapping_list.append(msa_mapping)
         #msa_mask_list.append(mask_target)
         #msa_mapping_filtered_list.append(msa_mapping_filtered)
