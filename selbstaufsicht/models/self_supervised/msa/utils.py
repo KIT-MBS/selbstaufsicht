@@ -175,9 +175,10 @@ def get_tasks(tasks: List[str],
     return transform, task_heads, task_losses, train_metrics, val_metrics
 
 
-def get_downstream_transforms(task: str, subsample_depth: int, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., inference=False, device=None, secondary_window=-1):
+def get_downstream_transforms(task: str, subsample_depth: int, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., inference=False, device=None, secondary_window=-1,crop_size=400):
     transformslist = [
         MSASubsampling(subsample_depth, mode=subsample_mode,thermostable=True),
+        MSACropping(crop_size, mode='fixed',thermostable=True),
         MSATokenize(rna2index)]
     # TODO: Is it a problem that jigsaw was renamed into thermostable for the thermostability task? Does it need shuffling?
     if jigsaw_partitions > 0:

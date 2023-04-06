@@ -402,9 +402,9 @@ def load_backbone(checkpoint: str, device: Any, dataset: challData_lab, cull_tok
                                                  )
 
     #num_maps = h_params['num_blocks'] * h_params['num_heads']
-    #if 'downstream' in checkpoint:
-    #    task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(num_maps, cull_tokens=cull_tokens)
-    #    task_losses['contact'] = None
+    if 'downstream' in checkpoint:
+        task_heads['thermostable'] = models.self_supervised.msa.modules.ThermoStableHead(12*64,1)
+        task_losses['thermostable'] = None
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
         checkpoint_path=checkpoint,
@@ -551,6 +551,8 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
             latent=latent[:,:,1:,:]
             mask = mask.bool()
             print(latent.shape," latent")
+            #latent[y['thermostable']==-1,:]=-1
+            #latent=latent[latent[y['thermostable']==-1],:]
             latent=latent[:,mask,:]
             latent=latent.squeeze(dim=0)
         else:
@@ -562,6 +564,8 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
             print(latent.shape," latent")
             latent=latent[:,mask,:]
             latent=latent.squeeze(dim=0)
+            #latent[y['thermostable']==-1,:]=-1
+            #latent=latent[y['thermostable']==-1,:]
 
         print(mask.shape," mask shape")
 
@@ -585,6 +589,7 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         else:
         #   target = y['thermostable'].view(-1)  # [1*L*L]
             target=y['thermostable'][:,mask]
+            #target=y['thermostable'][y['thermostable']!=-1]
 
         #msa_mapping = torch.full((B * degapped_L * degapped_L, ), idx, dtype=torch.int64)  # [1*L*L]
 

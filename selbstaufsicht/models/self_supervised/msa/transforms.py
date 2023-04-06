@@ -44,7 +44,7 @@ class MSATokenize():
 
 
 class MSACropping():
-    def __init__(self, length: int, mode: str = 'random-dependent') -> None:
+    def __init__(self, length: int, mode: str = 'random-dependent', thermostable: bool = False) -> None:
         """
         Initializes MSA cropping transform.
 
@@ -55,6 +55,7 @@ class MSACropping():
 
         self.length = length
         self.cropping_fn = _get_msa_cropping_fn(mode)
+        self.thermo=thermostable
 
     def __call__(self, x: Dict[str, MultipleSeqAlignment], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
         """
@@ -70,6 +71,8 @@ class MSACropping():
 
         if x['msa'].get_alignment_length() > self.length:
             x['msa'] = self.cropping_fn(x['msa'], self.length)
+            if self.thermo:
+                y['thermostable']=y['thermostable'][:,:self.length]
 
         return x, y
 

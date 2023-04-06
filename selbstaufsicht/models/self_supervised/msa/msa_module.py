@@ -134,11 +134,12 @@ class MSAModel(pl.LightningModule):
         
         #TODO maybe there is a better solution then taking first maxlen embeddings???
 
-        if x.shape[2]>self.max_seqlen:
+        print(x.shape," forward msa module")
+ #       if x.shape[2]>self.max_seqlen:
  #           st=int((x.shape[2]-self.max_seqlen)/4)
  #           print(st,x.shape[2],self.max_seqlen, " st !!!!! x")
-            aux_features=aux_features[:,:,0:self.max_seqlen]
-            x=x[:,:,0:self.max_seqlen]
+         #   aux_features=aux_features[:,:,0:self.max_seqlen]
+         #   x=x[:,:,0:self.max_seqlen]
             #y=y[:,:,0:self.max_seqlen]
 
         x = self.embedding(x) + self.positional_embedding(aux_features)
@@ -160,13 +161,15 @@ class MSAModel(pl.LightningModule):
         """
 
         x, y = batch_data
-        #print(y)
+        #print(y.shape," y msa module")
+        print(x," x msa module")
        # print(x['msa'].shape)
-      #  print(y['thermostable'].shape[2]," shape y thermo")
-        if y['thermostable'].shape[2]>self.max_seqlen:
+        #print(y['thermostable']," shape y thermo")
+        
+        #if y['thermostable'].shape[2]>self.max_seqlen:
 #            st=int((y['thermostable'].shape[2]-self.max_seqlen)/4)
 #            print(st,y['thermostable'].shape[2]," !!!! st y")
-            y['thermostable']=y['thermostable'][:,:,0:self.max_seqlen]
+        #    y['thermostable']=y['thermostable'][:,:,0:self.max_seqlen]
        
         print(y['thermostable'].shape[2]," shape y thermo 2")
         assert not (self.training and test)
@@ -206,6 +209,8 @@ class MSAModel(pl.LightningModule):
         
         for task in self.tasks:
             preds[task][y[task]==-1]=-1
+            preds[task]=preds[task][preds[task]!=-1]
+            y[task]=y[task][y[task]!=-1]
         
         # TODO: What is the purpose of that?
         #y['thermostable']=y['structure']
@@ -214,15 +219,16 @@ class MSAModel(pl.LightningModule):
         #print(preds['thermostable'], "pred thermost\n")
         #print(y["thermostable"]," y thermost\n")
         #print(self.losses['thermostable'](preds[task],y[task])," loss\n")
-        lossvals = {task: self.losses[task](preds[task][preds[task]!=-1], y[task][y[task]!=-1]) for task in self.tasks}
-        #lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
-       # print(lossvals," lossvals MSA module")
+        #lossvals = {task: self.losses[task](preds[task][preds[task]!=-1], y[task][y[task]!=-1]) for task in self.tasks}
+        lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
+        print(lossvals," lossvals MSA module")
+        
         for task in self.tasks:
             for m in metrics[task]:
                 # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly
                 if task == 'contact':
-                    metrics[task][m](torch.sigmoid(preds[task][preds[task]!=-1]), y[task][y[task]!=-1])
-#                    metrics[task][m](torch.sigmoid(preds[task]), y[task])
+        #            metrics[task][m](torch.sigmoid(preds[task][preds[task]!=-1]), y[task][y[task]!=-1])
+                    metrics[task][m](torch.sigmoid(preds[task]), y[task])
                 else:
                     #print(preds[task].shape," preds shape first\n")
                     #print([1,preds[task].shape[-1]]," check shape\n")
@@ -234,11 +240,13 @@ class MSAModel(pl.LightningModule):
                     #y[task]=y[task].to(torch.float16)
                     #z=y[task].to(torch.float16)
                     #print(z[0],type(z[0][0])," z target msa module")
-                    metrics[task][m](torch.flatten(preds[task][preds[task]!=-1]).float(), torch.flatten(y[task][y[task]!=-1]))
-                    #metrics[task][m](torch.flatten(preds[task]).float(), torch.flatten(y[task]))
-
-               #     print(metrics[task][m](torch.flatten(preds[task]).float(), torch.flatten(y[task]))," metrics MSA")
+                    metrics[task][m](torch.sigmoid(preds[task]), y[task])
+        #            metrics[task][m](torch.flatten(preds[task][preds[task]!=-1]).float(), torch.flatten(y[task][y[task]!=-1]))
+                    #print(metrics[task][m](torch.flatten(preds[task][preds[task]!=-1]).float(), torch.flatten(y[task][y[task]!=-1])))
+                    
+                    print(metrics[task][m](torch.flatten(preds[task]).float(), torch.flatten(y[task]))," metrics MSA")
                 if 'confmat' not in m and 'unreduced' not in m:
+                    print(metrics[task][m])
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         #print(loss," loss to be logged\n")
