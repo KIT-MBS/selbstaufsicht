@@ -145,13 +145,19 @@ class MSAModel(pl.LightningModule):
         x = self.embedding(x) + self.positional_embedding(aux_features)
         out = self.backbone(x, padding_mask, self.need_attn)
         if y is not None:
-            mask = y == -1
+            mask = y != -0.0025
             B, E, L = mask.shape
-            D = out.shape[-1]
-            mask = mask.view(B, E, L, 1).expand(-1, -1, -1, D)
-            out[mask] = -1
+            #D = out.shape[-1]
+            print(y.shape," shape y before")
+            y=y[mask]
+            #mask = mask.view(B, E, L, 1).expand(-1, -1, -1, D)
+            mask.bool()
+            print(out.shape,y.shape," shapes before forward")
+            out=out[mask,:]
+            print(out.shape," shapes after")
+            #out[mask] = -1
         
-        return out
+        return out,y
 
     def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int, test: bool = False) -> Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]:
         """
@@ -208,8 +214,10 @@ class MSAModel(pl.LightningModule):
                 else:
                     # add column of -1 to mask out start token
                     B, E, _ = y['thermostable'].shape
-                    y_extended = torch.cat((torch.full((B, E, 1), -1, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
-                    latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
+ 
+                    print(torch.full((B, E, 1), -0.0025, dtype=y['thermostable'].dtype).to(self.device).device,y['thermostable'].device," devices step")
+                    y_extended = torch.cat((torch.full((B, E, 1), -0.0025, dtype=y['thermostable'].dtype).to(self.device), y['thermostable']), dim=2)
+                    latent,y['thermostable'] = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
         else:
             latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
 
@@ -218,10 +226,10 @@ class MSAModel(pl.LightningModule):
         
         preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
         
-        for task in self.tasks:
-            preds[task][y[task]==-1]=-1
-            preds[task]=preds[task][preds[task]!=-1]
-            y[task]=y[task][y[task]!=-1]
+        #for task in self.tasks:
+        #    preds[task][y[task]==-1]=-1
+        #    preds[task]=preds[task][preds[task]!=-1]
+        #    y[task]=y[task][y[task]!=-1]
         
         # TODO: What is the purpose of that?
         #y['thermostable']=y['structure']
@@ -231,9 +239,13 @@ class MSAModel(pl.LightningModule):
         #print(y["thermostable"]," y thermost\n")
         #print(self.losses['thermostable'](preds[task],y[task])," loss\n")
         #lossvals = {task: self.losses[task](preds[task][preds[task]!=-1], y[task][y[task]!=-1]) for task in self.tasks}
+        
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         print(lossvals," lossvals MSA module")
-        
+        print(preds['thermostable'], " preds step")
+        print(preds["thermostable"].shape," preds shape step")
+        print(y["thermostable"]," targets step")
+        print(y["thermostable"].shape," targets shape step")
         for task in self.tasks:
             for m in metrics[task]:
                 # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly
@@ -251,7 +263,8 @@ class MSAModel(pl.LightningModule):
                     #y[task]=y[task].to(torch.float16)
                     #z=y[task].to(torch.float16)
                     #print(z[0],type(z[0][0])," z target msa module")
-                    metrics[task][m](torch.sigmoid(preds[task]), y[task])
+                    #metrics[task][m](torch.sigmoid(preds[task]), y[task])
+                    metrics[task][m](torch.flatten(preds[task]), torch.flatten(y[task]))
         #            metrics[task][m](torch.flatten(preds[task][preds[task]!=-1]).float(), torch.flatten(y[task][y[task]!=-1]))
                     #print(metrics[task][m](torch.flatten(preds[task][preds[task]!=-1]).float(), torch.flatten(y[task][y[task]!=-1])))
                     

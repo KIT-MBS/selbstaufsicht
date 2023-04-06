@@ -70,9 +70,10 @@ class MSACropping():
         """
 
         if x['msa'].get_alignment_length() > self.length:
-            x['msa'] = self.cropping_fn(x['msa'], self.length)
             if self.thermo:
-                y['thermostable']=y['thermostable'][:,:self.length]
+                st=(x['msa'].get_alignment_length()-self.length)/2.0
+                y['thermostable']=y['thermostable'][:,int(st):int(st)+self.length]
+            x['msa'] = self.cropping_fn(x['msa'], self.length)
 
         return x, y
 
@@ -892,8 +893,9 @@ def _crop_fixed(msa: MultipleSeqAlignment, length: int) -> MultipleSeqAlignment:
     Returns:
         MultipleSeqAlignment: Cropped, lettered MSA.
     """
+    st=(msa.get_alignment_length()-length)/2.0
 
-    return msa[:, :length]
+    return msa[:, int(st):length+int(st)]
 
 
 def _get_msa_cropping_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]:
