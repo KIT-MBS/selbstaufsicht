@@ -2,12 +2,12 @@ from collections import OrderedDict
 from functools import partial
 import os
 from typing import Any, Dict, List, Tuple, Union
-from sklearn.metrics import mean_squared_error
 import numpy as np
 import scipy.stats
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+from torchmetrics.functional import mean_squared_error, pearson_corrcoef, spearman_corrcoef
 import xgboost as xgb
 from selbstaufsicht.datasets.rna_ts_label import challData_lab
 
@@ -218,21 +218,27 @@ def xgb_Pearson(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
     y=dtest.get_label()
     print(y.shape," y shape metrics")
     print(preds.shape," preds shape")
-    print(np.corrcoef(preds,y)[0,1]) 
-
-    return np.corrcoef(preds,y)[0,1]
+    #print(np.corrcoef(preds,y)[0,1])
+    
+    #return np.corrcoef(preds,y)[0,1]
+    
+    return pearson_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
 
 def xgb_Spearman(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
 
     y=dtest.get_label()
 
-    return scipy.stats.spearmanr(preds,y).correlation
+    #return scipy.stats.spearmanr(preds,y).correlation
+    
+    return spearman_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
 
 def xgb_MSE(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
 
     y=dtest.get_label()
 
-    return mean_square_error(preds,y)
+    #return mean_square_error(preds, y)
+    
+    return mean_squared_error(torch.tensor(preds), torch.tensor(y)).item()
 
 
 def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
@@ -504,7 +510,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         raise ValueError("Unknown dataloader mode: %s" % mode)
 
 
-def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray]:
     """
     Computes attention maps for all data items.
 
@@ -517,7 +523,7 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         device (Any): Device on which model runs.
 
     Returns:
-        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Attention maps [B*L*L/2, num_maps]; targets [B*L*L/2]; msa_mapping [B*L*L]; msa_mask [B*L*L]; msa_mapping_filtered [B*L*L/2], L_mapping [B].
+        Tuple[np.ndarray, np.ndarray]: Latent, targets.
     """
 
     latent_list = []
