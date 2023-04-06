@@ -541,7 +541,7 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         assert 'thermostable' in y
         # add column of -1 to mask out start token
         B, E, _ = y['thermostable'].shape
-        y_extended = torch.cat((torch.full((B, E), -1, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
+        y_extended = torch.cat((torch.full((B, E, 1), -1, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
 
         with torch.no_grad():
             latent = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
