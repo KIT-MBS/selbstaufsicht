@@ -537,9 +537,14 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         for k, v in x.items():
             if isinstance(v, torch.Tensor):
                 x[k] = v.to(device)
+            
+        assert 'thermostable' in y
+        # add column of -1 to mask out start token
+        B, E, _ = y['thermostable'].shape
+        y_extended = torch.cat((torch.full((B, E), -1, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
 
         with torch.no_grad():
-            latent = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+            latent = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
 
         #print(latent.shape," shape latent")
         x['msa']=x['msa'][:,:,1:]
@@ -566,6 +571,8 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
             #print(latent.shape," latent")
             latent=latent[:,mask,:]
             latent=latent.squeeze(dim=0)
+
+        latent = latent[latent != -1]
 
         #print(mask.shape," mask shape")
 

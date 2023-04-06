@@ -117,7 +117,7 @@ class MSAModel(pl.LightningModule):
         self.log_images = False
         self.max_seqlen=max_seqlen
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None, y: torch.Tensor = None) -> torch.Tensor:
         """
         Receives cropped, subsampled and tokenized MSAs as input data, passes them through several layers with attention mechanism to yield a latent representation.
 
@@ -142,7 +142,15 @@ class MSAModel(pl.LightningModule):
             #y=y[:,:,0:self.max_seqlen]
 
         x = self.embedding(x) + self.positional_embedding(aux_features)
-        return self.backbone(x, padding_mask, self.need_attn)
+        out = self.backbone(x, padding_mask, self.need_attn)
+        if y is not None:
+            mask = y == -1
+            B, E, L = mask.shape
+            D = out.shape[-1]
+            mask = mask.view(B, E, L, 1).expand(-1, -1, -1, D)
+            out[mask] = -1
+        
+        return out
 
     def _step(self, batch_data: Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]], batch_idx: int, test: bool = False) -> Dict[str, Union[Dict[str, torch.Tensor], torch.Tensor]]:
         """
@@ -195,7 +203,10 @@ class MSAModel(pl.LightningModule):
                     latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
                     x['attn_maps'] = attn_maps
                 else:
-                    latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+                    # add column of -1 to mask out start token
+                    B, E, _ = y['thermostable'].shape
+                    y_extended = torch.cat((torch.full((B, E), -1, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
+                    latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
         else:
             latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
 
