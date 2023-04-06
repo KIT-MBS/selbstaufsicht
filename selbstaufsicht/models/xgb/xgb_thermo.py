@@ -3,19 +3,17 @@ from functools import partial
 import os
 from typing import Any, Dict, List, Tuple, Union
 import numpy as np
-import scipy.stats
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from torchmetrics.functional import mean_squared_error, pearson_corrcoef, spearman_corrcoef
 import xgboost as xgb
-from selbstaufsicht.datasets.rna_ts_label import challData_lab
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
+from selbstaufsicht.datasets.rna_ts_label import challData_lab
 from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks
 from selbstaufsicht.utils import data_loader_worker_init
-from selbstaufsicht.datasets import challenge_label
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
     """
