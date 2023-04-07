@@ -177,7 +177,7 @@ class MSAModel(pl.LightningModule):
         x, y = batch_data
         #print(y.shape," y msa module")
         print(x," x msa module")
-       # print(x['msa'].shape)
+        print(x['msa'].shape)
         #print(y['thermostable']," shape y thermo")
         
         #if y['thermostable'].shape[2]>self.max_seqlen:

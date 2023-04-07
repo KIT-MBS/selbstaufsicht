@@ -219,7 +219,8 @@ def xgb_Pearson(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
     #print(np.corrcoef(preds,y)[0,1])
     
     #return np.corrcoef(preds,y)[0,1]
-    
+    print(torch.tensor(preds)," predictions")
+    print(torch.tensor(y)," targets")
     return pearson_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
 
 def xgb_Spearman(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
@@ -451,7 +452,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         DataLoader: Data loader for downstream task.
     """
 
-    downstream_transform = get_downstream_transforms(task='thermostable',subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode,inference=mode == 'inference', threshold=distance_threshold, secondary_window=secondary_window)
+    downstream_transform = get_downstream_transforms(task='thermostable',subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode,inference=mode == 'inference', threshold=distance_threshold, secondary_window=secondary_window,crop_size=h_params['cropping_size']-1)
     root = os.environ['DATA_PATH']
 
     if mode == 'train':
@@ -541,36 +542,38 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         assert 'thermostable' in y
         # add column of -1 to mask out start token
         B, E, _ = y['thermostable'].shape
-        y_extended = torch.cat((torch.full((B, E, 1), -1, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
+        y_extended = torch.cat((torch.full((B, E, 1), -0.0025, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
 
+#        print(x['msa'].shape," xgb_thermo msa shape")
         with torch.no_grad():
-            latent = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
+            latent,y['thermostable'] = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
 
-        #print(latent.shape," shape latent")
-        x['msa']=x['msa'][:,:,1:]
+        print(latent.shape," shape latent")
+#        x['msa']=x['msa'][:,:,1:]
 
         B, E, L = x['msa'].shape
         #print(x['msa'].shape," msa shape ")
         assert B == 1
 
-        if x['msa'].shape[2]<=400:
-            mask = torch.ones((E,L ), device=device)
-            for token in cull_tokens:
-                mask -= (x['msa'].squeeze(dim=0)== token).int()
-            latent=latent[:,:,1:,:]
-            mask = mask.bool()
+ #       if x['msa'].shape[2]<=400:
+        #mask = torch.ones((E,L ), device=device)
+        #for token in cull_tokens:
+        #    mask -= (x['msa'].squeeze(dim=0)== token).int()
+        #latent=latent[:,:,1:,:]
+        #mask = mask.bool()
+        #print(mask.shape)
+        #print(latent.shape," latent xgb")
+        #latent=latent[:,mask,:]
+        #latent=latent.squeeze(dim=0)
+        #else:
+        #    mask = torch.ones((E,400 ), device=device)
+        #    y['thermostable']=y['thermostable'][:,:,0:400]
+        #    for token in cull_tokens:
+        #        mask -= (x['msa'].squeeze(dim=0)[:,0:400]== token).int()
+        #    mask = mask.bool()
             #print(latent.shape," latent")
-            latent=latent[:,mask,:]
-            latent=latent.squeeze(dim=0)
-        else:
-            mask = torch.ones((E,400 ), device=device)
-            y['thermostable']=y['thermostable'][:,:,0:400]
-            for token in cull_tokens:
-                mask -= (x['msa'].squeeze(dim=0)[:,0:400]== token).int()
-            mask = mask.bool()
-            #print(latent.shape," latent")
-            latent=latent[:,mask,:]
-            latent=latent.squeeze(dim=0)
+        #    latent=latent[:,mask,:]
+        #    latent=latent.squeeze(dim=0)
             #latent[y['thermostable']==-1,:]=-1
             #latent=latent[y['thermostable']==-1,:]
 
@@ -594,8 +597,9 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         if 'thermostable' not in y:
             target = None
         else:
+            target=y['thermostable']
         #   target = y['thermostable'].view(-1)  # [1*L*L]
-            target=y['thermostable'][:,mask]
+        #    target=y['thermostable'][:,mask]
             #target=y['thermostable'][y['thermostable']!=-1]
 
         #msa_mapping = torch.full((B * degapped_L * degapped_L, ), idx, dtype=torch.int64)  # [1*L*L]
@@ -624,8 +628,8 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         #print(idx)
         
         # apply gap masking
-        latent = latent[latent != -1]
-        target = target[target != -1]
+        #latent = latent[latent != -1]
+        #target = target[target != -1]
         
         latent_list.append(latent)
         targets_list.append(target)
