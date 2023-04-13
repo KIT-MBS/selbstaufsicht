@@ -219,8 +219,8 @@ def xgb_Pearson(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
     #print(np.corrcoef(preds,y)[0,1])
     
     #return np.corrcoef(preds,y)[0,1]
-    print(torch.tensor(preds)," predictions")
-    print(torch.tensor(y)," targets")
+    #print(torch.tensor(preds)," predictions")
+    #print(torch.tensor(y)," targets")
     return pearson_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
 
 def xgb_Spearman(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
@@ -548,7 +548,7 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         with torch.no_grad():
             latent,y['thermostable'] = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
 
-        print(latent.shape," shape latent")
+        #print(latent.shape," shape latent")
 #        x['msa']=x['msa'][:,:,1:]
 
         B, E, L = x['msa'].shape

@@ -171,8 +171,8 @@ class ThermoStableHead(nn.Module):
         #print(x['msa']," msa")
         #print(self.proj(latent).shape," shape of the projection")
         #output = torch.mean(self.proj(latent), 2)
-        print(latent.shape," modules latent shape")
-        print(self.proj(latent).shape," module latent projection shape")
+        #print(latent.shape," modules latent shape")
+        #print(self.proj(latent).shape," module latent projection shape")
 
         output=torch.mean(self.proj(latent),1)
         #print(output.shape," output shape ")

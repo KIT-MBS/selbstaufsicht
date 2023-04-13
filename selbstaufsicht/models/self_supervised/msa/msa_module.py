@@ -148,13 +148,13 @@ class MSAModel(pl.LightningModule):
             mask = y != -0.0025
             B, E, L = mask.shape
             #D = out.shape[-1]
-            print(y.shape," shape y before")
+            #print(y.shape," shape y before")
             y=y[mask]
             #mask = mask.view(B, E, L, 1).expand(-1, -1, -1, D)
             mask.bool()
-            print(out.shape,y.shape," shapes before forward")
+            #print(out.shape,y.shape," shapes before forward")
             out=out[mask,:]
-            print(out.shape," shapes after")
+            #print(out.shape," shapes after")
             #out[mask] = -1
         
         return out,y
@@ -176,8 +176,8 @@ class MSAModel(pl.LightningModule):
 
         x, y = batch_data
         #print(y.shape," y msa module")
-        print(x," x msa module")
-        print(x['msa'].shape)
+        #print(x," x msa module")
+        #print(x['msa'].shape)
         #print(y['thermostable']," shape y thermo")
         
         #if y['thermostable'].shape[2]>self.max_seqlen:
@@ -215,7 +215,7 @@ class MSAModel(pl.LightningModule):
                     # add column of -1 to mask out start token
                     B, E, _ = y['thermostable'].shape
  
-                    print(torch.full((B, E, 1), -0.0025, dtype=y['thermostable'].dtype).to(self.device).device,y['thermostable'].device," devices step")
+                    #print(torch.full((B, E, 1), -0.0025, dtype=y['thermostable'].dtype).to(self.device).device,y['thermostable'].device," devices step")
                     y_extended = torch.cat((torch.full((B, E, 1), -0.0025, dtype=y['thermostable'].dtype).to(self.device), y['thermostable']), dim=2)
                     latent,y['thermostable'] = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
         else:
@@ -241,11 +241,11 @@ class MSAModel(pl.LightningModule):
         #lossvals = {task: self.losses[task](preds[task][preds[task]!=-1], y[task][y[task]!=-1]) for task in self.tasks}
         
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
-        print(lossvals," lossvals MSA module")
-        print(preds['thermostable'], " preds step")
-        print(preds["thermostable"].shape," preds shape step")
-        print(y["thermostable"]," targets step")
-        print(y["thermostable"].shape," targets shape step")
+        #print(lossvals," lossvals MSA module")
+        #print(preds['thermostable'], " preds step")
+        #print(preds["thermostable"].shape," preds shape step")
+        #print(y["thermostable"]," targets step")
+        #print(y["thermostable"].shape," targets shape step")
         for task in self.tasks:
             for m in metrics[task]:
                 # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly
@@ -268,9 +268,9 @@ class MSAModel(pl.LightningModule):
         #            metrics[task][m](torch.flatten(preds[task][preds[task]!=-1]).float(), torch.flatten(y[task][y[task]!=-1]))
                     #print(metrics[task][m](torch.flatten(preds[task][preds[task]!=-1]).float(), torch.flatten(y[task][y[task]!=-1])))
                     
-                    print(metrics[task][m](torch.flatten(preds[task]).float(), torch.flatten(y[task]))," metrics MSA")
+                    #print(metrics[task][m](torch.flatten(preds[task]).float(), torch.flatten(y[task]))," metrics MSA")
                 if 'confmat' not in m and 'unreduced' not in m:
-                    print(metrics[task][m])
+                    #print(metrics[task][m])
                     self.log(f'{task}_{mode}_{m}', metrics[task][m], on_step=self.training, on_epoch=True)
         loss = sum([self.task_loss_weights[task] * lossvals[task] for task in self.tasks])
         #print(loss," loss to be logged\n")
