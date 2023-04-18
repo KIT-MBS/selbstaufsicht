@@ -12,7 +12,8 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.plugins import DDPPlugin
+#from pytorch_lightning.plugins import DDPPlugin
+from pytorch_lightning.strategies import DDPStrategy
 
 from selbstaufsicht import models
 from selbstaufsicht import datasets
@@ -68,8 +69,9 @@ def main():
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
-        dp_strategy = DDPPlugin(find_unused_parameters=True)
-        # NOTE for some reason, load_from_checkpoint fails to infer the hyperparameters correctly from the checkpoint file
+        dp_strategy = DDPStrategy(find_unused_parameters=True)
+        #dp_strategy=None
+       # NOTE for some reason, load_from_checkpoint fails to infer the hyperparameters correctly from the checkpoint file
         checkpoint = torch.load(args.checkpoint)
     else:
         dp_strategy = None
@@ -245,8 +247,8 @@ def main():
         #checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
         #checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_Global_F1score:.4f}", mode='max')
         checkpoint_callback_vallos = ModelCheckpoint(monitor='thermostable_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min') 
-        checkpoint_callback_scorr = ModelCheckpoint(monitor='thermostable_validation_scorr', filename="downstream-{epoch:02d}-{loss:.4f}", mode='max')
-        checkpoint_callback_pcorr = ModelCheckpoint(monitor='thermostable_validation_pcorr', filename="downstream-{epoch:02d}-{loss:.4f}", mode='max')
+        checkpoint_callback_scorr = ModelCheckpoint(monitor='thermostable_validation_scorr', filename="downstream-{epoch:02d}-{scorr:.4f}", mode='max')
+        checkpoint_callback_pcorr = ModelCheckpoint(monitor='thermostable_validation_pcorr', filename="downstream-{epoch:02d}-{pcorr:.4f}", mode='max')
         trainer = Trainer(max_epochs=args.num_epochs,
                           gpus=args.num_gpus,
                           auto_select_gpus=num_gpus > 0,

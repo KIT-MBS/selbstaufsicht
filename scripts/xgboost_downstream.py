@@ -11,9 +11,9 @@ from sklearn.model_selection import KFold
 import torch
 import xgboost as xgb
 
-#import sys
-#sys.path.insert(1, '/hkfs/work/workspace/scratch/qx6387-profile4/alina/alina/selbstaufsicht_rna_ts/selbstaufsicht/models/xgb')
-from selbstaufsicht.models.xgb import xgb_thermo
+import sys
+sys.path.insert(1, '/p/project/atmlaml/bazarova1/selbstaufsicht_rna_ts/selbstaufsicht/models/xgb')
+#from selbstaufsicht.models.xgb import xgb_thermo
 import xgb_thermo
 
 def metric_wrapper(preds: np.ndarray, dtrain: xgb.DMatrix, metric, #msa_mappings: Tuple[np.ndarray, np.ndarray],
