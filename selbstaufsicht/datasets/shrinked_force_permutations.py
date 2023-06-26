@@ -1,5 +1,6 @@
-import torch
 from typing import Tuple
+
+import torch
 
 from ..utils import rna2index
 
@@ -41,7 +42,6 @@ class ShrinkedForcePermutationsDataset(torch.utils.data.Dataset):
             return min(len(self.samples), self.num_data_samples)
 
     def _init_num_data_samples(self):
-        print(self.num_data_samples, len(self.samples)," from shrinked!")
         if self.num_data_samples < 0:
             self.num_data_samples = len(self.samples)
 

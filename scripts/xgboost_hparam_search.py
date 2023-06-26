@@ -1,26 +1,29 @@
 import argparse
-from functools import partial
+import gc
+
 # import os
 import random
-import gc
+from functools import partial
 from typing import Any, Dict, Tuple
 
+import numpy as np
+import pandas as pd
+import torch
 import xgboost as xgb
+
 # import mpi4py
 # mpi4py.rc.initialize=False
 # mpi4py.rc.finalize=False
 from mpi4py import MPI
-import numpy as np
-import pandas as pd
-from sklearn.model_selection import KFold
-import torch
-
 from propulate import Islands
-from propulate.utils import get_default_propagator
 from propulate.propagators import SelectBest, SelectWorst
+from propulate.utils import get_default_propagator
+from sklearn.model_selection import KFold
+
+from selbstaufsicht.models.xgb import xgb_utils
+
 # from propulate.propagators import SelectUniform
 
-from selbstaufsicht.models.xgb import xgb_contact
 
 
 def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np.ndarray, np.ndarray], L_mapping: np.ndarray, k: float = 1., treat_all_preds_positive: bool = False) -> Tuple[str, float]:
@@ -50,7 +53,7 @@ def xgb_topkLPrec(preds: np.ndarray, dtrain: xgb.DMatrix, msa_mappings: Tuple[np
     else:
         raise ValueError("Given data length does not match to msa_mappings: %d != (%d, %d)" % (B, len(msa_mappings[0]), len(msa_mappings[1])))
 
-    top_l_prec = xgb_contact.xgb_topkLPrec(preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
+    top_l_prec = xgb_utils.xgb_topkLPrec(preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
 
     return 'top-%sL-Prec' % str(k), top_l_prec
 
@@ -167,12 +170,12 @@ def main():
 
     device = torch.device('cuda:%d' % gpu_id)
 
-    h_params = xgb_contact.get_checkpoint_hparams(args.checkpoint, device)
-    train_dl = xgb_contact.create_dataloader('train', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, rng_seed=args.rng_seed, disable_train_data_discarding=args.disable_train_data_discarding)
+    h_params = xgb_utils.get_checkpoint_hparams(args.checkpoint, device)
+    train_dl = xgb_utils.create_dataloader('train', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, rng_seed=args.rng_seed, disable_train_data_discarding=args.disable_train_data_discarding)
 
-    cull_tokens = xgb_contact.get_cull_tokens(train_dl.dataset)
-    model = xgb_contact.load_backbone(args.checkpoint, device, train_dl.dataset, cull_tokens, h_params)
-    attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_contact.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
+    cull_tokens = xgb_utils.get_cull_tokens(train_dl.dataset)
+    model = xgb_utils.load_backbone(args.checkpoint, device, train_dl.dataset, cull_tokens, h_params)
+    attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_utils.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
 
     limits = {
         'num_round': (args.num_round_min, args.num_round_max),

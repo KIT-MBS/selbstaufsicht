@@ -2,22 +2,26 @@ import argparse
 import os
 
 import torch
+from pytorch_lightning import Trainer
+from pytorch_lightning.loggers import TensorBoardLogger
 from torch import nn
 from torch.utils.data import DataLoader
 
-from pytorch_lightning import Trainer
-from pytorch_lightning.loggers import TensorBoardLogger
-
-from selbstaufsicht import models
-from selbstaufsicht import datasets
-from selbstaufsicht.datasets import challenge_label
-from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
+from selbstaufsicht import datasets, models
+from selbstaufsicht.datasets import rna_ts_label
+from selbstaufsicht.models.self_supervised.msa.utils import (
+    get_downstream_metrics,
+    get_downstream_transforms,
+    get_tasks,
+)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Selbstaufsicht Weakly Supervised Contact Prediction Script')
+    parser = argparse.ArgumentParser(description='Selbstaufsicht Weakly Supervised Downstream Test Script')
     # Trained models
     parser.add_argument('--checkpoint', type=str, help="Path to downstream model checkpoint")
+    # Task
+    parser.add_argument('--task', default='contact', type=str, help="Downstream task ('contact', 'thermostable')")
     # Preprocessing
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
     parser.add_argument('--secondary-window', default=-1, type=int, help="window to ignore around secondary structure contacts. -1 means secondary contac will be predicted without special consideration.")
@@ -37,15 +41,14 @@ def main():
         checkpoint = torch.load(args.checkpoint)
 
     h_params = checkpoint['hyper_parameters']
-    print(h_params," h_params\n")
-#h_params['subsampling_depth']
-    downstream_transform = get_downstream_transforms(task='thermostable',subsample_depth=args.sub_depth, subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'], secondary_window=secondary_window)
+    
+    downstream_transform = get_downstream_transforms(task=args.task, subsample_depth=args.sub_depth, subsample_mode=args.subsampling_mode, threshold=h_params['downstream__distance_threshold'], secondary_window=secondary_window, crop_size=h_params['cropping_size']-1)
     root = os.environ['DATA_PATH']
-    #test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode == 'diversity', secondary_window=secondary_window)
-
-    test_dataset = challenge_label.challData_lab(root,'test',transform=downstream_transform,#discard_train_size_based=not args.disable_train_data_discarding,
-        #diversity_maximization=args.subsampling_mode == 'diversity',max_seq_len=h_params['cropping_size'],min_num_seq=h_params['subsampling_depth'],
-        secondary_window=secondary_window)
+    
+    if args.task == 'contact':
+        test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode == 'diversity', secondary_window=secondary_window)
+    elif args.task == 'thermostable':
+        test_dataset = rna_ts_label.challData_lab(root, 'test', transform=downstream_transform secondary_window=secondary_window)
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)
@@ -68,8 +71,7 @@ def main():
     if h_params['task_jigsaw_boot']:
         tasks.append("jigsaw_boot")
 
-
-    _, _, test_metrics = get_downstream_metrics(task='thermostable')
+    _, _, test_metrics = get_downstream_metrics(task=args.task)
     _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                  h_params['feature_dim_head'] * h_params['num_heads'],
                                                  subsample_depth=h_params['subsampling_depth'],
@@ -90,14 +92,13 @@ def main():
                                                  frozen=h_params['frozen'],
                                                  seq_dist=h_params['seq_dist'],
                                                  )
-#    task_heads['contact'] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[test_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
-#    task_losses['contact'] = nn.NLLLoss(weight=torch.tensor([1-h_params['downstream__loss_contact_weight'], h_params['downstream__loss_contact_weight']]), ignore_index=-1)
-   # print(task_losses," task_losses downstream")
-    task_heads['thermostable']=models.self_supervised.msa.modules.ThermoStableHead(12*64,1)
-    task_losses['thermostable']=nn.MSELoss()
-    tasks.append('thermostable')
-# print(task_heads," task_heads downstream")
-    print(tasks," tasks before MSA\n")
+    
+    if args.task == 'contact':
+        task_heads[args.task] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[test_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
+        task_losses[args.task] = nn.NLLLoss(weight=torch.tensor([1-h_params['downstream__loss_contact_weight'], h_params['downstream__loss_contact_weight']]), ignore_index=-1)
+    elif args.task == 'thermostable':
+        task_heads[args.task]=models.self_supervised.msa.modules.ThermoStableHead(12*64, 1)
+        task_losses[args.task]=nn.MSELoss()
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
         checkpoint_path=args.checkpoint,
@@ -111,14 +112,16 @@ def main():
         dropout=0.,
         emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
         max_seqlen=h_params['cropping_size'])
-#    model.tasks = ['contact']
-#    model.need_attn = True
-#    model.task_loss_weights = {'contact': 1.}
-    model.task_heads['thermostable']=models.self_supervised.msa.modules.ThermoStableHead(12*64,1)
-    model.need_attn = False
-    model.task_loss_weights = {'thermostable': 1.}
+    
+    if args.task == 'contact':
+        model.need_attn = True
+    elif args.task == 'thermostable':
+        model.need_attn = False
+    
+    model.tasks = [args.task]
+    model.task_loss_weights = {args.task: 1.}
     model.test_metrics = test_metrics
-    print("yo! 1")
+    
     test_dl = DataLoader(test_dataset,
                          batch_size=args.batch_size,
                          shuffle=False,
@@ -129,7 +132,6 @@ def main():
                       logger=tb_logger,
                       enable_progress_bar=not args.disable_progress_bar)
     trainer.test(model, test_dl, verbose=True)
-   # trainer.predict(model,test_dl)
 
 
 if __name__ == '__main__':

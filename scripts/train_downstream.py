@@ -1,35 +1,38 @@
 import argparse
-from torch.nn import MSELoss,MarginRankingLoss,L1Loss
-from datetime import datetime
 import glob
 import os
 import random
+from datetime import datetime
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
-
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-#from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning.strategies import DDPStrategy
+from torch.nn import L1Loss, MarginRankingLoss, MSELoss
+from torch.utils.data import DataLoader
 
-from selbstaufsicht import models
-from selbstaufsicht import datasets
+from selbstaufsicht import datasets, models
 from selbstaufsicht.datasets import challenge_label
-from selbstaufsicht.modules import SigmoidCrossEntropyLoss, BinaryFocalLoss, DiceLoss
-from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks, get_downstream_metrics
+from selbstaufsicht.models.self_supervised.msa.utils import (
+    get_downstream_metrics,
+    get_downstream_transforms,
+    get_tasks,
+)
+from selbstaufsicht.modules import BinaryFocalLoss, DiceLoss, SigmoidCrossEntropyLoss
+
 # from selbstaufsicht.utils import data_loader_worker_init
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Selbstaufsicht Weakly Supervised Contact Prediction Script')
+    parser = argparse.ArgumentParser(description='Selbstaufsicht Weakly Supervised Downstream Training Script')
     # Pre-trained model
     parser.add_argument('--checkpoint', type=str, help="Path to pre-trained model checkpoint")
     parser.add_argument('--re-init', action='store_true', help="Re-initializes model parameters")
     parser.add_argument('--freeze-backbone', action='store_true', help="Freezes backbone parameters")
-    # Contact prediction
+    # Task
+    parser.add_argument('--task', default='contact', type=str, help="Downstream task ('contact', 'thermostable')")
     parser.add_argument('--distance-threshold', default=10., type=float, help="Minimum distance between two atoms in angström that is not considered as a contact")
     # Preprocessing
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
@@ -39,7 +42,7 @@ def main():
     parser.add_argument('--learning-rate', default=1e-4, type=float, help="Initial learning rate")
     parser.add_argument('--learning-rate-warmup', default=0, type=int, help="Warmup parameter for inverse square root rule of learning rate scheduling")
     parser.add_argument('--dropout', default=0., type=float, help="Dropout probability")
-    parser.add_argument('--loss', default='focal', type=str, help="Loss function: cross-entropy, focal, dice")
+    parser.add_argument('--loss', default='focal', type=str, help="Loss function: cross-entropy, focal, dice (for contact task); mse (for thermostable task)")
     parser.add_argument('--loss-contact-weight', default=0.95, type=float, help="Weight that is used to rescale loss for contacts. Weight for no-contacts equals 1 minus the set value.")
     parser.add_argument('--loss-focal-gamma', default=2., type=float, help="Exponential weight used for focal loss.")
     parser.add_argument('--precision', default=16, type=int, help="Precision used for computations")
@@ -50,7 +53,6 @@ def main():
     parser.add_argument('--validation-ratio', default=0.2, type=float, help="Ratio of the validation dataset w.r.t. the full training dataset, if k-fold cross validation is disabled.")
     parser.add_argument('--cv-num-folds', default=1, type=int, help="Number of folds in k-fold cross validation. If 1, then cross validation is disabled.")
     parser.add_argument('--disable-train-data-discarding', action='store_true', help="disables the size-based discarding of training data")
-    parser.add_argument('--test', action='store_true', help="Runs checkpointed model on test dataset, after training is finished.")
     # Data parallelism
     parser.add_argument('--num-gpus', default=-1, type=int, help="Number of GPUs per node. -1 refers to using all available GPUs. 0 refers to using the CPU.")
     parser.add_argument('--num-nodes', default=1, type=int, help="Number of nodes")
@@ -70,7 +72,6 @@ def main():
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
         dp_strategy = DDPStrategy(find_unused_parameters=True)
-        #dp_strategy=None
        # NOTE for some reason, load_from_checkpoint fails to infer the hyperparameters correctly from the checkpoint file
         checkpoint = torch.load(args.checkpoint)
     else:
@@ -83,7 +84,7 @@ def main():
     if args.test and args.cv_num_folds >= 2:
         raise ValueError("Testing only works with disabled cross validation!")
 
-    downstream_transform = get_downstream_transforms(task='thermostable',subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold, secondary_window=secondary_window,crop_size=h_params['cropping_size']-1)
+    downstream_transform = get_downstream_transforms(task=args.task, subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold, secondary_window=secondary_window,crop_size=h_params['cropping_size']-1)
     kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform,
                                                      num_folds=args.cv_num_folds,
                                                      val_ratio=args.validation_ratio,
@@ -95,28 +96,6 @@ def main():
                                                      max_seq_len=h_params['cropping_size'],
                                                      min_num_seq=h_params['subsampling_depth'],
                                                      secondary_window=secondary_window)
-    if args.test:
-        #test_dataset = datasets.CoCoNetDataset(kfold_cv_downstream.root,
-        #                                       'test',
-        #                                       transform=downstream_transform,
-        #                                       discard_train_size_based=not args.disable_train_data_discarding,
-        #                                       diversity_maximization=args.subsampling_mode == 'diversity',
-        #                                       max_seq_len=h_params['cropping_size'],
-        #                                       min_num_seq=h_params['subsampling_depth'],
-        #                                       secondary_window=secondary_window)
-        test_dataset = challenge_label.challData_lab(kfold_cv_downstream.root,
-                                               'test',
-                                               transform=downstream_transform,
-                                               discard_train_size_based=not args.disable_train_data_discarding,
-                                               diversity_maximization=args.subsampling_mode == 'diversity',
-                                               max_seq_len=h_params['cropping_size'],
-                                               min_num_seq=h_params['subsampling_depth'],
-                                               secondary_window=secondary_window)
-        test_dl = DataLoader(test_dataset,
-                             batch_size=args.batch_size,
-                             shuffle=False,
-                             num_workers=0,
-                             pin_memory=False)
     
 
     dt_now = datetime.now()
@@ -155,9 +134,7 @@ def main():
             log_run_name = 'fold_%d' % (fold_idx + 1)
         h_params['downstream__log_run_name'] = log_run_name
 
-        train_metrics, val_metrics, test_metrics = get_downstream_metrics(task='thermostable')
-        #print(train_metrics," train_metrics \n")
-        #print(val_metrics," val_metrics \n")
+        train_metrics, val_metrics, test_metrics = get_downstream_metrics(task=args.task)
         _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                      h_params['feature_dim_head'] * h_params['num_heads'],
                                                      subsample_depth=h_params['subsampling_depth'],
@@ -211,26 +188,33 @@ def main():
                     max_seqlen=h_params['cropping_size'],
                     h_params=h_params)
        
-        model.tasks = ['thermostable']
-        
-        #hardwired here - not sure there is a need for a parameter
-        
-        model.task_heads['thermostable']=models.self_supervised.msa.modules.ThermoStableHead(12*64,1)
-        model.need_attn = False
-        model.task_loss_weights = {'thermostable': 1.}
+       
+        model.tasks = [args.task]
+        if args.task == 'contact':
+            model.task_heads[args.task] = models.self_supervised.msa.modules.ContactHead(h_params['num_blocks'] * h_params['num_heads'], cull_tokens=[kfold_cv_downstream.train_dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']])
+            model.need_attn = True
+        elif args.task == 'thermostable':
+            model.task_heads[args.task] = models.self_supervised.msa.modules.ThermoStableHead(12*64, 1)
+            model.need_attn = False  
+        model.task_loss_weights = {args.task: 1.}
+       
         model.train_metrics = train_metrics
         model.val_metrics = val_metrics
         if args.test:
             model.test_metrics = test_metrics
 
         if args.loss == 'cross-entropy':
-            model.losses['contact'] = SigmoidCrossEntropyLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
+            assert args.task == 'contact'
+            model.losses[args.task] = SigmoidCrossEntropyLoss(weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
         elif args.loss == 'focal':
-            model.losses['contact'] = BinaryFocalLoss(gamma=args.loss_focal_gamma, weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
+            assert args.task == 'contact'
+            model.losses[args.task] = BinaryFocalLoss(gamma=args.loss_focal_gamma, weight=torch.tensor([1-args.loss_contact_weight, args.loss_contact_weight]), ignore_index=-1)
         elif args.loss == 'dice':
-            model.losses['contact'] = DiceLoss(ignore_index=-1)
+            assert args.task == 'contact'
+            model.losses[args.task] = DiceLoss(ignore_index=-1)
         elif args.loss== 'mse':
-            model.losses['thermostable'] = MSELoss()
+            assert args.task == 'thermostable'
+            model.losses[args.task] = MSELoss()
         else:
             raise ValueError("Unknown loss: %s" % args.loss)
 
@@ -241,15 +225,29 @@ def main():
 
         tb_logger = TensorBoardLogger(save_dir=log_dir, name=log_exp_name, version=log_run_name)
 
-        #checkpoint_callback_valloss = ModelCheckpoint(monitor='contact_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
-        #checkpoint_callback_toplprec = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
-        #checkpoint_callback_toplprecpos = ModelCheckpoint(monitor='contact_validation_topLprec_coconet', filename="downstream-{epoch:02d}-{contact_validation_topLprecpos:.4f}", mode='max')
-        #checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
-        #checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_Global_F1score:.4f}", mode='max')
         checkpoint_callback_last = ModelCheckpoint(monitor=None, filename="downstream-{epoch:02d}-last")
-        checkpoint_callback_vallos = ModelCheckpoint(monitor='thermostable_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min') 
-        checkpoint_callback_scorr = ModelCheckpoint(monitor='thermostable_validation_scorr', filename="downstream-{epoch:02d}-{scorr:.4f}", mode='max')
-        checkpoint_callback_pcorr = ModelCheckpoint(monitor='thermostable_validation_pcorr', filename="downstream-{epoch:02d}-{pcorr:.4f}", mode='max')
+        callbacks = [checkpoint_callback_last]
+        if args.task == 'contact':
+            checkpoint_callback_valloss = ModelCheckpoint(monitor='contact_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min')
+            checkpoint_callback_toplprec = ModelCheckpoint(monitor='contact_validation_topLprec', filename="downstream-{epoch:02d}-{contact_validation_topLprec:.4f}", mode='max')
+            checkpoint_callback_toplprecpos = ModelCheckpoint(monitor='contact_validation_topLprec_coconet', filename="downstream-{epoch:02d}-{contact_validation_topLprecpos:.4f}", mode='max')
+            checkpoint_callback_matthews = ModelCheckpoint(monitor='contact_validation_Global_matthews', filename="downstream-{epoch:02d}-{contact_validation_Global_matthews:.4f}", mode='max')
+            checkpoint_callback_f1score = ModelCheckpoint(monitor='contact_validation_Global_F1score', filename="downstream-{epoch:02d}-{contact_validation_Global_F1score:.4f}", mode='max')
+            
+            callbacks.append(checkpoint_callback_valloss)
+            callbacks.append(checkpoint_callback_toplprec)
+            callbacks.append(checkpoint_callback_toplprecpos)
+            callbacks.append(checkpoint_callback_matthews)
+            callbacks.append(checkpoint_callback_f1score)
+        elif args.task == 'thermostable':
+            checkpoint_callback_valloss = ModelCheckpoint(monitor='thermostable_validation_loss', filename="downstream-{epoch:02d}-{loss:.4f}", mode='min') 
+            checkpoint_callback_scorr = ModelCheckpoint(monitor='thermostable_validation_scorr', filename="downstream-{epoch:02d}-{scorr:.4f}", mode='max')
+            checkpoint_callback_pcorr = ModelCheckpoint(monitor='thermostable_validation_pcorr', filename="downstream-{epoch:02d}-{pcorr:.4f}", mode='max')
+            
+            callbacks.append(checkpoint_callback_valloss)
+            callbacks.append(checkpoint_callback_scorr)
+            callbacks.append(checkpoint_callback_pcorr)
+        
         trainer = Trainer(max_epochs=args.num_epochs,
                           gpus=args.num_gpus,
                           auto_select_gpus=num_gpus > 0,
@@ -259,27 +257,8 @@ def main():
                           enable_progress_bar=not args.disable_progress_bar,
                           log_every_n_steps=args.log_every,
                           logger=tb_logger,
-                          callbacks=[checkpoint_callback_last, checkpoint_callback_pcorr,checkpoint_callback_scorr,checkpoint_callback_vallos])#, checkpoint_callback_toplprec, checkpoint_callback_toplprecpos, checkpoint_callback_f1score, checkpoint_callback_matthews])
-        #print(next(iter(train_dl))," train_dl\n")
-        #print(next(iter(val_dl))," val_dl\n")
+                          callbacks=callbacks)
         trainer.fit(model, train_dl, val_dl)
-
-    if args.test:
-        trainer = Trainer(gpus=1 if num_gpus > 0 else 0,
-                          logger=tb_logger,
-                          enable_progress_bar=not args.disable_progress_bar)
-        checkpoint_path = log_dir
-        if log_exp_name != "":
-            checkpoint_path += '%s/' % log_exp_name
-        checkpoint_path += '%s/checkpoints/' % log_run_name
-
-        # seaching for the latest file is a little bit hacky, but should work
-        checkpoint_list = glob.glob('%s*.ckpt' % checkpoint_path)
-        latest_checkpoint = max(checkpoint_list, key=os.path.getctime)
-
-        model.downstream_loss_device_flag = False
-
-        trainer.predict(model, test_dl, ckpt_path=latest_checkpoint, verbose=True)
 
 
 if __name__ == '__main__':

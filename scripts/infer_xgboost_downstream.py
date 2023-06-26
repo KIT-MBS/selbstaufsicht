@@ -1,16 +1,17 @@
 import argparse
 import os
 from pathlib import Path
+
 # from typing import Dict, List
 from typing import List
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
 import torch
 import xgboost as xgb
 
-from selbstaufsicht.models.xgb import xgb_contact
+from selbstaufsicht.models.xgb import xgb_utils
 
 
 def save_contact_maps(preds: np.ndarray, msa_mapping: np.ndarray, msa_mask: np.ndarray, L_mapping: np.ndarray, save_dir: str, file_names: List[str]) -> None:
@@ -38,7 +39,7 @@ def save_contact_maps(preds: np.ndarray, msa_mapping: np.ndarray, msa_mask: np.n
         mask = msa_mapping == msa_idx  # [B]
         L = L_mapping[msa_idx]
 
-        preds_shaped = xgb_contact.sigmoid(preds_[mask].reshape((L, L)))
+        preds_shaped = xgb_utils.sigmoid(preds_[mask].reshape((L, L)))
         preds_shaped += preds_shaped.T
         preds_shaped_binary = np.round(preds_shaped).astype(bool)
 
@@ -71,7 +72,7 @@ def plot_contact_maps(preds: np.ndarray, msa_mapping: np.ndarray, msa_mask: np.n
         mask = msa_mapping == msa_idx  # [B]
         L = L_mapping[msa_idx]
 
-        preds_shaped = xgb_contact.sigmoid(preds_[mask].reshape((L, L)))
+        preds_shaped = xgb_utils.sigmoid(preds_[mask].reshape((L, L)))
         preds_shaped += preds_shaped.T
         preds_shaped_binary = np.round(preds_shaped).astype(bool)
 
@@ -116,12 +117,12 @@ def main():
     else:
         device = torch.device('cpu')
 
-    h_params = xgb_contact.get_checkpoint_hparams(args.checkpoint, device)
-    inference_dl = xgb_contact.create_dataloader('inference', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, fasta_files=args.input)
+    h_params = xgb_utils.get_checkpoint_hparams(args.checkpoint, device)
+    inference_dl = xgb_utils.create_dataloader('inference', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, fasta_files=args.input)
 
-    cull_tokens = xgb_contact.get_cull_tokens(inference_dl.dataset)
-    model = xgb_contact.load_backbone(args.checkpoint, device, inference_dl.dataset, cull_tokens, h_params)
-    attn_maps, _, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping = xgb_contact.compute_attn_maps(model, inference_dl, cull_tokens, args.diag_shift, h_params, device)
+    cull_tokens = xgb_utils.get_cull_tokens(inference_dl.dataset)
+    model = xgb_utils.load_backbone(args.checkpoint, device, inference_dl.dataset, cull_tokens, h_params)
+    attn_maps, _, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping = xgb_utils.compute_attn_maps(model, inference_dl, cull_tokens, args.diag_shift, h_params, device)
 
     inference_data = xgb.DMatrix(attn_maps, label=None)
 

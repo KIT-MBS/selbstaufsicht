@@ -1,4 +1,5 @@
 from typing import Dict, Union
+
 import torch
 import torch.nn as nn
 
@@ -101,6 +102,7 @@ class JigsawHead(nn.Module):
             latent = latent[:, 0, 0, :]  # [B,D]
         else:
             latent = latent[:, :, 0, :]  # [B, E, D]
+        
         if self.euclid_emb:
             return self.proj(latent)  # [B, E, NClasses]
         else:
@@ -138,7 +140,7 @@ class ThermoStableHead(nn.Module):
 
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(ThermoStableHead, self).__init__()
-#        self.proj = nn.Sequential(nn.Linear(d, num_classes, **factory_kwargs), nn.ReLU())
+        
         self.proj = nn.Linear(d, num_classes, **factory_kwargs)
         self.num_classes = num_classes
         self.boot = boot
@@ -158,26 +160,10 @@ class ThermoStableHead(nn.Module):
         """
 
         # latent is of shape [B, E, L, D]
-
-        #print(latent.shape," shape of the latent")
-        #print(x['msa'].shape, "input data")
         if self.frozen:
             latent = latent[:, 0, 0, :]  # [B,D]
-#        else:
-#            latent = latent[:, :, 0, :]  # [B, E, D]
-        #print(latent.shape, " shape of the latent 2")
-        
-        #print(x['msa'].shape," shape of the input")
-        #print(x['msa']," msa")
-        #print(self.proj(latent).shape," shape of the projection")
-        #output = torch.mean(self.proj(latent), 2)
-        #print(latent.shape," modules latent shape")
-        #print(self.proj(latent).shape," module latent projection shape")
 
         output=torch.mean(self.proj(latent),1)
-        #print(output.shape," output shape ")
-        #if x['msa'].shape[2]<=400:
-        #    output=output[:,:,1:]
 
         if self.boot:
             if self.seq_dist:
@@ -188,8 +174,6 @@ class ThermoStableHead(nn.Module):
             if self.frozen:
                 return self.proj(latent)
             else:
-                #return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
-                #print(output.shape," shape thermostable modules!!!!!!")
                 return output
 
 

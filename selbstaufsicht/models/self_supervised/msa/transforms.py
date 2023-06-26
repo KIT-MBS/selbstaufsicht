@@ -1,11 +1,12 @@
-from functools import partial
-from typing import Callable, Dict, List, Optional, Union, Tuple
-import torch
-from torch.distributions import Categorical, Distribution
-import numpy as np
-from Bio.Align import MultipleSeqAlignment
 import math
 import random
+from functools import partial
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import torch
+from Bio.Align import MultipleSeqAlignment
+from torch.distributions import Categorical, Distribution
 
 from selbstaufsicht.utils import lehmer_encode
 
@@ -54,7 +55,7 @@ class MSACropping():
         """
 
         self.length = length
-        self.cropping_fn = _get_msa_cropping_fn(mode)
+        self.cropping_fn = _get_msa_cropping_fn(mode, centered=thermostable)
         self.thermo=thermostable
 
     def __call__(self, x: Dict[str, MultipleSeqAlignment], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
@@ -297,7 +298,6 @@ class MSASubsampling():
 
         self.mode = mode
         self.sampling_fn = _get_msa_subsampling_fn(mode)
-        #self.sampling_fn=_subsample_uniform()
         self.nseqs = num_sequences
         self.thermostable = thermostable
 
@@ -314,25 +314,19 @@ class MSASubsampling():
         """
 
         msa = x['msa'][:, :]
-        #print(y, " y MSASubsampling\n")
         if self.mode == 'diversity':
             if 'indices' not in x:
                 raise KeyError('No indices provided for diversity-maximizing subsampling!')
             if self.thermostable:
                 x['msa'], y['thermostable'] = self.sampling_fn(msa, self.nseqs, x['indices'], y['thermostable'])
-                #x['msa'], y['structure'] = self.sampling_fn(msa, self.nseqs, x['indices'], y['structure'])
             else:
                 x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'])
-            #x['msa'] = _subsample_uniform(msa, self.nseqs, x['ind')
             del x['indices']
         else:
             if self.thermostable:
-                #print(y, " y MSASubsampling yo!!!\n")
                 x['msa'], y['thermostable'] = self.sampling_fn(msa, self.nseqs, y['thermostable'])
-                #x['msa'], y['structure'] = self.sampling_fn(msa, self.nseqs, y['structure'])
             else:
                 x['msa'] = self.sampling_fn(msa, self.nseqs)
-            #x['msa'],y['structure'] = _subsample_uniform(msa, self.nseqs,y['structure'])
         return x, y
 
 
@@ -882,28 +876,33 @@ def _crop_random_independent(msa: MultipleSeqAlignment, length: int) -> Multiple
     return cropped_msa
 
 
-def _crop_fixed(msa: MultipleSeqAlignment, length: int) -> MultipleSeqAlignment:
+def _crop_fixed(msa: MultipleSeqAlignment, length: int, centered: bool = False) -> MultipleSeqAlignment:
     """
     Crops each sequence of the given lettered MSA in a left-aligned way to the predefined length.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         length (int): Maximum uncropped sequence length.
+        centered (bool, optional): Whether cropping is performed in centered way. Defaults to False.
 
     Returns:
         MultipleSeqAlignment: Cropped, lettered MSA.
     """
-    st=(msa.get_alignment_length()-length)/2.0
+    
+    if centered:
+        st=(msa.get_alignment_length()-length)/2.0
+        return msa[:, int(st):length+int(st)]
+    else:
+        return msa[:, :length]
 
-    return msa[:, int(st):length+int(st)]
 
-
-def _get_msa_cropping_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]:
+def _get_msa_cropping_fn(mode: str, centered: bool) -> Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]:
     """
     Returns the cropping function that corresponds to the given cropping mode.
 
     Args:
         mode (str): Cropping mode. Currently implemented: random-dependent, random-independent, fixed.
+        centered (bool, optional): Whether fixed cropping is performed in centered way.
 
     Raises:
         ValueError: Unknown cropping mode.
@@ -918,5 +917,5 @@ def _get_msa_cropping_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Opti
     if mode == 'random-independent':
         return _crop_random_independent
     if mode == 'fixed':
-        return _crop_fixed
+        return partial(_crop_fixed, centered=centered)
     raise ValueError('unkown msa cropping mode', mode)

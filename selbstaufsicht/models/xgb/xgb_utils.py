@@ -1,19 +1,26 @@
+import os
 from collections import OrderedDict
 from functools import partial
-import os
 from typing import Any, Dict, List, Tuple, Union
+
 import numpy as np
 import torch
+import xgboost as xgb
 from torch import nn
 from torch.utils.data import DataLoader
-from torchmetrics.functional import mean_squared_error, pearson_corrcoef, spearman_corrcoef
-import xgboost as xgb
+from torchmetrics.functional import (
+    mean_squared_error,
+    pearson_corrcoef,
+    spearman_corrcoef,
+)
 
-from selbstaufsicht import models
-from selbstaufsicht import datasets
-from selbstaufsicht.datasets.rna_ts_label import challData_lab
-from selbstaufsicht.models.self_supervised.msa.utils import get_downstream_transforms, get_tasks
+from selbstaufsicht import datasets, models
+from selbstaufsicht.models.self_supervised.msa.utils import (
+    get_downstream_transforms,
+    get_tasks,
+)
 from selbstaufsicht.utils import data_loader_worker_init
+
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
     """
@@ -211,34 +218,6 @@ def xgb_recall(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -
 
     return recall
 
-def xgb_Pearson(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
-
-    y=dtest.get_label()
-    #print(y.shape," y shape metrics")
-    #print(preds.shape," preds shape")
-    #print(np.corrcoef(preds,y)[0,1])
-    
-    #return np.corrcoef(preds,y)[0,1]
-    #print(torch.tensor(preds)," predictions")
-    #print(torch.tensor(y)," targets")
-    return pearson_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
-
-def xgb_Spearman(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
-
-    y=dtest.get_label()
-
-    #return scipy.stats.spearmanr(preds,y).correlation
-    
-    return spearman_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
-
-def xgb_MSE(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
-
-    y=dtest.get_label()
-
-    #return mean_square_error(preds, y)
-    
-    return mean_squared_error(torch.tensor(preds), torch.tensor(y)).item()
-
 
 def xgb_F1Score(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray) -> float:
     """
@@ -316,6 +295,27 @@ def xgb_Matthews(preds: np.ndarray, dtest: xgb.DMatrix, msa_mapping: np.ndarray)
     return matthews
 
 
+def xgb_Pearson(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
+
+    y=dtest.get_label()
+    
+    return pearson_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
+
+
+def xgb_Spearman(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
+
+    y=dtest.get_label()
+
+    return spearman_corrcoef(torch.tensor(preds), torch.tensor(y)).item()
+
+
+def xgb_MSE(preds: np.ndarray, dtest: xgb.DMatrix) -> float:
+
+    y=dtest.get_label()
+
+    return mean_squared_error(torch.tensor(preds), torch.tensor(y)).item()
+
+
 def get_checkpoint_hparams(checkpoint: str, device: Any) -> Dict[str, Any]:
     """
     Loads pytorch-lightning checkpoint and returns hyperparameters.
@@ -334,7 +334,7 @@ def get_checkpoint_hparams(checkpoint: str, device: Any) -> Dict[str, Any]:
     return h_params
 
 
-def get_cull_tokens(dataset: challData_lab) -> List[str]:
+def get_cull_tokens(dataset: datasets.CoCoNetDataset) -> List[str]:
     """
     Returns cull tokens for contact prediction.
 
@@ -348,7 +348,7 @@ def get_cull_tokens(dataset: challData_lab) -> List[str]:
     return [dataset.token_mapping[token] for token in ['-', '.', 'START_TOKEN', 'DELIMITER_TOKEN']]
 
 
-def load_backbone(checkpoint: str, device: Any, dataset: challData_lab, cull_tokens: List[str], h_params: Dict[str, Any]) -> nn.Module:
+def load_backbone(checkpoint: str, device: Any, dataset: datasets.CoCoNetDataset, cull_tokens: List[str], h_params: Dict[str, Any], downstream_task: str) -> nn.Module:
     """
     Loads pytorch-lightning backbone model.
 
@@ -358,6 +358,7 @@ def load_backbone(checkpoint: str, device: Any, dataset: challData_lab, cull_tok
         dataset (datasets.CoCoNetDataset): CoCoNet dataset that contains the token mapping.
         cull_tokens (List[str]): Cull tokens for contact prediction.
         h_params (Dict[str, Any]): Hyperparameters of the backbone model.
+        downstream_task (str): Downstream task (contact, thermostable).
 
     Returns:
         nn.Module: Loaded backbone model.
@@ -406,10 +407,14 @@ def load_backbone(checkpoint: str, device: Any, dataset: challData_lab, cull_tok
                                                  seq_dist=h_params['seq_dist'],
                                                  )
 
-    #num_maps = h_params['num_blocks'] * h_params['num_heads']
+    num_maps = h_params['num_blocks'] * h_params['num_heads']
     if 'downstream' in checkpoint:
-        task_heads['thermostable'] = models.self_supervised.msa.modules.ThermoStableHead(12*64,1)
-        task_losses['thermostable'] = None
+        if downstream_task == 'contact':
+            task_heads[downstream_task] = models.self_supervised.msa.modules.ContactHead(num_maps, cull_tokens=cull_tokens)
+            task_losses[downstream_task] = None
+        elif downstream_task == 'thermostable':
+            task_heads[downstream_task] = models.self_supervised.msa.modules.ThermoStableHead(12*64, 1)
+            task_losses[downstream_task] = None
 
     model = models.self_supervised.MSAModel.load_from_checkpoint(
         checkpoint_path=checkpoint,
@@ -424,17 +429,21 @@ def load_backbone(checkpoint: str, device: Any, dataset: challData_lab, cull_tok
         lr_warmup=h_params['learning_rate_warmup'],
         dropout=0.,
         emb_grad_freq_scale=not h_params['disable_emb_grad_freq_scale'],
-        freeze_backbone=False,
+        freeze_backbone=True,
         max_seqlen=h_params['cropping_size'],
         h_params=h_params)
-    model.need_attn = False
-    model.tasks = ['thermostable']
+    
+    if downstream_task == 'contact':
+        model.need_attn = True
+    elif downstream_task == 'thermostable':
+        model.need_attn = False
+    
     model.to(device)
 
     return model
 
 
-def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distance_threshold: float, h_params: Dict[str, Any], rng_seed: int = 42, disable_train_data_discarding: bool = False, fasta_files: List[str] = [], secondary_window: int = -1) -> DataLoader:
+def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distance_threshold: float, h_params: Dict[str, Any], downstream_task: str, rng_seed: int = 42, disable_train_data_discarding: bool = False, fasta_files: List[str] = [], secondary_window: int = -1) -> DataLoader:
     """
     Creates data loader for downstream task with XGBoost model.
 
@@ -444,6 +453,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         subsampling_mode (str): Subsampling mode.
         distance_threshold (float): Minimum distance between two atoms in angström that is not considered as a contact.
         h_params (Dict[str, Any]): Hyperparameters of the backbone model.
+        downstream_task (str): Downstream task (contact, thermostable).
         rng_seed (int, optional): Seed of the random number generator. Defaults to 42.
         disable_train_data_discarding (bool, optional): Disables the size-based discarding of training data. Defaults to False.
         fasta_files (List[str], optional): List of FASTA files for inference, if chosen as mode. Defaults to [],
@@ -452,37 +462,26 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         DataLoader: Data loader for downstream task.
     """
 
-    downstream_transform = get_downstream_transforms(task='thermostable',subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode,inference=mode == 'inference', threshold=distance_threshold, secondary_window=secondary_window,crop_size=h_params['cropping_size']-1)
+    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode, threshold=distance_threshold, inference=mode == 'inference', secondary_window=secondary_window)
     root = os.environ['DATA_PATH']
 
     if mode == 'train':
         data_loader_rng = torch.Generator()
         data_loader_rng.manual_seed(rng_seed)
-#        dataset = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform, discard_train_size_based=not disable_train_data_discarding,
-#                                          diversity_maximization=subsampling_mode == 'diversity', max_seq_len=h_params['cropping_size'],
-#                                          min_num_seq=h_params['subsampling_depth'],
-#                                          secondary_window=secondary_window)
-        #dataset = datasets.KFoldCVDownstream(downstream_transform,
-        #                                             num_folds=cv_num_folds,
-        #                                             val_ratio=validation_ratio,
-         #                                            batch_size=batch_size,
-         #                                            shuffle=not adisable_shuffle,
-         #                                            rng_seed=rng_seed,
-         #                                            discard_train_size_based=not disable_train_data_discarding,
-         #                                            diversity_maximization=subsampling_mode == 'diversity',
-         #                                            max_seq_len=h_params['cropping_size'],
-         #                                            min_num_seq=h_params['subsampling_depth'],
-         #                                            secondary_window=secondary_window)
-
-        dataset=challData_lab(root,
-                    'train',
+        if downstream_task == 'contact':
+            dataset = datasets.CoCoNetDataset(root, mode, transform=downstream_transform, discard_train_size_based=not disable_train_data_discarding,
+                                            diversity_maximization=subsampling_mode == 'diversity', max_seq_len=h_params['cropping_size'],
+                                            min_num_seq=h_params['subsampling_depth'],
+                                            secondary_window=secondary_window)
+        elif downstream_task == 'thermostable':
+            dataset=datasets.challData_lab(root,
+                    mode,
                     transform=downstream_transform,
                     discard_train_size_based=not disable_train_data_discarding,
                     diversity_maximization=subsampling_mode == 'diversity',
                     max_seq_len=h_params['cropping_size'],
                     min_num_seq=h_params['subsampling_depth'],
                     secondary_window=secondary_window)
-
         return DataLoader(dataset,
                           batch_size=batch_size,
                           shuffle=False,
@@ -492,13 +491,24 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
                           pin_memory=False)
 
     elif mode == 'test':
-        dataset = datasets.CoCoNetDataset(root, mode, transform=downstream_transform, diversity_maximization=subsampling_mode == 'diversity', secondary_window=secondary_window)
+        if downstream_task == 'contact':
+            dataset = datasets.CoCoNetDataset(root, mode, transform=downstream_transform, diversity_maximization=subsampling_mode == 'diversity', secondary_window=secondary_window)
+        elif downstream_task == 'thermostable':
+            dataset=datasets.challData_lab(root,
+                    mode,
+                    transform=downstream_transform,
+                    discard_train_size_based=not disable_train_data_discarding,
+                    diversity_maximization=subsampling_mode == 'diversity',
+                    max_seq_len=h_params['cropping_size'],
+                    min_num_seq=h_params['subsampling_depth'],
+                    secondary_window=secondary_window)
         return DataLoader(dataset,
                           batch_size=batch_size,
                           shuffle=False,
                           num_workers=0,
                           pin_memory=False)
     elif mode == 'inference':
+        assert downstream_task == 'contact'
         dataset = datasets.InferenceDataset(fasta_files, transform=downstream_transform)
         return DataLoader(dataset,
                           batch_size=batch_size,
@@ -509,7 +519,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         raise ValueError("Unknown dataloader mode: %s" % mode)
 
 
-def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray]:
+def compute_attn_maps(model: nn.Module, dataloader: DataLoader, cull_tokens: List[str], diag_shift: int, h_params: Dict[str, Any], device: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Computes attention maps for all data items.
 
@@ -522,17 +532,115 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         device (Any): Device on which model runs.
 
     Returns:
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Attention maps [B*L*L/2, num_maps]; targets [B*L*L/2]; msa_mapping [B*L*L]; msa_mask [B*L*L]; msa_mapping_filtered [B*L*L/2], L_mapping [B].
+    """
+
+    attn_maps_list = []
+    targets_list = []
+    msa_mapping_list = []
+    msa_mask_list = []
+    msa_mapping_filtered_list = []
+    L_mapping_list = []
+
+    num_maps = h_params['num_blocks'] * h_params['num_heads']
+
+    for idx, (x, y) in enumerate(dataloader):
+        for k, v in x.items():
+            if isinstance(v, torch.Tensor):
+                x[k] = v.to(device)
+
+        with torch.no_grad():
+            _, attn_maps = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+
+        B, _, L = x['msa'].shape
+        assert B == 1
+
+        mask = torch.ones((L, ), device=device)
+        for token in cull_tokens:
+            mask -= (x['msa'][:, 0].reshape((L, )) == token).int()
+        mask = mask.bool()
+        degapped_L = int(mask.sum())
+        mask = torch.reshape(mask, (B, 1, L))
+        mask = torch.logical_and(mask.reshape((B, 1, L)).expand(B, L, L), mask.reshape((B, L, 1)).expand(B, L, L))
+        mask = mask.reshape((B, 1, L, L)).expand((B, num_maps, L, L))
+
+        attn_maps = torch.cat([m.squeeze(dim=2) for m in attn_maps], dim=1)  # [1, num_maps, L, L]
+        attn_maps = attn_maps.masked_select(mask).reshape(B, num_maps, degapped_L, degapped_L)
+        attn_maps = torch.permute(attn_maps, (0, 2, 3, 1))  # [1, L, L, num_maps]
+
+        assert num_maps == attn_maps.shape[-1]
+
+        attn_maps_triu = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
+        attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).reshape(-1, num_maps)  # [1*L*L, num_maps]
+        if 'contact' not in y:
+            target = None
+        else:
+            target = y['contact'].view(-1)  # [1*L*L]
+
+        msa_mapping = torch.full((B * degapped_L * degapped_L, ), idx, dtype=torch.int64)  # [1*L*L]
+
+        # exclude unknown target points, apply diag shift, averge over both triangle matrices
+        if 'contact' not in y:
+            mask = torch.ones((B, degapped_L, degapped_L), dtype=torch.bool)  # [1, L, L]
+        else:
+            mask = y['contact'] != -1
+        mask_triu = torch.triu(torch.ones_like(mask), diag_shift+1).view(-1)  # [1*L*L]
+
+        mask = mask.view(-1)  # [1*L*L]
+        mask_attn_maps = mask[mask_triu]
+        mask_target = torch.logical_and(mask, mask_triu)
+
+        attn_maps_triu = attn_maps_triu[mask_triu, :]
+        attn_maps_tril = attn_maps_tril[mask_triu, :]
+
+        attn_maps = 0.5 * (attn_maps_triu + attn_maps_tril)
+        attn_maps = attn_maps[mask_attn_maps, :]
+        if target is not None:
+            target = target[mask_target]
+        msa_mapping_filtered = msa_mapping[mask_target]
+
+        attn_maps_list.append(attn_maps)
+        targets_list.append(target)
+        msa_mapping_list.append(msa_mapping)
+        msa_mask_list.append(mask_target)
+        msa_mapping_filtered_list.append(msa_mapping_filtered)
+        L_mapping_list.append(degapped_L)
+
+    attn_maps = torch.cat(attn_maps_list)  # [B*L*L/2, num_maps]
+    if targets_list[0] is not None:
+        targets = torch.cat(targets_list)  # [B*L*L/2]
+    else:
+        targets = None
+    msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L]
+    msa_mask = torch.cat(msa_mask_list)  # [B*L*L]
+    msa_mapping_filtered = torch.cat(msa_mapping_filtered_list)  # [B*L*L/2]
+
+    attn_maps = attn_maps.cpu().numpy()
+
+    if targets is not None:
+        targets = targets.cpu().numpy()
+    msa_mapping = msa_mapping.cpu().numpy()
+    msa_mask = msa_mask.cpu().numpy()
+    msa_mapping_filtered = msa_mapping_filtered.cpu().numpy()
+    L_mapping = np.array(L_mapping_list)
+
+    return attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping
+
+
+def compute_latent(model: nn.Module, dataloader: DataLoader, device: Any) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Computes latent representations for all data items.
+
+    Args:
+        model (nn.Module): Backbone model.
+        dataloader (DataLoader): Data loader for downstream task.
+
+    Returns:
         Tuple[np.ndarray, np.ndarray]: Latent, targets.
     """
 
     latent_list = []
     targets_list = []
-#    msa_mapping_list = []
-#    msa_mask_list = []
-#    msa_mapping_filtered_list = []
-#    L_mapping_list = []
-
-#    num_maps = h_params['num_blocks'] * h_params['num_heads']
 
     for idx, (x, y) in enumerate(dataloader):
         for k, v in x.items():
@@ -544,122 +652,93 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, cull_tokens: List[s
         B, E, _ = y['thermostable'].shape
         y_extended = torch.cat((torch.full((B, E, 1), -0.0025, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
 
-#        print(x['msa'].shape," xgb_thermo msa shape")
         with torch.no_grad():
-            latent,y['thermostable'] = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
+            latent, y['thermostable'] = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
 
-        #print(latent.shape," shape latent")
-#        x['msa']=x['msa'][:,:,1:]
 
         B, E, L = x['msa'].shape
-        #print(x['msa'].shape," msa shape ")
         assert B == 1
 
- #       if x['msa'].shape[2]<=400:
-        #mask = torch.ones((E,L ), device=device)
-        #for token in cull_tokens:
-        #    mask -= (x['msa'].squeeze(dim=0)== token).int()
-        #latent=latent[:,:,1:,:]
-        #mask = mask.bool()
-        #print(mask.shape)
-        #print(latent.shape," latent xgb")
-        #latent=latent[:,mask,:]
-        #latent=latent.squeeze(dim=0)
-        #else:
-        #    mask = torch.ones((E,400 ), device=device)
-        #    y['thermostable']=y['thermostable'][:,:,0:400]
-        #    for token in cull_tokens:
-        #        mask -= (x['msa'].squeeze(dim=0)[:,0:400]== token).int()
-        #    mask = mask.bool()
-            #print(latent.shape," latent")
-        #    latent=latent[:,mask,:]
-        #    latent=latent.squeeze(dim=0)
-            #latent[y['thermostable']==-1,:]=-1
-            #latent=latent[y['thermostable']==-1,:]
-
-        #print(mask.shape," mask shape")
-
-        #degapped_L = int(mask.sum())
-        #mask = torch.reshape(mask, (B, 1, L))
-        #mask = torch.logical_and(mask.reshape((B, 1, L)).expand(B, L, L), mask.reshape((B, L, 1)).expand(B, L, L))
-        #mask = mask.reshape((B, 1, L, L)).expand((B, num_maps, L, L))
-
-        #attn_maps = torch.cat([m.squeeze(dim=2) for m in attn_maps], dim=1)  # [1, num_maps, L, L]
-        #attn_maps = attn_maps.masked_select(mask).reshape(B, num_maps, degapped_L, degapped_L)
-        #latent = torch.permute(attn_maps, (0, 2, 3, 1))  # [1, L, L, num_maps]
-        
-
-
-        #assert num_maps == attn_maps.shape[-1]
-
-        #attn_maps_triu = attn_maps.view(-1, num_maps)  # [1*L*L, num_maps]
-        #attn_maps_tril = torch.permute(attn_maps, (0, 2, 1, 3)).reshape(-1, num_maps)  # [1*L*L, num_maps]
-        if 'thermostable' not in y:
-            target = None
-        else:
-            target=y['thermostable']
-        #   target = y['thermostable'].view(-1)  # [1*L*L]
-        #    target=y['thermostable'][:,mask]
-            #target=y['thermostable'][y['thermostable']!=-1]
-
-        #msa_mapping = torch.full((B * degapped_L * degapped_L, ), idx, dtype=torch.int64)  # [1*L*L]
-
-        # exclude unknown target points, apply diag shift, averge over both triangle matrices
-        #if 'thermostable' not in y:
-        #    mask = torch.ones((B, degapped_L, degapped_L), dtype=torch.bool)  # [1, L, L]
-        #else:
-        #    mask = y['thermostable'] != -1
-        #mask_triu = torch.triu(torch.ones_like(mask), diag_shift+1).view(-1)  # [1*L*L]
-
-        #mask = mask.view(-1)  # [1*L*L]
-        #mask_attn_maps = mask[mask_triu]
-        #mask_target = torch.logical_and(mask, mask_triu)
-
-        #attn_maps_triu = attn_maps_triu[mask_triu, :]
-        #attn_maps_tril = attn_maps_tril[mask_triu, :]
-
-        #attn_maps = 0.5 * (attn_maps_triu + attn_maps_tril)
-        #attn_maps = attn_maps[mask_attn_maps, :]
-        #if target is not None:
-        #    target = target[mask_target]
-       # msa_mapping_filtered = msa_mapping[mask_target]
-       # latent=latent[:,mask,:]
-        #print(latent.shape," latent shape")
-        #print(idx)
-        
-        # apply gap masking
-        #latent = latent[latent != -1]
-        #target = target[target != -1]
+        target=y['thermostable']
         
         latent_list.append(latent)
         targets_list.append(target)
-        #msa_mapping_list.append(msa_mapping)
-        #msa_mask_list.append(mask_target)
-        #msa_mapping_filtered_list.append(msa_mapping_filtered)
-        #L_mapping_list.append(degapped_L)
 
-    #print(len(targets_list))
-    #for iii in range(len(targets_list)):
-    #    print(targets_list[iii].shape)
     latent=torch.cat(latent_list)
-    #attn_maps = torch.cat(attn_maps_list)  # [B*L*L/2, num_maps]
     if targets_list[0] is not None:
         targets = torch.cat(targets_list)  # [B*L*L/2]
     else:
         targets = None
-    #msa_mapping = torch.cat(msa_mapping_list)  # [B*L*L]
-    #msa_mask = torch.cat(msa_mask_list)  # [B*L*L]
-    #msa_mapping_filtered = torch.cat(msa_mapping_filtered_list)  # [B*L*L/2]
 
-    #attn_maps = attn_maps.cpu().numpy()
     latent=latent.cpu().numpy()
     if targets is not None:
         targets = targets.cpu().numpy()
     
-    #msa_mapping = msa_mapping.cpu().numpy()
-    #msa_mask = msa_mask.cpu().numpy()
-    #msa_mapping_filtered = msa_mapping_filtered.cpu().numpy()
-    #L_mapping = np.array(L_mapping_list)
-
-    #return attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping
     return latent, targets
+
+
+def metric_wrapper_contact(preds: np.ndarray, dtrain: xgb.DMatrix, metric: str, msa_mappings: Tuple[np.ndarray, np.ndarray],
+        L_mapping: np.ndarray, 
+        k: float = 1., treat_all_preds_positive: bool = False) -> Tuple[str, float]:
+    """
+    Custom XGBoost Metric for contact downstream task.
+
+    Args:
+        preds (np.ndarray): Predictions [B] as logits.
+        dtrain (xgb.DMatrix): Training data (x: [B, num_maps], y: [B]).
+        metric (str): Metric.
+        msa_mappings (Tuple[np.ndarray, np.ndarray]): Mapping: Data point -> MSA index [B] (Train, Val).
+        L_mapping (np.ndarray): Mapping: MSA index -> MSA L.
+        k (float, optional): Coefficient k that is used in computing the top-(k*L)-precision. Defaults to 1.
+        treat_all_preds_positive (bool, optional): Whether all non-ignored preds are treated as positives, analogous to the CocoNet paper. Defaults to False.
+
+    Returns:
+        Tuple[str, float]: Metric name; metric value.
+    """
+    assert metric is not None
+
+    y = dtrain.get_label()  # [B]
+
+    # Dirty hack: Find out by data length, whether training or validation is active. Only works, if training and validation dataset have different lengths.
+    B = len(y)
+    if len(msa_mappings[0]) == B:
+        msa_mapping = msa_mappings[0]
+    elif len(msa_mappings[1]) == B:
+        msa_mapping = msa_mappings[1]
+    else:
+        raise ValueError("Given data length does not match to msa_mappings: %d != (%d, %d)" % (B, len(msa_mappings[0]), len(msa_mappings[1])))
+
+    metrics = {'toplprec': xgb_topkLPrec, 'f1': xgb_F1Score, 'matthews': xgb_Matthews}
+    
+    if metric == 'toplprec':
+        value = metrics[metric](preds, dtrain, msa_mapping, L_mapping, k=k, treat_all_preds_positive=treat_all_preds_positive)
+        description = 'top-%sL-Prec' % str(k)
+    else:
+        value = metrics[metric](preds, dtrain)
+        description = metric
+
+    return description, value
+
+
+def metric_wrapper_thermo(preds: np.ndarray, dtrain: xgb.DMatrix, metric: str) -> Tuple[str, float]:
+    """
+    Custom XGBoost Metric for thermostable downstream task.
+
+    Args:
+        preds (np.ndarray): Predictions [B] as logits.
+        dtrain (xgb.DMatrix): Training data (x: [B, num_maps], y: [B]).
+        metric (str): Metric.
+
+    Returns:
+        Tuple[str, float]: Metric name; metric value.
+    """
+    assert metric is not None
+
+    y = dtrain.get_label()  # [B]
+
+    metrics = {'mse': xgb_MSE, 'pcorr': xgb_Pearson, 'scorr': xgb_Spearman}
+
+    value = metrics[metric](preds, dtrain)
+    description = metric
+
+    return description, value

@@ -1,23 +1,29 @@
 import argparse
-from datetime import datetime
-from functools import partial
 import math
 import os
 import random
+from datetime import datetime
+from functools import partial
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
-
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.plugins import DDPPlugin
+from pytorch_lightning.strategies import DDPStrategy
+from torch.utils.data import DataLoader
 
-from selbstaufsicht.utils import data_loader_worker_init, lehmer_encode, perm_gram_matrix, embed_finite_metric_space
-from selbstaufsicht import models
-from selbstaufsicht import datasets
-from selbstaufsicht.datasets import challenge, challenge_uniclust#,challenge_uniclust_small
-from selbstaufsicht.models.self_supervised.msa.utils import get_tasks, get_downstream_transforms, MSACollator
+from selbstaufsicht import datasets, models
+from selbstaufsicht.models.self_supervised.msa.utils import (
+    MSACollator,
+    get_downstream_transforms,
+    get_tasks,
+)
+from selbstaufsicht.utils import (
+    data_loader_worker_init,
+    embed_finite_metric_space,
+    lehmer_encode,
+    perm_gram_matrix,
+)
 
 
 def main():
@@ -118,7 +124,7 @@ def main():
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
-        dp_strategy = DDPPlugin(find_unused_parameters=False)
+        dp_strategy = DDPStrategy(find_unused_parameters=False)
     else:
         dp_strategy = None
 
@@ -172,10 +178,9 @@ def main():
     dataset_name = args.dataset.lower()
     # NOTE MSA transformer: num_layers=12, d=768, num_heads=12, batch_size=512, lr=10**-4, **-2 lr schedule, 32 V100 GPUs for 100k updates, finetune for 25k more
 
-    #downstream_transform = get_downstream_transforms(task='',subsample_depth=args.subsampling_depth, jigsaw_partitions=args.jigsaw_partitions)
-    #downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=downstream_transform)
-    #test_ds = datasets.CoCoNetDataset(root, 'val', transform=downstream_transform)
-    #exclude_ids = downstream_ds.fam_ids + test_ds.fam_ids
+    downstream_ds = datasets.CoCoNetDataset(root, 'train', transform=None)
+    downstream_test_ds = datasets.CoCoNetDataset(root, 'val', transform=None)
+    exclude_ids = downstream_ds.fam_ids + downstream_test_ds.fam_ids
 
     if dataset_name == 'xfam':
         dataset_path = os.path.join(root, 'Xfam')
@@ -193,17 +198,9 @@ def main():
         del zwd_ds
     elif dataset_name == 'dummy':
         ds = datasets.DummyDataset(transform=transform)
-    elif dataset_name=='challenge':
-        ds = challenge.challDataset(root,transform=transform)
-    elif dataset_name=="uniclust":
-        ds = challenge_uniclust.challDataset_uni(root,transform=transform)
-    elif dataset_name=="uniclust_small":
-        ds = challenge_uniclust_small.challDataset_uni(root,transform=transform)
-    
     else:
         raise ValueError("Unknown dataset: %s" % args.dataset)
 
-    #print(ds," ds dataset")
     num_data_samples = args.num_data_samples if args.num_data_samples >= 0 else len(ds.samples)
     ds.num_data_samples = num_data_samples
     ds.jigsaw_force_permutations = args.jigsaw_force_permutations
@@ -217,9 +214,6 @@ def main():
             raise ValueError("Validation dataset size needs to be either in range 0...1 or an integer!")
     train_ds, val_ds = ds.split_train_val(validation_size, random=not args.disable_random_split)
     del ds
-
-    #print(train_ds[0]," train_ds\n")
-    #print(val_ds[0]," val_ds\n")
 
     train_dl = DataLoader(train_ds,
                           batch_size=args.batch_size,
@@ -236,9 +230,6 @@ def main():
                         worker_init_fn=partial(data_loader_worker_init, rng_seed=args.rng_seed),
                         generator=data_loader_rng,
                         pin_memory=num_gpus > 0)
-
-    #print(next(iter(train_dl))," train_dl")
-    #print(next(iter(val_dl))," val_dl")
 
     model = models.self_supervised.MSAModel(
         args.num_blocks,
