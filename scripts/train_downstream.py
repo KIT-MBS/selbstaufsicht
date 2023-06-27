@@ -82,6 +82,7 @@ def main():
 
     downstream_transform = get_downstream_transforms(task=args.task, subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold, secondary_window=secondary_window,crop_size=h_params['cropping_size']-1)
     kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform,
+                                                     args.task,
                                                      num_folds=args.cv_num_folds,
                                                      val_ratio=args.validation_ratio,
                                                      batch_size=args.batch_size,
