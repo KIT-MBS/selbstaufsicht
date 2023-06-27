@@ -14,7 +14,6 @@ from torch.nn import L1Loss, MarginRankingLoss, MSELoss
 from torch.utils.data import DataLoader
 
 from selbstaufsicht import datasets, models
-from selbstaufsicht.datasets import challenge_label
 from selbstaufsicht.models.self_supervised.msa.utils import (
     get_downstream_metrics,
     get_downstream_transforms,
