@@ -80,9 +80,6 @@ def main():
     downstream_args = {'downstream__' + k: v for k, v in vars(args).items()}
     h_params.update(downstream_args)
 
-    if args.test and args.cv_num_folds >= 2:
-        raise ValueError("Testing only works with disabled cross validation!")
-
     downstream_transform = get_downstream_transforms(task=args.task, subsample_depth=h_params['subsampling_depth'], subsample_mode=args.subsampling_mode, threshold=args.distance_threshold, secondary_window=secondary_window,crop_size=h_params['cropping_size']-1)
     kfold_cv_downstream = datasets.KFoldCVDownstream(downstream_transform,
                                                      num_folds=args.cv_num_folds,
@@ -133,7 +130,7 @@ def main():
             log_run_name = 'fold_%d' % (fold_idx + 1)
         h_params['downstream__log_run_name'] = log_run_name
 
-        train_metrics, val_metrics, test_metrics = get_downstream_metrics(task=args.task)
+        train_metrics, val_metrics, _ = get_downstream_metrics(task=args.task)
         _, task_heads, task_losses, _, _ = get_tasks(tasks,
                                                      h_params['feature_dim_head'] * h_params['num_heads'],
                                                      subsample_depth=h_params['subsampling_depth'],
@@ -199,8 +196,6 @@ def main():
        
         model.train_metrics = train_metrics
         model.val_metrics = val_metrics
-        if args.test:
-            model.test_metrics = test_metrics
 
         if args.loss == 'cross-entropy':
             assert args.task == 'contact'
