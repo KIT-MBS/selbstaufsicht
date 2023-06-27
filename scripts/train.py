@@ -257,7 +257,7 @@ def main():
                       precision=args.precision,
                       strategy=dp_strategy,
                       enable_progress_bar=not args.disable_progress_bar,
-                      log_every_n_steps=min(args.log_every, num_data_samples/num_gpus),
+                      log_every_n_steps=min(args.log_every, num_data_samples/min(num_gpus, 1)),
                       logger=tb_logger)
     print("fitting ", tasks)
     trainer.fit(model, train_dl, val_dl)
