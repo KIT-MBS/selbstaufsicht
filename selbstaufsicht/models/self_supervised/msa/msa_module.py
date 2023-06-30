@@ -112,7 +112,7 @@ class MSAModel(pl.LightningModule):
         self.log_images = False
         self.max_seqlen=max_seqlen
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None, y: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
         """
         Receives cropped, subsampled and tokenized MSAs as input data, passes them through several layers with attention mechanism to yield a latent representation.
 

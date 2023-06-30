@@ -48,7 +48,7 @@ def main():
     if args.task == 'contact':
         test_dataset = datasets.CoCoNetDataset(root, 'test', transform=downstream_transform, diversity_maximization=args.subsampling_mode == 'diversity', secondary_window=secondary_window)
     elif args.task == 'thermostable':
-        test_dataset = rna_ts_label.challData_lab(root, 'test', transform=downstream_transform secondary_window=secondary_window)
+        test_dataset = rna_ts_label.challData_lab(root, 'test', transform=downstream_transform, secondary_window=secondary_window)
     jigsaw_euclid_emb = None
     if 'jigsaw_euclid_emb' in h_params and h_params['jigsaw_euclid_emb']:
         embed_size = checkpoint['state_dict']['task_heads.jigsaw.proj.weight'].size(0)

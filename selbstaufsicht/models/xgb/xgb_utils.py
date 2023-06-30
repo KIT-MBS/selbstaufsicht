@@ -653,8 +653,11 @@ def compute_latent(model: nn.Module, dataloader: DataLoader, device: Any) -> Tup
         y_extended = torch.cat((torch.full((B, E, 1), -0.0025, dtype=y['thermostable'].dtype), y['thermostable']), dim=2)
 
         with torch.no_grad():
-            latent, y['thermostable'] = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None), y_extended)
-
+            latent = model(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+            
+        mask = y_extended != -0.0025
+        y['thermostable'] = y_extended[mask]
+        latent=latent[mask,:]
 
         B, E, L = x['msa'].shape
         assert B == 1
