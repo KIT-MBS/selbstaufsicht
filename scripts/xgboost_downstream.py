@@ -85,7 +85,7 @@ def main():
         os.makedirs(log_path)
 
     cull_tokens = xgb_utils.get_cull_tokens(train_dl.dataset)
-    model = xgb_utils.load_backbone(args.checkpoint, device, train_dl.dataset, cull_tokens, h_params)
+    model = xgb_utils.load_backbone(args.checkpoint, device, train_dl.dataset, cull_tokens, h_params, args.task)
     
     if args.task == 'contact':
         attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_utils.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
