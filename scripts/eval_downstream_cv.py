@@ -24,9 +24,9 @@ def main():
         checkpoint = [item for item in os.listdir(checkpoint_path) if 'downstream' in item and f'{args.monitor_metric}=' in item]
         assert len(checkpoint) == 1
         if args.task == 'contact':
-            checkpoint = checkpoint[0].replace('downstream-epoch=', '').replace('-contact_validation_topLprec', '').replace('.ckpt', '')
+            checkpoint = checkpoint[0].replace('downstream-epoch=', '').replace(f'-contact_validation_{args.monitor_metric}', '').replace('.ckpt', '')
         elif args.task == 'thermostable':
-            checkpoint = checkpoint[0].replace('downstream-epoch=', '').replace('-thermostable_validation_pcorr', '').replace('.ckpt', '')
+            checkpoint = checkpoint[0].replace('downstream-epoch=', '').replace(f'-{args.monitor_metric}', '').replace('.ckpt', '')
         splits = checkpoint.split('=')
         assert len(splits) == 2
         num_epochs, metric = splits[0], splits[1]
