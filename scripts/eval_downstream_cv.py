@@ -9,6 +9,7 @@ def main():
     # Pre-trained model
     parser.add_argument('--log-path', type=str, help="Path to logging data of the specific downstream run to be evaluated.")
     parser.add_argument('--task', default='contact', type=str, help="Downstream task ('contact', 'thermostable')")
+    parser.add_argument('--monitor-metric', default=None, type=str, help='Metric used for early stopping on validation data.')
 
     args = parser.parse_args()
 
@@ -20,7 +21,7 @@ def main():
 
     for fold_dir in fold_dirs:
         checkpoint_path = os.path.join(args.log_path, fold_dir, 'checkpoints')
-        checkpoint = [item for item in os.listdir(checkpoint_path) if 'downstream' in item]
+        checkpoint = [item for item in os.listdir(checkpoint_path) if 'downstream' in item and args.monitor_metric in item]
         assert len(checkpoint) == 1
         if args.task == 'contact':
             checkpoint = checkpoint[0].replace('downstream-epoch=', '').replace('-contact_validation_topLprec', '').replace('.ckpt', '')

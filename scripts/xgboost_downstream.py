@@ -56,7 +56,7 @@ def main():
     parser.add_argument('--log-dir', default='xgb_logs/', type=str, help='Logging directory. If empty, the directory of the pre-trained model is used. Default: \"xgb_logs/\"')
     parser.add_argument('--log-exp-name', default='', type=str, help='Logging experiment name. If empty, the experiment name of the pre-trained model is used. Default: \"\"')
     parser.add_argument('--log-run-name', default='', type=str, help='Logging run name. Supports 1989 C standard datetime codes. If empty, the run name of the pre-trained model is used, prefixed by \"downstream__\". Default: \"\"')
-    parser.add_argument('--monitor-metric', default=None, type=str, help='')
+    parser.add_argument('--monitor-metric', default=None, type=str, help='Metric used for early stopping on validation data.')
 
     args = parser.parse_args()
 
@@ -146,8 +146,10 @@ def main():
             assert args.task == 'contact'
             metric = partial(xgb_utils.metric_wrapper_contact, metric='toplprec', msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=True)
         elif args.monitor_metric == 'scorr':
+            assert args.task == 'thermostable'
             metric = partial(xgb_utils.metric_wrapper_thermo, metric='scorr')
         elif args.monitor_metric == 'pcorr':
+            assert args.task == 'thermostable'
             metric = partial(xgb_utils.metric_wrapper_thermo, metric='pcorr')
         else:
             if args.task == 'contact':
