@@ -761,7 +761,7 @@ def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, y: torch.Tensor = 
         indices = torch.cat((torch.tensor([0]), (torch.randperm(max_nseqs-1)+1)[:nseqs-1]), dim=0)
         msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
         if y is not None:
-            y = [y[i] for i in indices]
+            y = np.array([y[i] for i in indices])
             y = torch.Tensor(y)
             return msa, y
     if y is not None:
