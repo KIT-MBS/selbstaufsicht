@@ -116,7 +116,8 @@ def main():
     # Trained models
     parser.add_argument('--checkpoint', type=str, help="Path to downstream model checkpoint")
     parser.add_argument('--xgboost-checkpoint', type=str, help="Path to xgboost model checkpoint")
-    # Contact prediction
+    # Task
+    parser.add_argument('--task', default='contact', type=str, help="Downstream task ('contact', 'thermostable')")
     parser.add_argument('--distance-threshold', default=10., type=float, help="Minimum distance between two atoms in angström that is not considered as a contact")
     # Preprocessing
     parser.add_argument('--subsampling-mode', default='uniform', type=str, help="Subsampling mode: uniform, diversity, fixed")
@@ -144,33 +145,46 @@ def main():
         device = torch.device('cpu')
 
     h_params = xgb_utils.get_checkpoint_hparams(args.checkpoint, device)
-    test_dl = xgb_utils.create_dataloader('test', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, secondary_window=secondary_window)
+    test_dl = xgb_utils.create_dataloader('test', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, args.task, secondary_window=secondary_window)
 
     cull_tokens = xgb_utils.get_cull_tokens(test_dl.dataset)
-    model = xgb_utils.load_backbone(args.checkpoint, device, test_dl.dataset, cull_tokens, h_params)
-    attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping = xgb_utils.compute_attn_maps(model, test_dl, cull_tokens, args.diag_shift, h_params, device)
-
-    test_data = xgb.DMatrix(attn_maps, label=targets)
+    model = xgb_utils.load_backbone(args.checkpoint, device, test_dl.dataset, cull_tokens, h_params, args.task)
+    
+    if args.task == 'contact':
+        attn_maps, targets, msa_mapping, msa_mask, msa_mapping_filtered, L_mapping = xgb_utils.compute_attn_maps(model, test_dl, cull_tokens, args.diag_shift, h_params, device)
+        test_data = xgb.DMatrix(attn_maps, label=targets)
+    elif args.task == 'thermostable':
+        latent, targets = xgb_utils.compute_latent(model, test_dl, device)
+        test_data = xgb.DMatrix(latent, label=targets)
 
     xgb_model = xgb.Booster(model_file=args.xgboost_checkpoint)
 
     preds = xgb_model.predict(test_data, iteration_range=(0, xgb_model.best_iteration), strict_shape=True)[:, 0]
 
     if args.num_k == 1:
-        top_l_prec_pos = xgb_utils.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, treat_all_preds_positive=True)
-        top_l_prec = xgb_utils.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, treat_all_preds_positive=False)
-        global_precision = xgb_utils.xgb_precision(preds, test_data, msa_mapping_filtered)
-        global_recall = xgb_utils.xgb_recall(preds, test_data, msa_mapping_filtered)
-        global_f1_score = xgb_utils.xgb_F1Score(preds, test_data, msa_mapping_filtered)
-        matthews = xgb_utils.xgb_Matthews(preds, test_data, msa_mapping_filtered)
+        if args.task == 'contact':
+            top_l_prec_pos = xgb_utils.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, treat_all_preds_positive=True)
+            top_l_prec = xgb_utils.xgb_topkLPrec(preds, test_data, msa_mapping_filtered, L_mapping, args.min_k, treat_all_preds_positive=False)
+            global_precision = xgb_utils.xgb_precision(preds, test_data, msa_mapping_filtered)
+            global_recall = xgb_utils.xgb_recall(preds, test_data, msa_mapping_filtered)
+            global_f1_score = xgb_utils.xgb_F1Score(preds, test_data, msa_mapping_filtered)
+            matthews = xgb_utils.xgb_Matthews(preds, test_data, msa_mapping_filtered)
 
-        print("Top-%sL-Positive-Precision:" % str(args.min_k), top_l_prec_pos)
-        print("Top-%sL-Precision:" % str(args.min_k), top_l_prec)
-        print("Global Precision:", global_precision)
-        print("Global Recall:", global_recall)
-        print("Global F1-Score:", global_f1_score)
-        print("Global Matthews CorrCoeff:", matthews)
+            print("Top-%sL-Positive-Precision:" % str(args.min_k), top_l_prec_pos)
+            print("Top-%sL-Precision:" % str(args.min_k), top_l_prec)
+            print("Global Precision:", global_precision)
+            print("Global Recall:", global_recall)
+            print("Global F1-Score:", global_f1_score)
+            print("Global Matthews CorrCoeff:", matthews)
+        elif args.task == 'thermostable':
+            pcorr = xgb_utils.xgb_Pearson(preds, test_data)
+            scorr = xgb_utils.xgb_Spearman(preds, test_data)
+            
+            print("Pearson CorrCoef:", pcorr)
+            print("Spearman CorrCoef:", scorr)
     else:
+        assert args.task == 'contact'
+        
         min_k = args.min_k
         if args.max_k == -1:
             max_k = max(L_mapping / 2)
