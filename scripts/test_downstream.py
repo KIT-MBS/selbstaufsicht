@@ -33,6 +33,10 @@ def main():
     parser.add_argument('--sub-depth', default=805, type=int, help="subsampling depth")
     args = parser.parse_args()
     secondary_window = args.secondary_window
+    
+    if args.task == 'thermostable':
+        print("Currently no support for thermostable test dataset, as it contains residue letters not used in training.")
+        return
 
     if args.no_gpu:
         # NOTE for some reason, load_from_checkpoint fails to infer the hyperparameters correctly from the checkpoint file

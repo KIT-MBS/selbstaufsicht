@@ -135,9 +135,13 @@ def main():
     parser.add_argument('--vis-k-plot', action='store_true', help="Creates top-(k*L)-precision over k plot.")
     # GPU
     parser.add_argument('--no-gpu', action='store_true', help="disables cuda")
-
+    
     args = parser.parse_args()
     secondary_window = args.secondary_window
+    
+    if args.task == 'thermostable':
+        print("Currently no support for thermostable test dataset, as it contains residue letters not used in training.")
+        return
 
     if not args.no_gpu and torch.cuda.is_available():
         device = torch.device('cuda:0')
