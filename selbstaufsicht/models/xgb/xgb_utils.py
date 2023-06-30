@@ -462,7 +462,7 @@ def create_dataloader(mode: str, batch_size: int, subsampling_mode: str, distanc
         DataLoader: Data loader for downstream task.
     """
 
-    downstream_transform = get_downstream_transforms(subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode, threshold=distance_threshold, inference=mode == 'inference', secondary_window=secondary_window)
+    downstream_transform = get_downstream_transforms(downstream_task, subsample_depth=h_params['subsampling_depth'], subsample_mode=subsampling_mode, threshold=distance_threshold, inference=mode == 'inference', secondary_window=secondary_window)
     root = os.environ['DATA_PATH']
 
     if mode == 'train':
