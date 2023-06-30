@@ -1,21 +1,18 @@
-import random
+import glob
 import os
-import numpy as np
+import pathlib
+import random
 import re
 import subprocess as sp
-import pathlib
 from copy import deepcopy
-import glob
+
 import numpy as np
-from Bio.PDB.Residue import Residue
-from Bio.PDB.Atom import Atom
-from Bio import SeqIO
-
 import torch
-from torch.utils.data import Dataset
-
-from Bio import AlignIO
+from Bio import AlignIO, SeqIO
+from Bio.PDB.Atom import Atom
 from Bio.PDB.PDBParser import PDBParser
+from Bio.PDB.Residue import Residue
+from torch.utils.data import Dataset
 
 from ..utils import rna2index
 
@@ -65,7 +62,7 @@ class challData_lab(Dataset):
                # print(pdb.shape," labels shape")
                 self.pdbs.append(pdb)
         else:
-            f=self.root+"/selbstaufsicht_rna_ts/selbstaufsicht/datasets/testset_aln.fasta"
+            f=self.root+"/testset_aln.fasta"
             
             fasta_seq=SeqIO.parse(open(f),'fasta')
             seqs=[]
