@@ -9,7 +9,6 @@ import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.strategies import DDPStrategy
 from torch.nn import L1Loss, MarginRankingLoss, MSELoss
 from torch.utils.data import DataLoader
 
@@ -70,7 +69,7 @@ def main():
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
-        dp_strategy = DDPStrategy(find_unused_parameters=True)
+        dp_strategy = "ddp"
        # NOTE for some reason, load_from_checkpoint fails to infer the hyperparameters correctly from the checkpoint file
         checkpoint = torch.load(args.checkpoint)
     else:

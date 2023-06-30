@@ -9,7 +9,6 @@ import numpy as np
 import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.strategies import DDPStrategy
 from torch.utils.data import DataLoader
 
 from selbstaufsicht import datasets, models
@@ -124,7 +123,7 @@ def main():
 
     num_gpus = args.num_gpus if args.num_gpus >= 0 else torch.cuda.device_count()
     if num_gpus * args.num_nodes > 1:
-        dp_strategy = DDPStrategy(find_unused_parameters=False)
+        dp_strategy = "ddp"
     else:
         dp_strategy = None
 
