@@ -70,7 +70,7 @@ def main():
         device = torch.device('cpu')
 
     h_params = xgb_utils.get_checkpoint_hparams(args.checkpoint, device)
-    train_dl = xgb_utils.create_dataloader('train', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, rng_seed=args.rng_seed, disable_train_data_discarding=args.disable_train_data_discarding, secondary_window=args.secondary_window)
+    train_dl = xgb_utils.create_dataloader('train', args.batch_size, args.subsampling_mode, args.distance_threshold, h_params, args.task, rng_seed=args.rng_seed, disable_train_data_discarding=args.disable_train_data_discarding, secondary_window=args.secondary_window)
 
     dt_now = datetime.now()
     log_exp_name = h_params['log_exp_name'] if args.log_exp_name == "" else args.log_exp_name

@@ -214,8 +214,8 @@ def get_downstream_transforms(task: str, subsample_depth: int, subsample_mode: s
         )
     transformslist.append(ExplicitPositionalEncoding())
     if task == 'contact' and not inference:
-       transformslist.append(DistanceFromChain(device=device))
-       transformslist.append(ContactFromDistance(threshold, secondary_window=secondary_window))
+        transformslist.append(DistanceFromChain(device=device))
+        transformslist.append(ContactFromDistance(threshold, secondary_window=secondary_window))
     downstream_transform = transforms.SelfSupervisedCompose(transformslist)
 
     return downstream_transform
