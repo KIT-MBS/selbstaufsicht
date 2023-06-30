@@ -194,7 +194,7 @@ def main():
 
             evals_result = {}
             if args.task == 'contact':
-                partial(xgb_utils.metric_wrapper_contact, metric='toplprec', msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=args.treat_all_preds_positive)
+                metric = partial(xgb_utils.metric_wrapper_contact, metric='toplprec', msa_mappings=(train_msa_mapping, val_msa_mapping), L_mapping=L_mapping, k=args.top_l_prec_coeff, treat_all_preds_positive=args.treat_all_preds_positive)
             elif args.task == 'thermostable':
                 metric = partial(xgb_utils.metric_wrapper_thermo, metric='pcorr')
             xgb.train(
