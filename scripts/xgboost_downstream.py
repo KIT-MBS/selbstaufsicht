@@ -91,7 +91,7 @@ def main():
         attn_maps, targets, _, _, msa_mapping, L_mapping = xgb_utils.compute_attn_maps(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
         xgb_objective = 'binary:logitraw'
     elif args.task == 'thermostable':
-        latent, targets = xgb_utils.compute_latent(model, train_dl, cull_tokens, args.diag_shift, h_params, device)
+        latent, targets = xgb_utils.compute_latent(model, train_dl, device)
         xgb_objective = 'reg:squarederror'
     params = {
         'booster': args.booster,
