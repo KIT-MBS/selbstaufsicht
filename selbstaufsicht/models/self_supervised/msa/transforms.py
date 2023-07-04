@@ -1,11 +1,12 @@
-from functools import partial
-from typing import Callable, Dict, List, Optional, Union, Tuple
-import torch
-from torch.distributions import Categorical, Distribution
-import numpy as np
-from Bio.Align import MultipleSeqAlignment
 import math
 import random
+from functools import partial
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import torch
+from Bio.Align import MultipleSeqAlignment
+from torch.distributions import Categorical, Distribution
 
 from selbstaufsicht.utils import lehmer_encode
 
@@ -44,7 +45,7 @@ class MSATokenize():
 
 
 class MSACropping():
-    def __init__(self, length: int, mode: str = 'random-dependent') -> None:
+    def __init__(self, length: int, mode: str = 'random-dependent', thermostable: bool = False) -> None:
         """
         Initializes MSA cropping transform.
 
@@ -54,7 +55,8 @@ class MSACropping():
         """
 
         self.length = length
-        self.cropping_fn = _get_msa_cropping_fn(mode)
+        self.cropping_fn = _get_msa_cropping_fn(mode, centered=thermostable)
+        self.thermo=thermostable
 
     def __call__(self, x: Dict[str, MultipleSeqAlignment], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
         """
@@ -69,6 +71,9 @@ class MSACropping():
         """
 
         if x['msa'].get_alignment_length() > self.length:
+            if self.thermo:
+                st=(x['msa'].get_alignment_length()-self.length)/2.0
+                y['thermostable']=y['thermostable'][:,int(st):int(st)+self.length]
             x['msa'] = self.cropping_fn(x['msa'], self.length)
 
         return x, y
@@ -281,18 +286,20 @@ class MSAboot():
 
 
 class MSASubsampling():
-    def __init__(self, num_sequences: int, mode: str = 'uniform') -> None:
+    def __init__(self, num_sequences: int, mode: str = 'uniform', thermostable: bool = False) -> None:
         """
         Initializes MSA subsampling.
 
         Args:
             num_sequences (int): Number of subsampled sequences.
             mode (str, optional): Subsampling mode. Currently implemented: uniform, diversity, fixed. Defaults to 'uniform'.
+            thermostable (bool, optional): Whether thermostability downstream task is active. Defaults to False.
         """
 
         self.mode = mode
         self.sampling_fn = _get_msa_subsampling_fn(mode)
         self.nseqs = num_sequences
+        self.thermostable = thermostable
 
     def __call__(self, x: Dict[str, Union[MultipleSeqAlignment, torch.Tensor]], y: Dict[str, torch.Tensor]) -> Tuple[Dict[str, MultipleSeqAlignment], Dict[str, torch.Tensor]]:
         """
@@ -310,15 +317,21 @@ class MSASubsampling():
         if self.mode == 'diversity':
             if 'indices' not in x:
                 raise KeyError('No indices provided for diversity-maximizing subsampling!')
-            x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'])
+            if self.thermostable:
+                x['msa'], y['thermostable'] = self.sampling_fn(msa, self.nseqs, x['indices'], y['thermostable'])
+            else:
+                x['msa'] = self.sampling_fn(msa, self.nseqs, x['indices'])
             del x['indices']
         else:
-            x['msa'] = self.sampling_fn(msa, self.nseqs)
+            if self.thermostable:
+                x['msa'], y['thermostable'] = self.sampling_fn(msa, self.nseqs, y['thermostable'])
+            else:
+                x['msa'] = self.sampling_fn(msa, self.nseqs)
         return x, y
 
 
 class ExplicitPositionalEncoding():
-    def __init__(self, max_seqlen=5000):
+    def __init__(self, max_seqlen=6000):
         """
         Initializes explicite positional encoding.
 
@@ -730,26 +743,33 @@ def _get_masking_fn(mode: str, start_token: bool) -> Callable[
     raise ValueError('unknown token masking mode', mode)
 
 
-def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int) -> MultipleSeqAlignment:
+def _subsample_uniform(msa: MultipleSeqAlignment, nseqs: int, y: torch.Tensor = None) -> Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]:
     """
     Subsamples sequences uniformly sampled from the given MSA.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
+        y (torch.Tensor, optional): Target.
 
     Returns:
-        MultipleSeqAlignment: Subsampled, lettered MSA.
+        Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]: Subsampled, lettered MSA; subsampled target (optional).
     """
 
     max_nseqs = len(msa)
     if max_nseqs > nseqs:
         indices = torch.cat((torch.tensor([0]), (torch.randperm(max_nseqs-1)+1)[:nseqs-1]), dim=0)
         msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
+        if y is not None:
+            y = np.array([y[i] for i in indices])
+            y = torch.Tensor(y)
+            return msa, y
+    if y is not None:
+        return msa,y
     return msa
 
 
-def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indices: torch.Tensor) -> MultipleSeqAlignment:
+def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indices: torch.Tensor, y: torch.Tensor = None) -> Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]:
     """
     Subsamples sequences from the given MSA according to the diviserty maximization scheme.
     Requires pre-computed indices of most diverse sequences.
@@ -758,35 +778,43 @@ def _subsample_diversity_maximizing(msa: MultipleSeqAlignment, nseqs: int, indic
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
         indices (torch.Tensor): Indices of most diverse sequences.
+        y (torch.Tensor, optional): Target.
 
     Returns:
-        MultipleSeqAlignment: Subsampled, lettered MSA.
+        Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]: Subsampled, lettered MSA; subsampled target (optional).
     """
 
     assert indices.shape[0] == nseqs
     assert len(msa) >= nseqs
 
     msa = MultipleSeqAlignment([msa[i.item()] for i in indices])
+    if y is not None:
+        y = [y[i] for i in indices]
+        y = torch.Tensor(y)
+        return msa, y
     return msa
 
 
-def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int) -> MultipleSeqAlignment:
+def _subsample_fixed(msa: MultipleSeqAlignment, nseqs: int, y: torch.Tensor = None) -> Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]:
     """
     Subsamples the first n sequences from the MSA.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         nseqs (int): Number of sequences to be subsampled.
+        y (torch.Tensor, optional): Target.
 
     Returns:
-        MultipleSeqAlignment: Subsampled, lettered MSA.
+        Union[MultipleSeqAlignment, Tuple[MultipleSeqAlignment, torch.Tensor]]: Subsampled, lettered MSA; subsampled target (optional).
     """
     # TODO ensure this works, when there are not 2*nseqs sequences in the msa
 
+    if y is not None:
+        return msa[:nseqs], torch.Tensor(y[:nseqs])
     return msa[:nseqs]
 
 
-def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]:
+def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, torch.Tensor], Tuple[MultipleSeqAlignment,torch.Tensor]]:
     """
     Returns the subsampling function that corresponds to the given subsampling mode.
 
@@ -797,8 +825,8 @@ def _get_msa_subsampling_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, O
         ValueError: Unknown subsampling mode.
 
     Returns:
-        Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]: Subsampling function
-        (lettered MSA; number of sequences to be subsampled -> subsampled, lettered MSA)
+        Callable[[MultipleSeqAlignment, int], MultipleSeqAlignment]: Subsampling function
+        (lettered MSA; number of sequences to be subsampled; target (optional) -> subsampled, lettered MSA)
     """
 
     if mode == 'uniform':
@@ -848,27 +876,33 @@ def _crop_random_independent(msa: MultipleSeqAlignment, length: int) -> Multiple
     return cropped_msa
 
 
-def _crop_fixed(msa: MultipleSeqAlignment, length: int) -> MultipleSeqAlignment:
+def _crop_fixed(msa: MultipleSeqAlignment, length: int, centered: bool = False) -> MultipleSeqAlignment:
     """
     Crops each sequence of the given lettered MSA in a left-aligned way to the predefined length.
 
     Args:
         msa (MultipleSeqAlignment): Lettered MSA.
         length (int): Maximum uncropped sequence length.
+        centered (bool, optional): Whether cropping is performed in centered way. Defaults to False.
 
     Returns:
         MultipleSeqAlignment: Cropped, lettered MSA.
     """
+    
+    if centered:
+        st=(msa.get_alignment_length()-length)/2.0
+        return msa[:, int(st):length+int(st)]
+    else:
+        return msa[:, :length]
 
-    return msa[:, :length]
 
-
-def _get_msa_cropping_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]:
+def _get_msa_cropping_fn(mode: str, centered: bool) -> Callable[[MultipleSeqAlignment, int, Optional[bool]], MultipleSeqAlignment]:
     """
     Returns the cropping function that corresponds to the given cropping mode.
 
     Args:
         mode (str): Cropping mode. Currently implemented: random-dependent, random-independent, fixed.
+        centered (bool, optional): Whether fixed cropping is performed in centered way.
 
     Raises:
         ValueError: Unknown cropping mode.
@@ -883,5 +917,5 @@ def _get_msa_cropping_fn(mode: str) -> Callable[[MultipleSeqAlignment, int, Opti
     if mode == 'random-independent':
         return _crop_random_independent
     if mode == 'fixed':
-        return _crop_fixed
+        return partial(_crop_fixed, centered=centered)
     raise ValueError('unkown msa cropping mode', mode)

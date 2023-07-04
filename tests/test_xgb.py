@@ -2,13 +2,13 @@ import numpy as np
 import numpy.testing as testing
 import xgboost as xgb
 
-from selbstaufsicht.models.xgb import xgb_contact
+from selbstaufsicht.models.xgb import xgb_utils
 
 
 def test_sigmoid():
     x = np.array([-np.log(42), 0, np.log(42)])
     
-    y = xgb_contact.sigmoid(x)
+    y = xgb_utils.sigmoid(x)
     y_ref = np.array([1/43, 0.5, 1 - 1/43])
     
     testing.assert_allclose(y, y_ref)
@@ -24,10 +24,10 @@ def test_xgb_topkLPrec():
     msa_mapping = np.array([0, 0, 0, 1, 1])
     L_mapping = np.array([4, 4])
     
-    top_l_prec = xgb_contact.xgb_topkLPrec(preds, dmat, msa_mapping, L_mapping)
+    top_l_prec = xgb_utils.xgb_topkLPrec(preds, dmat, msa_mapping, L_mapping)
     assert top_l_prec == 1 / 2
     
-    top_l_prec = xgb_contact.xgb_topkLPrec(preds, dmat, msa_mapping, L_mapping, treat_all_preds_positive=True)
+    top_l_prec = xgb_utils.xgb_topkLPrec(preds, dmat, msa_mapping, L_mapping, treat_all_preds_positive=True)
     assert top_l_prec == 3 / 5
     
     
@@ -40,7 +40,7 @@ def test_xgb_precision():
     dmat = xgb.DMatrix(np.array([[]]), label=np.array([1, 1, 1, 0, 0]))
     msa_mapping = np.array([0, 0, 0, 1, 1])
     
-    top_l_prec = xgb_contact.xgb_precision(preds, dmat, msa_mapping)
+    top_l_prec = xgb_utils.xgb_precision(preds, dmat, msa_mapping)
     assert top_l_prec == 1 / 2
     
 
@@ -53,7 +53,7 @@ def test_xgb_recall():
     dmat = xgb.DMatrix(np.array([[]]), label=np.array([1, 1, 1, 0, 0]))
     msa_mapping = np.array([0, 0, 0, 1, 1])
     
-    recall = xgb_contact.xgb_recall(preds, dmat, msa_mapping)
+    recall = xgb_utils.xgb_recall(preds, dmat, msa_mapping)
     assert recall == 1 / 3
     
 
@@ -66,7 +66,7 @@ def test_xgb_F1Score():
     dmat = xgb.DMatrix(np.array([[]]), label=np.array([1, 1, 1, 0, 0]))
     msa_mapping = np.array([0, 0, 0, 1, 1])
     
-    f1_score = xgb_contact.xgb_F1Score(preds, dmat, msa_mapping)
+    f1_score = xgb_utils.xgb_F1Score(preds, dmat, msa_mapping)
     assert f1_score == 2 / 5
     
 
@@ -79,5 +79,5 @@ def test_xgb_Matthews():
     dmat = xgb.DMatrix(np.array([[]]), label=np.array([1, 1, 1, 0, 0]))
     msa_mapping = np.array([0, 0, 0, 1, 1])
     
-    mcc = xgb_contact.xgb_Matthews(preds, dmat, msa_mapping)
+    mcc = xgb_utils.xgb_Matthews(preds, dmat, msa_mapping)
     assert mcc == -1 / 6

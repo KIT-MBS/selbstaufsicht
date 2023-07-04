@@ -1,17 +1,36 @@
 from functools import partial
-import torch
 from typing import Dict, List, Tuple, Union
 
-from torch.nn import CrossEntropyLoss, MSELoss
-from torchmetrics import MeanAbsoluteError
-from torch.nn import Module, ModuleDict
+import torch
+from torch.nn import CrossEntropyLoss, Module, ModuleDict, MSELoss
+from torchmetrics import MeanAbsoluteError, PearsonCorrCoef, SpearmanCorrCoef
+
 from selbstaufsicht import transforms
-from selbstaufsicht.utils import rna2index, nonstatic_mask_tokens
-from selbstaufsicht.models.self_supervised.msa.transforms import MSATokenize, RandomMSAMasking, ExplicitPositionalEncoding
-from selbstaufsicht.models.self_supervised.msa.transforms import MSACropping, MSASubsampling, RandomMSAShuffling, MSAboot
-from selbstaufsicht.models.self_supervised.msa.transforms import DistanceFromChain, ContactFromDistance
-from selbstaufsicht.modules import SequenceNTXentLoss, Accuracy, EmbeddedJigsawAccuracy, EmbeddedJigsawLoss, BinaryPrecision, BinaryRecall, BinaryF1Score, BinaryConfusionMatrix, BinaryMatthewsCorrelationCoefficient
-from .modules import InpaintingHead, JigsawHead, ContrastiveHead
+from selbstaufsicht.models.self_supervised.msa.transforms import (
+    ContactFromDistance,
+    DistanceFromChain,
+    ExplicitPositionalEncoding,
+    MSAboot,
+    MSACropping,
+    MSASubsampling,
+    MSATokenize,
+    RandomMSAMasking,
+    RandomMSAShuffling,
+)
+from selbstaufsicht.modules import (
+    Accuracy,
+    BinaryConfusionMatrix,
+    BinaryF1Score,
+    BinaryMatthewsCorrelationCoefficient,
+    BinaryPrecision,
+    BinaryRecall,
+    EmbeddedJigsawAccuracy,
+    EmbeddedJigsawLoss,
+    SequenceNTXentLoss,
+)
+from selbstaufsicht.utils import nonstatic_mask_tokens, rna2index
+
+from .modules import ContrastiveHead, InpaintingHead, JigsawHead
 
 # NOTE mask and padding tokens can not be reconstructed
 
@@ -78,7 +97,7 @@ def get_tasks(tasks: List[str],
     max_seqlen = crop_size + int('START_TOKEN' in rna2index) + int(jigsaw_delimiter) * (jigsaw_partitions + 1)
 
     transformslist = [
-        MSASubsampling(subsample_depth, mode=subsample_mode),
+        MSASubsampling(subsample_depth, mode=subsample_mode, thermostable=False),
         MSACropping(crop_size, mode=crop_mode),
         MSATokenize(rna2index)]
 
@@ -170,14 +189,22 @@ def get_tasks(tasks: List[str],
                 task_losses['jigsaw_boot'] = CrossEntropyLoss()
                 train_metrics['jigsaw_boot'] = ModuleDict({'acc': Accuracy()})
                 val_metrics['jigsaw_boot'] = ModuleDict({'acc': Accuracy()})
-
     return transform, task_heads, task_losses, train_metrics, val_metrics
 
 
-def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., inference=False, device=None, secondary_window=-1):
-    transformslist = [
-        MSASubsampling(subsample_depth, mode=subsample_mode),
-        MSATokenize(rna2index)]
+def get_downstream_transforms(task: str, subsample_depth: int, subsample_mode: str = 'uniform', jigsaw_partitions: int = 0, threshold: float = 4., inference=False, device=None, secondary_window=-1,crop_size=400):
+    
+    if task == 'thermostable':
+        transformslist = [
+            MSASubsampling(subsample_depth, mode=subsample_mode,thermostable=True),
+            MSACropping(crop_size, mode='fixed',thermostable=True),
+            MSATokenize(rna2index)]
+    else:
+        transformslist = [
+            MSASubsampling(subsample_depth, mode=subsample_mode),
+            MSATokenize(rna2index)]
+    
+    # TODO: Is it a problem that jigsaw was renamed into thermostable for the thermostability task? Does it need shuffling?
     if jigsaw_partitions > 0:
         transformslist.append(
             RandomMSAShuffling(
@@ -186,7 +213,7 @@ def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', 
                 num_classes=1)
         )
     transformslist.append(ExplicitPositionalEncoding())
-    if not inference:
+    if task == 'contact' and not inference:
         transformslist.append(DistanceFromChain(device=device))
         transformslist.append(ContactFromDistance(threshold, secondary_window=secondary_window))
     downstream_transform = transforms.SelfSupervisedCompose(transformslist)
@@ -194,21 +221,32 @@ def get_downstream_transforms(subsample_depth, subsample_mode: str = 'uniform', 
     return downstream_transform
 
 
-def get_downstream_metrics():
+def get_downstream_metrics(task: str):
     train_metrics = ModuleDict()
     val_metrics = ModuleDict()
     test_metrics = ModuleDict()
 
-    train_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
-                                           'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
-                                           'topLprec_unreduced': BinaryPrecision(reduce=False),
-                                           'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
-                                           'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
-                                           'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
-                                           'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
-                                           })
+    if task == 'contact':
+        train_metrics[task] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
+                                          'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
+                                          'topLprec_unreduced': BinaryPrecision(reduce=False),
+                                          'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
+                                          'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
+                                          'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
+                                          'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
+                                          })
 
-    val_metrics['contact'] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
+        val_metrics[task] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1), 'topLprec': BinaryPrecision(),
+                                        'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
+                                        'topLprec_unreduced': BinaryPrecision(reduce=False),
+                                        'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
+                                        'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
+                                        'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
+                                        'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
+                                        })
+
+        test_metrics[task] = ModuleDict({'acc': Accuracy(class_dim=1, ignore_index=-1),
+                                         'topLprec': BinaryPrecision(),
                                          'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
                                          'topLprec_unreduced': BinaryPrecision(reduce=False),
                                          'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
@@ -216,18 +254,17 @@ def get_downstream_metrics():
                                          'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
                                          'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1)
                                          })
+    elif task == 'thermostable':
+        train_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef(),
+            'pcorr':PearsonCorrCoef()})
+        val_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef(),
+            'pcorr':PearsonCorrCoef()})
+        test_metrics[task] = ModuleDict({'scorr':SpearmanCorrCoef(),
+            'pcorr':PearsonCorrCoef()})
 
-    test_metrics['contact'] = ModuleDict(
-            {
-                'acc': Accuracy(class_dim=1, ignore_index=-1),
-                'topLprec': BinaryPrecision(),
-                'topLprec_coconet': BinaryPrecision(treat_all_preds_positive=True),
-                'topLprec_unreduced': BinaryPrecision(reduce=False),
-                'Global_precision': BinaryPrecision(k=-1), 'Global_recall': BinaryRecall(),
-                'Global_F1score': BinaryF1Score(), 'confmat': BinaryConfusionMatrix(),
-                'confmat_unreduced': BinaryConfusionMatrix(reduce=False),
-                'Global_matthews': BinaryMatthewsCorrelationCoefficient(k=-1),
-            })
+    else:
+        raise ValueError("Unknown downstream task:", task)
+    
     return train_metrics, val_metrics, test_metrics
 
 

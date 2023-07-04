@@ -1,4 +1,5 @@
 from typing import Dict, Union
+
 import torch
 import torch.nn as nn
 
@@ -101,7 +102,7 @@ class JigsawHead(nn.Module):
             latent = latent[:, 0, 0, :]  # [B,D]
         else:
             latent = latent[:, :, 0, :]  # [B, E, D]
-
+        
         if self.euclid_emb:
             return self.proj(latent)  # [B, E, NClasses]
         else:
@@ -116,6 +117,64 @@ class JigsawHead(nn.Module):
                     return self.proj(latent)
                 else:
                     return torch.transpose(self.proj(latent), 1, 2)  # [B, NClasses, E]
+                
+
+class ThermoStableHead(nn.Module):
+    def __init__(self,
+                 d: int,
+                 num_classes: int,
+                 layer_norm_eps: float = 1e-5,
+                 device: Union[str, torch.device] = None,
+                 dtype: torch.dtype = None, boot: bool = False, frozen: bool = False,
+                 seq_dist: bool = False) -> None:
+        """
+        Initializes the head module for the thermodynamic stability downstream task.
+
+        Args:
+            d (int): Embedding dimensionality.
+            num_classes (int): Number of classes (number of allowed permutations)
+            layer_norm_eps (float, optional): Epsilon used by LayerNormalization. Defaults to 1e-5.
+            device (Union[str, torch.device], optional): Used computation device. Defaults to None.
+            dtype (torch.dtype, optional): Used tensor dtype. Defaults to None.
+        """
+
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(ThermoStableHead, self).__init__()
+        
+        self.proj = nn.Linear(d, num_classes, **factory_kwargs)
+        self.num_classes = num_classes
+        self.boot = boot
+        self.frozen = frozen
+        self.seq_dist = seq_dist
+
+    def forward(self, latent: torch.Tensor, x: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        Receives latent representation, performs linear transformation to predict applied permutations.
+
+        Args:
+            latent (torch.Tensor): Latent representation [B, E, L, D].
+            x (Dict[str, torch.Tensor]): Input data.
+
+        Returns:
+            torch.Tensor: Jigsaw prediction [B, NClasses, E].
+        """
+
+        # latent is of shape [B, E, L, D]
+        if self.frozen:
+            latent = latent[:, 0, 0, :]  # [B,D]
+
+        output=torch.mean(self.proj(latent),1)
+
+        if self.boot:
+            if self.seq_dist:
+                return output.reshape(output.shape[1],)
+            else:
+                return output.reshape(-1, self.num_classes)
+        else:
+            if self.frozen:
+                return self.proj(latent)
+            else:
+                return output
 
 
 # TODO different hidden and out dim?

@@ -1,8 +1,9 @@
 import random
+
 import cvxpy as cp
 import numpy as np
-from scipy.linalg import ldl
 import torch
+from scipy.linalg import ldl
 
 # ambuguous RNA letters: GAUCRYWSMKHBVDN
 rna_letters = [letter for letter in '-.GAUCRYWSMKHBVDN']

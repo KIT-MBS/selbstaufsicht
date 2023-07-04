@@ -1,8 +1,8 @@
 import math
 from typing import Any, Dict, List, Tuple, Union
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import seaborn as sns
@@ -89,6 +89,7 @@ class MSAModel(pl.LightningModule):
         # TODO adapt to non-simultaneous multi task training (all the heads will be present in model, but not all targets in one input)
         if task_heads is not None:
             self.tasks = [t for t in task_heads.keys()]
+
         self.task_loss_weights = task_loss_weights
         if self.tasks is not None and self.task_loss_weights is None:
             self.task_loss_weights = {t: 1. for t in self.tasks}
@@ -109,6 +110,7 @@ class MSAModel(pl.LightningModule):
         self.freeze_backbone = freeze_backbone
         self.save_hyperparameters(h_params)
         self.log_images = False
+        self.max_seqlen=max_seqlen
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor = None, aux_features: torch.Tensor = None) -> torch.Tensor:
         """
@@ -124,6 +126,7 @@ class MSAModel(pl.LightningModule):
         """
 
         # NOTE feature dim = -1
+
         x = self.embedding(x) + self.positional_embedding(aux_features)
         return self.backbone(x, padding_mask, self.need_attn)
 
@@ -143,7 +146,6 @@ class MSAModel(pl.LightningModule):
         """
 
         x, y = batch_data
-
         assert not (self.training and test)
 
         if self.training:
@@ -158,21 +160,30 @@ class MSAModel(pl.LightningModule):
             metrics = self.test_metrics
 
         latent = None
-        if 'contact' in self.tasks:
-            if not self.downstream_loss_device_flag and hasattr(self.losses['contact'], 'weight'):
+        if 'contact' in self.tasks or 'thermostable' in self.tasks:
+            if not self.downstream_loss_device_flag and not 'thermostable' in self.tasks and hasattr(self.losses['contact'], 'weight'):
                 self.losses['contact'].weight = self.losses['contact'].weight.to(self.device)
                 self.downstream_loss_device_flag = True
 
             # NOTE (un)frozen weights for all modules except contact head
             with torch.set_grad_enabled(not self.freeze_backbone and self.training):
-                latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
-            x['attn_maps'] = attn_maps
+                if 'contact' in self.tasks:
+                    latent, attn_maps = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+                    x['attn_maps'] = attn_maps
+                elif 'thermostable' in self.tasks:
+                    # add column of -1 to mask out start token
+                    B, E, _ = y['thermostable'].shape
+                    y_extended = torch.cat((torch.full((B, E, 1), -0.0025, dtype=y['thermostable'].dtype).to(self.device), y['thermostable']), dim=2)
+                    mask = y_extended != -0.0025
+                    latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
+                    y['thermostable'] = y_extended[mask]
+                    latent=latent[mask,:]
         else:
             latent = self(x['msa'], x.get('padding_mask', None), x.get('aux_features', None))
 
         if 'contrastive' in self.tasks:
             y['contrastive'] = None
-
+        
         preds = {task: self.task_heads[task](latent, x) for task in self.tasks}
         lossvals = {task: self.losses[task](preds[task], y[task]) for task in self.tasks}
         for task in self.tasks:
@@ -180,6 +191,8 @@ class MSAModel(pl.LightningModule):
                 # NOTE: ContactHead output is symmetrized raw scores, so Sigmoid has to be applied explicitly
                 if task == 'contact':
                     metrics[task][m](torch.sigmoid(preds[task]), y[task])
+                elif task == 'thermostable':
+                    metrics[task][m](torch.flatten(preds[task]), torch.flatten(y[task]))
                 else:
                     metrics[task][m](preds[task], y[task])
                 if 'confmat' not in m and 'unreduced' not in m:
@@ -237,6 +250,7 @@ class MSAModel(pl.LightningModule):
         if 'contact' in self.tasks and not self.freeze_backbone:
             x['attn_maps'] = [row_map.detach() for row_map in x['attn_maps']]
         out = {'input': x, 'preds': preds, 'target': y, 'loss': loss, 'test': test}
+
         return out
 
     def _create_confusion_matrix(self, conf_mat_metric: Any, mode: str) -> None:

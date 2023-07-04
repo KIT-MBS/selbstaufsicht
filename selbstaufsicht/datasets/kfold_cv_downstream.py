@@ -1,17 +1,20 @@
-from functools import partial
 import os
-from sklearn.model_selection import KFold
-import torch
-from torch.utils.data import DataLoader, Subset, random_split
+from functools import partial
 from typing import Union
 
+import torch
+from sklearn.model_selection import KFold
+from torch.utils.data import DataLoader, Subset, random_split
+
 from selbstaufsicht.datasets import CoCoNetDataset
+from selbstaufsicht.datasets.rna_ts_label import challData_lab
 from selbstaufsicht.utils import data_loader_worker_init
 
 
 class KFoldCVDownstream():
     def __init__(self,
                  transform,
+                 task: str,
                  num_folds: int = 1,
                  val_ratio: float = 0.1,
                  batch_size: int = 1,
@@ -27,6 +30,7 @@ class KFoldCVDownstream():
 
         Args:
             transform: Data transforms
+            task (str): Downstream task (contact, thermostable).
             num_folds (int, optional): Number of folds. Defaults to 1.
             val_ratio (float, optional): Validation dataset ratio in case of disabled cross validation (num_folds=1). Defaults to 0.1.
             batch_size (int, optional): Batch size. Defaults to 1.
@@ -54,15 +58,25 @@ class KFoldCVDownstream():
 
         # load dataset
         self.root = os.environ['DATA_PATH']
-        self.train_dataset = CoCoNetDataset(self.root,
-                                            'train',
-                                            transform=transform,
-                                            discard_train_size_based=discard_train_size_based,
-                                            diversity_maximization=diversity_maximization,
-                                            max_seq_len=max_seq_len,
-                                            min_num_seq=min_num_seq,
-                                            secondary_window=self.secondary_window)
-
+        if task == 'contact':
+            self.train_dataset = CoCoNetDataset(self.root,
+                                                'train',
+                                                transform=transform,
+                                                discard_train_size_based=discard_train_size_based,
+                                                diversity_maximization=diversity_maximization,
+                                                max_seq_len=max_seq_len,
+                                                min_num_seq=min_num_seq,
+                                                secondary_window=self.secondary_window)
+        elif task == 'thermostable':
+            self.train_dataset=challData_lab(self.root,
+                                                'train',
+                                                transform=transform,
+                                                discard_train_size_based=discard_train_size_based,
+                                                diversity_maximization=diversity_maximization,
+                                                max_seq_len=max_seq_len,
+                                                min_num_seq=min_num_seq,
+                                                secondary_window=self.secondary_window)
+            
         # setup splits
         if self.num_folds == 1:
             val_size = int(self.val_ratio * len(self.train_dataset))
