@@ -50,14 +50,14 @@ class challData_lab(Dataset):
         self.test_splits=test_splits
 
         if split=='train':
-            files=glob.glob(self.root+"/rna_ts/*fasta1")
+            files=glob.glob(self.root+"/selbstaufsicht/selbstaufsicht/datasets/ASA_preprocessed/rna_ts/*fasta1")
             for fam_id in files:
                 with open(fam_id) as f:
                     msa = AlignIO.read(f, 'fasta')
                     self.msas.append(msa)
                     #print(msa," msa dataset!!!!!")
                 nu=fam_id.split('/')[-1].split('_')[0]
-                nu1=self.root+"/rna_ts_labels/"+str(nu)+"_labels.csv"
+                nu1=self.root+"/selbstaufsicht/selbstaufsicht/datasets/rna_ts_labels/"+str(nu)+"_labels.csv"
                 pdb=np.loadtxt(nu1,dtype=float)
                # print(pdb.shape," labels shape")
                 self.pdbs.append(pdb)
